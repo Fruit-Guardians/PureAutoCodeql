@@ -201,7 +201,13 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+output.md
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+h5-vsan-service.jar_Decompiler.com/
+h5-vsan/
+build.bat

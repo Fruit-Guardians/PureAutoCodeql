@@ -18,23 +18,70 @@ from utils.java import find_path_from_java_file
 
 
 class JavaSourceAnalysisAgent:
-    """Agent for analyzing Java source files to identify Source points."""
     
     def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "h5-vsan-service.jar_Decompiler.com"):
         self.analyzer = analyzer
         self.source_root = source_root
     
     def build_prompt(self, cve_analysis: str, java_paths: List[str]) -> str:
-        """Build prompt for Java source analysis agent (Source detection)."""
         current_dir = os.getcwd()
+        java_paths_str = "\n".join(java_paths)
+
+        #TODO: 这里的prompt之后需要修改为调用codeql生成和解析codeql查询结果
         return (
-            "你是一个Java源代码分析助手。"
-            "请分析以下信息：\n\n"
-            f"CVE分析结果：\n{cve_analysis}\n\n"
-            f"Java文件路径：\n" + "\n".join(java_paths) + "\n\n"
-            f"你可以调用的工具：server-filesystem和sequential-thinking进行文件读取和长逻辑思考，工作目录在{current_dir}\n\n"
-            "请根据以上信息读取目标java文件，并识别可能的SOURCE（数据来源点），例如用户输入、外部请求参数、配置读取、环境变量等。"
-            "输出应清晰标注来源点的位置（文件路径、类名、方法名、行号），并简要说明其作为数据来源的理由。"
+            f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家，专注于识别可能的Source候选函数。
+
+    任务目标：基于提供的CVE信息和Java文件路径，仅产出“可能存在Source点的函数列表”。
+
+    输入信息：
+
+    1. CVE分析结果：
+    {cve_analysis}
+
+    2. 相关Java文件路径：
+    {java_paths}
+
+    3. 工作目录：`{current_dir}`（所有路径均为相对该目录）。
+
+    可用工具：
+    - server-filesystem：读取文件内容
+    - sequential-thinking：多步骤推理
+
+    行动指令：
+    1. 理解CVE涉及的不可信输入来源类型（HTTP参数、头、Cookie、反序列化、文件/路径、环境变量、网络IO、数据库结果、表达式/模板等）。
+    2. 审计源码：使用 server-filesystem 读取 `{java_paths_str}` 中的文件，定位“可能接收不可信输入”的函数/方法。无需进行完整数据流溯源，仅做候选定位与简要理由。
+    3. 识别候选函数：关注如下模式并给出理由与置信度（high/medium/low）：
+       - Servlet/Spring MVC 参数绑定与取参（HttpServletRequest、@RequestParam、@PathVariable、@RequestBody 等）
+       - 反序列化入口（ObjectInputStream、readObject、Yaml/JSON/XML 解析）
+       - 文件系统/路径构造（new File、Paths.get、ServletContext.getRealPath 等）
+       - 环境变量/系统属性读取（System.getenv、System.getProperty）
+       - 网络/套接字/消息队列输入
+       - 任何第三方框架/库的用户输入接收点
+
+    输出要求（必须严格遵守）：
+    - 仅输出 JSON（不要输出除 JSON 以外的任何文字、Markdown 或代码块标记）。
+    - JSON 结构如下：
+    {{
+      "cve": "",
+      "candidates": [
+        {{
+          "file_path": "相对路径（如 src/.../X.java）",
+          "class_name": "类名",
+          "method_name": "方法名",
+          "signature": "方法签名（含参数类型）",
+          "start_line": 0,
+          "end_line": 0,
+          "reason": "为什么此函数可能是Source（关键API/取参点/框架绑定等）",
+          "confidence": "high|medium|low"
+        }}
+      ]
+    }}
+
+    规则：
+    - 若没有发现候选函数，请输出：{{"candidates": []}}
+    - 可以使用工具读取 `{java_paths_str}` 中的文件内容。
+    - 请确保输出为合法可解析的 JSON。
+    """
         )
     
     def find_java_files(self, directory: Path) -> List[str]:

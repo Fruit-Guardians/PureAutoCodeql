@@ -1,33 +1,25 @@
 import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from dataclasses import dataclass
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
-# Import agents and utilities
-from agents.cve_analysis_agent import CVEAnalysisAgent
-from agents.java_sink_path_agent import JavaPathAnalysisAgent
-from agents.java_source_analysis_agent import JavaSourceAnalysisAgent
-from utils.io import write_analysis_output
+from agents.codeql_generator_agent import CodeQLGeneratorAgent
 
 
 @dataclass
 class AgentConfig:
     """Configuration for creating agents with consistent settings."""
-    # model: str = "gpt-5-chat-latest"
-    # api_key: str = "sk-34hrOV0eZWNgcNTGPXXpLJ086uRoXmA7aCPTVICu2gAZQ7tu"
-    # base_url: str = "https://yunwu.ai/v1"
     model: str = "deepseek-reasoner"
     api_key: str = "sk-1cf370f7a87c4ca6bc6fb39e7fd712ac"
     base_url: str = "https://api.deepseek.com/v1"
     temperature: float = 0
     streaming: bool = True
-    max_tokens: Optional[int] = None  # 最大输出token数量
-    max_retries: int = 3  # 最大重试次数
-
+    max_tokens: Optional[int] = None
+    max_retries: int = 3
 
 
 @dataclass
@@ -39,10 +31,9 @@ class AgentResult:
 
 
 class MultiAgentAnalyzer:
-    """Multi-agent analyzer for vulnerability analysis workflows."""
+    """Multi-agent analyzer for CodeQL generation."""
     
     def __init__(self, config: AgentConfig = None):
-        """Initialize the multi-agent analyzer."""
         self.config = config or AgentConfig()
         self.llm = None
         self.mcp_client = None
@@ -114,60 +105,32 @@ class MultiAgentAnalyzer:
             return AgentResult(content="", success=False, error=str(e))
 
 
-async def run_multi_agent_analysis(json_path: str = "CVE-2021-21985.json", 
-                                 diff_path: str = "CVE-2021-21985.diff",
-                                 source_root: str = "h5-vsan-service.jar_Decompiler.com") -> None:
-    """Run the complete multi-agent analysis workflow with CVE, Sink, and Source agents.
+async def generate_codeql_query(requirement: str) -> None:
+    """Generate CodeQL query based on user requirement.
     
     Args:
-        json_path: Path to the CVE JSON file
-        diff_path: Path to the diff file
-        source_root: Root directory for Java source files
+        requirement: Natural language description of the CodeQL query requirement
     """
     try:
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
         
-        cve_agent = CVEAnalysisAgent(analyzer)
-        sink_agent = JavaPathAnalysisAgent(analyzer, source_root)
-        source_agent = JavaSourceAnalysisAgent(analyzer, source_root)
+        codeql_agent = CodeQLGeneratorAgent(analyzer)
         
-        print("=== CVE Analysis ===")
-        cve_result = await cve_agent.analyze_cve(Path(json_path))
-        if not cve_result.success:
-            print(f"CVE analysis failed: {cve_result.error}")
+        result = await codeql_agent.generate_codeql(requirement)
+        if not result.success:
+            print(f"CodeQL generation failed: {result.error}")
         else:
-            print(cve_result.content)
-        print()
-        
-        print("=== Java Sink Path Analysis ===")
-        sink_result = await sink_agent.analyze_java_paths(cve_result.content if cve_result.success else "", diff_path)
-        if not sink_result.success:
-            print(f"Java sink analysis failed: {sink_result.error}")
-        else:
-            print(sink_result.content)
-        print()
-        
-        print("=== Java Source Analysis ===")
-        source_result = await source_agent.analyze_java_sources(cve_result.content if cve_result.success else "")
-        if not source_result.success:
-            print(f"Java source analysis failed: {source_result.error}")
-        else:
-            print(source_result.content)
-        
-        write_analysis_output(cve_result, sink_result, source_result, Path("output.md"))
+            print(result.content)
     except Exception as e:
-        print(f"Multi-agent analysis error: {e}")
+        print(f"CodeQL generation error: {e}")
 
 
 async def main() -> None:
-    source_root = "h5-vsan-service.jar_Decompiler.com"  # Java源码根目录
-    json_path = "CVE-2021-21985.json"  # CVE JSON文件路径
-    diff_path = "CVE-2021-21985.diff"  # Diff文件路径
-    
-    # 执行分析
-    await run_multi_agent_analysis(json_path, diff_path, source_root)
+    requirement = input("请输入 CodeQL 查询需求: ")
+    await generate_codeql_query(requirement)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

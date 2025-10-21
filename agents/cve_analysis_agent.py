@@ -27,7 +27,7 @@ class CVEAnalysisAgent:
         return (
             "You are a security analysis assistant. Convert the following CVE JSON into a clear, concise Markdown report.\n"
             "Only output the final Markdown without any extra commentary or styling beyond Markdown itself.漏洞的利用类型的CWE编号同时带上具体含义\n\n"
-            "最终的输出形式必须是Markdown格式，且只包含以下内容:\n"
+            "最终的输出形式必须是Markdown格式，不要包含任何额外的注释或样式，不包含漏洞修复相关的内容，只包含以下内容:\n"
             "- 利用类型\n"
             "- 漏洞点\n"
             "- 利用条件\n"
