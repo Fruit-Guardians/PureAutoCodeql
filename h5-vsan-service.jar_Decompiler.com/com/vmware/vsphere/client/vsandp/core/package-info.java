@@ -1,5 +1,6 @@
 package com.vmware.vsphere.client.vsandp.core;
 
-// $FF: synthetic class
-interface package-info {
-}
+/**
+ * Package information for vsandp core components.
+ * This is a synthetic class generated during decompilation.
+ */
