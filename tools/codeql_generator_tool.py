@@ -39,15 +39,6 @@ class CodeQLGeneratorTool(BaseTool):
         self.analyzer = analyzer
     
     def _extract_codeql_from_response(self, content: str) -> str:
-        """
-        Extract CodeQL code from response content.
-        
-        Args:
-            content: The response content that may contain <codeql> tags
-            
-        Returns:
-            Extracted CodeQL code or original content if tags not found
-        """
         match = re.search(r'<codeql>(.*?)</codeql>', content, re.DOTALL)
         if match:
             return match.group(1).strip()

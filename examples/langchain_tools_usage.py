@@ -8,6 +8,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+database_path = "./h5-vsan"
+
 # Add parent directory to path to import tools module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -34,9 +36,6 @@ async def example_standalone_usage():
     where m.getName().matches("get%")
     select m, m.getDeclaringType()
     """
-    
-    # Specify your database path
-    database_path = "./h5-vsan"
     
     print("\nExecuting CodeQL query...")
     print(f"Database: {database_path}")
@@ -147,7 +146,7 @@ async def main():
     
     # Run standalone example (this actually executes)
     # Note: Will only work if CodeQL database exists at ./h5-vsan
-    if Path("./h5-vsan").exists():
+    if Path(database_path).exists():
         await example_standalone_usage()
     else:
         print("\nSkipping standalone example - database not found at ./h5-vsan")

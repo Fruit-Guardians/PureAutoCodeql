@@ -21,7 +21,7 @@ class AgentConfig:
     # api_key: str = "sk-34hrOV0eZWNgcNTGPXXpLJ086uRoXmA7aCPTVICu2gAZQ7tu"
     # base_url: str = "https://yunwu.ai/v1"
     model: str = "deepseek-reasoner"
-    api_key: str = "sk-1cf370f7a87c4ca6bc6fb39e7fd712ac"
+    api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
     base_url: str = "https://api.deepseek.com/v1"
     temperature: float = 0
     streaming: bool = True

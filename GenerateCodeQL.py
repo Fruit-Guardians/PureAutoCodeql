@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -13,8 +14,8 @@ from agents.codeql_generator_agent import CodeQLGeneratorAgent
 @dataclass
 class AgentConfig:
     """Configuration for creating agents with consistent settings."""
-    model: str = "deepseek-reasoner"
-    api_key: str = "sk-1cf370f7a87c4ca6bc6fb39e7fd712ac"
+    model: str = "deepseek-chat"
+    api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
     base_url: str = "https://api.deepseek.com/v1"
     temperature: float = 0
     streaming: bool = True
@@ -53,15 +54,6 @@ class MultiAgentAnalyzer:
 
         self.mcp_client = MultiServerMCPClient(
             {
-                "filesystem": {
-                    "command": "npx",
-                    "args": [
-                        "-y",
-                        "@modelcontextprotocol/server-filesystem",
-                        str(Path.cwd()),
-                    ],
-                    "transport": "stdio",
-                },
                 "sequential-thinking": {
                     "command": "npx",
                     "args": [
@@ -75,8 +67,8 @@ class MultiAgentAnalyzer:
         
         self.tools = await self.mcp_client.get_tools()
     
-    async def run_agent(self, prompt: str) -> AgentResult:
-        """Run a single agent with the given prompt."""
+    async def run_agent_stream(self, prompt: str, output_callback=None):
+        """Run a single agent with the given prompt and stream output."""
         try:
             if not self.llm or not self.tools:
                 await self.initialize()
@@ -98,6 +90,8 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
+                            if output_callback:
+                                output_callback(text)
             
             return AgentResult(content="".join(content_parts), success=True)
         
@@ -105,30 +99,53 @@ class MultiAgentAnalyzer:
             return AgentResult(content="", success=False, error=str(e))
 
 
-async def generate_codeql_query(requirement: str) -> None:
-    """Generate CodeQL query based on user requirement.
-    
-    Args:
-        requirement: Natural language description of the CodeQL query requirement
-    """
+def extract_codeql_from_content(content: str) -> str:
+    """Extract CodeQL code from content wrapped in <codeql></codeql> tags."""
+    pattern = r'<codeql>(.*?)</codeql>'
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return content.strip()
+
+async def generate_codeql_query() -> None:
+    """Generate CodeQL query based on user requirement with streaming output."""
     try:
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
         
         codeql_agent = CodeQLGeneratorAgent(analyzer)
         
-        result = await codeql_agent.generate_codeql(requirement)
+        # 直接在代码中定义需求
+        requirement = "查找Java 的可能的Source点"
+        
+        print("正在生成 CodeQL 查询...")
+        print("=" * 50)
+        
+        # 流式输出
+        full_content = ""
+        def stream_callback(text: str):
+            nonlocal full_content
+            full_content += text
+            print(text, end='', flush=True)
+        
+        prompt = codeql_agent.build_prompt(requirement)
+        result = await analyzer.run_agent_stream(prompt, stream_callback)
+        
+        print("\n" + "=" * 50)
+        
         if not result.success:
-            print(f"CodeQL generation failed: {result.error}")
+            print(f"CodeQL 生成失败: {result.error}")
         else:
-            print(result.content)
-    except Exception as e:
-        print(f"CodeQL generation error: {e}")
-
+            # 提取 CodeQL 代码
+            codeql_code = extract_codeql_from_content(full_content)
+            
+            print(codeql_code)
+            
+    except Exception as e:  
+        print(e)
 
 async def main() -> None:
-    requirement = input("请输入 CodeQL 查询需求: ")
-    await generate_codeql_query(requirement)
+    await generate_codeql_query()
 
 
 if __name__ == "__main__":
