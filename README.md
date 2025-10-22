@@ -41,6 +41,6 @@ uv run Analyze.py
 
 结果会输出到output.md方便查看
 
-建议使用openspec辅助vide coding
+建议使用openspec辅助vibe coding
 
 
