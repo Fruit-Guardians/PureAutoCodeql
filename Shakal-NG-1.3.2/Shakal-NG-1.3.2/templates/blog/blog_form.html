@@ -1,0 +1,44 @@
+{% extends "blog/blog_base.html" %}
+
+{% block extraheaders %}
+<meta name="robots" content="noindex, nofollow" />
+{{ super() }}
+{% endblock %}
+
+{% block head_title %}Nastavenie blogu{% endblock %}
+{% block breadcrumbs %}
+	{{ breadcrumb("Nastavenie blogu") }}
+	{{ breadcrumb("Blog", url='blog:post-list', page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+<h1>Nastavenie blogu</h1>
+
+{% if valid %}
+	<div class="module preview">
+		<h2 class="block-title">Náhľad</h2>
+		<h1>{{ blog.title }}</h1>
+		<div class="module sidebar">
+			<h2>Informácie</h2>
+			<div class="module-row">
+				{{ blog.sidebar|safe }}
+			</div>
+		</div>
+
+		<div class="annotation">{{ blog.description|safe }}</div>
+	</div>
+{% endif %}
+
+<form action="{{ request.path }}" method="post" id="blog-form">{% csrf_token %}
+	<fieldset class="module">
+		{% include "includes/form_loop.html" %}
+		<div class="submit-row">
+			<div class="positive">
+				<button class="btn" type="submit" title="Náhľad"><span class="wrap"><span class="text">Náhľad</span></span></button>
+				{% if valid %}<button class="btn primary" type="submit" title="Uložiť" name="{% block action %}update{% endblock %}" value="1"><span class="wrap"><span class="text">Uložiť</span></span></button>{% endif %}
+			</div>
+		</div>
+	</fieldset>
+</form>
+{% endblock %}

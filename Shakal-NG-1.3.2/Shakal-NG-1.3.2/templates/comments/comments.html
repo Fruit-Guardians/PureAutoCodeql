@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb("Diskusia") }}
+{{ breadcrumb(object, url=object.get_absolute_url()) }}
+{{ breadcrumb(module_name, url=module_url) }}
+{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+<meta name="robots" content="noindex, nofollow" />
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+	<h1>Obsah diskusie</h1>
+	<p>
+		Diskusia k: <a href="{{ object.get_absolute_url() }}">{{ object }}</a>
+	</p>
+{% endblock %}
+
+{% block discussion %}
+	{% if single %}
+		<div class="module comments">
+			<div class="comments_tree">
+				<ul class="comment_thread thread_0">
+					<li class="comment">
+						<ul class="comment_thread thread_1">
+							<li class="comment">
+								{% include "comments/comment_item.html" %}
+							</li>
+						</ul>
+					</li>
+				</ul>
+			</div>
+		</div>
+	{% else %}
+		{{ render_comments_toplevel(object) }}
+	{% endif %}
+{% endblock %}

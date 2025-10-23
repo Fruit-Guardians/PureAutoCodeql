@@ -1,0 +1,6 @@
+{% extends "admin_tools/dashboard/module.html" %}
+{% load i18n %}
+
+{% block module_content %}
+<a href="{% url 'admin_dashboard:stats' %}">{% trans 'Štatistiky' %}</a>
+{% endblock %}

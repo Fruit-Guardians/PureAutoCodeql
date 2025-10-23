@@ -1,0 +1,196 @@
+@mixin component-shadow() {
+	box-shadow:
+		0 0px 1px rgba(0,0,0,0.1),
+		0 1px 2px rgba(0,0,0,0.05),
+		0 2px 4px rgba(0,0,0,0.05),
+		0 4px 8px rgba(0,0,0,0.05);
+}
+
+@mixin large-shadow() {
+	box-shadow:
+		0 0px 1px rgba(0,0,0,0.1),
+		0 1px 2px rgba(0,0,0,0.1),
+		0 2px 4px rgba(0,0,0,0.1),
+		0 4px 8px rgba(0,0,0,0.1),
+		0 8px 16px rgba(0,0,0,0.1),
+		0 16px 32px rgba(0,0,0,0.1);
+}
+
+%shadow-box {
+	background: $body-color;
+	@include component-shadow();
+	@media #{$large-down} {
+		box-shadow: none;
+	}
+}
+
+%component-shadow {
+	@include component-shadow();
+}
+
+%large-shadow {
+	@include large-shadow();
+}
+
+%content-padding {
+	padding-left: $base-spacing-content;
+	padding-right: $base-spacing-content;
+}
+
+%cancel-content-padding {
+	margin-left: -$base-spacing-content;
+	margin-right: -$base-spacing-content;
+}
+
+@mixin shadow-box {
+	@extend %shadow-box;
+}
+
+@mixin shadow-box-cancel {
+	box-shadow: none;
+	background: none;
+	border: none;
+}
+
+@mixin content-padding {
+	padding-left: $base-spacing-content;
+	padding-right: $base-spacing-content;
+}
+
+@mixin cancel-content-padding {
+	margin-left: -$base-spacing-content;
+	margin-right: -$base-spacing-content;
+}
+
+@mixin content-margin-vertical {
+	margin-top: $base-spacing-content;
+	margin-bottom: $base-spacing-content;
+}
+
+@mixin content-padding-vertical {
+	padding-top: $base-spacing-content;
+	padding-bottom: $base-spacing-content;
+}
+
+@mixin no-text {
+	overflow: hidden;
+	text-indent: -9999px;
+}
+
+@mixin no-text-right {
+	overflow: hidden;
+	text-indent: 9999px;
+}
+
+@mixin messages-item($background, $border, $text) {
+	background: $background;
+	border-top: 1px solid $border;
+	border-bottom: 1px solid $border;
+	color: $text;
+	a {
+		color: $text;
+		text-decoration: none;
+		font-weight: bold;
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+}
+
+@mixin button($background-color, $text-color, $only-color: false) {
+	.wrap {
+		@if ($flat-buttons == false) {
+			box-shadow: inset 0px 1px 0px 0px mix($background-color, #fff);
+			background: linear-gradient(to bottom, $background-color 5%, darken($background-color, 4%) 100%);
+			border: 1px solid darken($background-color, 10%);
+		}
+
+		background-color: $background-color;
+
+		@if ($only-color == false) {
+			display: block;
+		}
+
+		a, .text {
+			color: $text-color;
+			@if ($only-color == false) {
+				display: block;
+				line-height: $paragraph-line-height;
+				padding: $button-padding;
+			}
+			&:hover {
+				color: $text-color;
+				@if ($only-color == false) {
+					text-decoration: none;
+				}
+			}
+		}
+	}
+
+	&:hover .wrap, &:focus .wrap {
+		background-color: darken($background-color, 5%);
+		@if ($flat-buttons == false) {
+			background: linear-gradient(to bottom, darken($background-color, 5%) 5%, darken(darken($background-color, 5%), 2%) 100%);
+			border: 1px solid darken($background-color, 15%);
+		}
+	}
+
+	&:disabled .wrap {
+		background-color: mix($background-color, $body-color);
+		@if ($flat-buttons == false) {
+			background: linear-gradient(to bottom, mix($background-color, $body-color) 5%, darken(mix($background-color, $body-color), 2%) 100%);
+			border: 1px solid darken(mix($background-color, $body-color), 10%);
+		}
+	}
+
+	&:focus .wrap, a:focus {
+		box-shadow: 0 0 5px $primary-color;
+	}
+
+	@if ($flat-buttons == true) {
+		.btn-group & .wrap {
+			border-left: 1px solid darken($background-color, 5%);
+		}
+	}
+}
+
+@mixin input {
+	padding: $input-padding;
+
+	display: block;
+	background: $body-color;
+	color: $label-color;
+	box-shadow: inset 0 1px 3px darken($body-color, 5%);
+	border-radius: 0px;
+	border: 1px solid $input-border-color;
+
+	&:focus {
+		outline: 0;
+		border-color: $primary-color;
+		box-shadow: 0px 0px 4px -1px $primary-color;
+	}
+
+	&:focus:invalid, .errors & {
+		border-color: $error-color;
+		color: $error-color;
+		box-shadow: 0px 0px 4px -1px $error-color;
+	}
+
+	&[disabled] {
+		cursor: not-allowed;
+		background-color: mix($body-color, $text-color, 80%);
+		color: mix($body-color, $label-color, 40%);
+	}
+}
+
+@mixin clearfix {
+	&:before, &:after {
+		content: "";
+		display: table;
+		clear: both;
+	}
+}
+
+%clearfix {
+	@include clearfix();
+}

@@ -1,0 +1,279 @@
+.errorlist, .errornote, .form-row ul.errorlist {
+	@include cancel-content-padding;
+	@include content-padding;
+	margin-top: $base-spacing-content;
+	margin-bottom: $base-spacing-content;
+	list-style: none;
+	background: $error-background;
+	padding-top: $base-spacing-content;
+	padding-bottom: $base-spacing-content;
+	border-top: 1px solid $error-border-color;
+	border-bottom: 1px solid $error-border-color;
+	color: $error-text-color;
+}
+
+.form-row {
+	margin-top: $base-spacing-content;
+	margin-bottom: $base-spacing-content;
+
+	&:after {
+		content: " ";
+		display: block;
+		clear: both;
+	}
+
+	.field-label, .formset-label {
+		float: left;
+		width: 12em;
+		vertical-align: middle;
+		padding: $input-padding 0;
+	}
+
+	.form-control {
+		display: block;
+		margin-left: 12em;
+	}
+
+	.required {
+		font-weight: bold;
+	}
+
+	.radio-description {
+		padding: 0;
+		margin: 0;
+		font-size: .875em;
+		margin: 0 0 .5em 0;
+		color: $info-color;
+	}
+
+	ul {
+		padding: 0;
+		margin: 0;
+		list-style: none;
+	}
+
+	li {
+		list-style: none;
+	}
+
+	input[type=text],
+	input[type=password],
+	input[type=email],
+	input[type=number],
+	input[type=search],
+	input[type=url],
+	textarea {
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	input[type=checkbox],
+	input[type=radio] {
+		vertical-align: middle;
+		margin-top: 0;
+		margin-bottom: 0;
+	}
+
+	@media #{$medium-down} {
+		.field-label, .formset-label {
+			float: none;
+			display: block;
+			width: auto;
+			margin-top: 0;
+			margin-bottom: $base-spacing-content / 2;
+		}
+
+		.form-control {
+			margin-left: 0;
+		}
+	}
+
+	&.tabular {
+		@include cancel-content-padding;
+		label {
+			margin-left: $base-spacing-content;
+		}
+	}
+}
+
+.textareawrapper {
+	div.richedit_container {
+		clear: none;
+	}
+}
+
+.submit-row {
+	@include content-padding;
+	@include cancel-content-padding;
+	margin-bottom: $base-spacing-content - $base-margin;
+	background: $body-color;
+	border-top: 1px solid $light-border-color;
+	padding-top: $base-spacing-content;
+	&:after {
+		content: " ";
+		display: block;
+		clear: both;
+	}
+	#sidebar_1 &, #sidebar_2 & {
+		margin: 0;
+	}
+}
+
+.btn {
+	border: none;
+	padding: 0;
+	margin: 0 0 $base-spacing-content 0;
+	background: transparent;
+	cursor: pointer;
+	display: inline-block;
+
+	@include button(mix($text-color, $body-color, 5%), mix($text-color, $body-color, 75%));
+
+	.wrap {
+		padding: 0;
+		margin: 0;
+		font-size: $button-font-size;
+		cursor: pointer;
+	}
+
+	a {
+		text-decoration: none;
+		&:hover { text-decoration: none; }
+	}
+
+	&.primary, &.danger, &.confirm {
+		font-weight: bold;
+	}
+
+	&.primary {
+		@include button($primary-color, $primary-color-complement, $only-color: true);
+	}
+
+	&.danger {
+		@include button($error-color, $primary-color-complement, $only-color: true);
+	}
+
+	&.confirm {
+		@include button($success-color, $primary-color-complement, $only-color: true);
+	}
+}
+
+.btn-group {
+	margin: 0 0 0 1px;
+	.btn {
+		display: block;
+		float: left;
+		margin-left: -1px;
+	}
+	&.reply, &.voting, &.admin {
+		float: right;
+	}
+}
+
+input[type=text],
+input[type=password],
+input[type=email],
+input[type=number],
+input[type=search],
+input[type=url],
+textarea {
+	@include input;
+}
+
+input, textarea {
+	margin-bottom: $base-spacing-content;
+}
+
+fieldset, fieldset.module {
+	border-top: 1px solid $light-border-color;
+	border-left: none;
+	border-right: none;
+	border-bottom: 1px solid $light-border-color;
+	background: $light-block-background;
+	margin-bottom: $base-spacing-content;
+	margin-top: $base-spacing-content;
+	box-shadow: none;
+	padding-top: 0;
+	padding-bottom: 0;
+	@include content-padding;
+	@include cancel-content-padding;
+}
+
+form {
+	fieldset:last-child {
+		margin-bottom: 0;
+		border-bottom: none;
+	}
+	@include content-margin-vertical;
+	&:last-child {
+		margin-bottom: 0;
+	}
+}
+
+button.link {
+	padding: 0;
+	margin: 0;
+	background: transparent;
+	border: none;
+	outline: none;
+	display: inline;
+	box-shadow: non;
+	text-decoration: none;
+	cursor: pointer;
+	color: $link-color;
+	&:hover {
+		color: $link-color-hover;
+		text-decoration: underline;
+	}
+}
+
+p.help {
+	font-size: 80%;
+	color: $info-color;
+}
+
+.positive {
+	float: right;
+}
+
+.negative {
+	float: left;
+}
+
+table.formset {
+	background: $light-block-background;
+	width: 100%;
+	box-sizing: border-box;
+
+	input {
+		margin: 0;
+	}
+
+	th {
+		background: $light-block-background;
+		color: $text-color;
+		border-top: 1px solid $light-border-color;
+	}
+
+	.formset-field {
+		margin-right: 0;
+	}
+}
+
+.formset-field {
+	margin-right: $input-padding * 2;
+
+	input[type=text],
+	input[type=password],
+	input[type=email],
+	input[type=number],
+	input[type=search],
+	input[type=url],
+	textarea {
+		width: 100%;
+	}
+
+	input, textarea {
+		margin-bottom: 0;
+	}
+}

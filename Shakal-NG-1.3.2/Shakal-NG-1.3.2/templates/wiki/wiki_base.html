@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+
+{% block head_title %}{{ page }}{% endblock %}
+
+{% block site_menu %}{% with section='wiki' %}{% include "partials/site_menu.html" %}{% endwith %}{% endblock %}

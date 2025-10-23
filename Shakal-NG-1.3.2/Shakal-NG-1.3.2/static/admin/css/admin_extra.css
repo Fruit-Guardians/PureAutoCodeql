@@ -1,0 +1,165 @@
+html {
+	font-size: 80%;
+}
+
+body {
+	font-family: sans-serif;
+}
+
+.btn-lg, .btn-group-lg > .btn, .submit-row .deletelink-box .btn-group-lg > .deletelink, #content-main > .object-tools > li.btn-group-lg > a:not([class*="btn-"]), #changelist #toolbar #changelist-search .btn-group-lg > input[type="submit"], #changelist #changelist-form .actions .btn-group-lg > button, #changelist #changelist-form .paginator .btn-group-lg > input[type="submit"], body.delete-confirmation .content-wrap input[type="button"], body.delete-confirmation .content-wrap input[type="submit"], body.delete-confirmation .content-wrap button, .submit-row input[type="submit"]:not([class*="btn-"]), .submit-row input[type="button"]:not([class*="btn-"]), .submit-row button:not([class*="btn-"]), body.login .submit-row input[type="submit"] {
+	font-size: 1rem;
+}
+
+th.field-thumbnail {
+	width: 64px;
+}
+
+td.field-thumbnail img {
+	width: 64px;
+}
+
+.attachment-upload .attachment-upload-fallback {
+	display: block;
+}
+
+.attachment-upload .attachment-upload-ajax {
+	display: none;
+}
+
+.attachment-upload.ajax .attachment-upload-fallback {
+	display: none;
+}
+
+.attachment-upload.ajax .attachment-upload-ajax {
+	display: block;
+}
+
+.tabular .form-row.attachment-template {
+	display: none;
+}
+
+.attachment-upload-container {
+	margin: 4px;
+	padding: 10px;
+	height: 200px;
+	text-align: center;
+	border: 2px dashed transparent;
+	border-radius: 5px;
+}
+
+.attachment-upload-container.dragover {
+	border: 2px dashed #569;
+}
+
+.attachment-upload-container h2 {
+	margin: 50px 0 10px 0;
+	background: transparent;
+	color: var(--body-fg);;
+}
+
+.progress-container {
+	clear: both;
+	border: 1px solid #f8f8f8;
+	height: 5px;
+}
+
+.progress-container .progress-value {
+	border-top: 1px solid white;
+	border-bottom: 1px solid white;
+	background: #aab0c0;
+	height: 3px;
+}
+
+.object-tools li {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: inline;
+}
+
+.statistics-module {
+	background: white;
+	padding: 6px;
+	display: none;
+}
+
+.statistics-module.show {
+	display: block;
+}
+
+.statistics-module select {
+	margin-bottom: 6px;
+}
+
+.stats-chart {
+	height: 200px;
+}
+
+.label {
+	display: inline-block;
+	padding: 3px 6px;
+	font-size: 0.85em;
+	font-weight: normal;
+	text-decoration: none;
+	line-height: 1.1em;
+	color: white;
+	text-shadow: 0 -1px 0 darken(#999, 10%);
+	white-space: nowrap;
+	vertical-align: baseline;
+	background-color: #999;
+	border-radius: 3px;
+}
+
+.label-success {
+	background: #468847;
+}
+
+.label-primary {
+	background: #337ab7;
+}
+
+.label-info {
+	background: #5bc0de;
+}
+
+.label-warning {
+	background: #f89406;
+}
+
+.label-danger {
+	background: #b94a48;
+}
+
+.field-tree_actions {
+	white-space: nowrap;
+}
+
+.btn {
+	background: white;
+	border: 1px solid #ccc;
+	color: black;
+}
+
+.btn.btn-mini {
+	padding: 0.2em 0.4em;
+	font-size: 90%;
+}
+
+.stats .nav-tabs {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	border-bottom: 2px solid var(--primary);
+}
+
+.stats .nav-tabs li {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: inline-block;
+}
+
+.stats .nav-tabs li a {
+	display: block;
+	padding: .25em .75em;
+}

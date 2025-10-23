@@ -1,0 +1,57 @@
+{% extends "forum/forum_base.html" %}
+
+{% block head_title %}
+	{% if category %}
+		{{ category }}
+	{% else %}
+		Diskusné fórum
+	{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+	{% if category %}
+		{{ breadcrumb(category|truncatechars(60)) }}
+	{% endif %}
+	{{ breadcrumb("Fórum", url="forum:overview", page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{% if page_obj.number == 1 %}
+		<meta name="description" lang="sk" content="{% if category %}{{ category.description }}{% else %}Diskusné fórum slúži tak začínajúcim ako aj pokročilejším užívateľom Linuxu. Tu sa môžete spýtať otázku či predložiť problém, s ktorým si sami neviete poradiť.{% endif %}" />
+	{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if request.user.is_authenticated or ANONYMOUS_TOPIC %}
+	<ul class="object-tools">
+		<li class="btn"><span class="wrap"><a href="{{ url("forum:create") }}" class="text">Pridať novú tému</a></span></li>
+	</ul>
+{% endif %}
+<h1>{% if category %}{{ category }}{% else %}Diskusné fórum{% endif %}</h1>
+
+{% if category %}
+<p class="description">{{ category.description }}</p>
+{% else %}
+<p class="description">Diskusné fórum slúži tak začínajúcim ako aj pokročilejším užívateľom Linuxu. Tu sa môžete spýtať otázku či predložiť problém, s ktorým si sami neviete poradiť. Fórum je rozdelené do nasledujúcich kategórií:</p>
+
+<ul>
+	{% for section in category_list %}
+		<li><a href="{{ section.get_absolute_url() }}">{{ section }}</a></li>
+	{% endfor %}
+</ul>
+
+{% endif %}
+
+<div class="module forum tabular">
+	<div class="module-row">
+		{% with caption="Témy" %}
+			{{ add_discussion_attributes(topic_list) }}
+			{% include "forum/block_topics_table.html" %}
+		{% endwith %}
+	</div>
+	{{ pagination() }}
+</div>
+
+{% endblock %}

@@ -1,0 +1,6 @@
+-c requirements.txt
+django-extensions
+ipython
+pylint-django
+watchdog
+werkzeug

@@ -1,0 +1,36 @@
+@import "../2013/sprites";
+@import "../2013/utility";
+@import "../css/code_dark";
+
+$left-background: #000088;
+$generic-background: #000088;
+
+$menu-background: #c0c0c0;
+$menu-color: #000000;
+$menu-active-background: #000000;
+$menu-active-color: #c0c0c0;
+
+$module-margin: 16px;
+$line-height: 20px;
+$transition-duration: 0.1s;
+
+@mixin panel($border: #000000, $background: #c0c0c0, $shadow: true) {
+	border: 1px solid $border;
+	padding: 9px 3px;
+	margin: 9px 3px;
+	background: $background;
+	@if $shadow {
+		box-shadow: 3px 9px 0px $background, -3px 9px 0px $background, -3px -9px 0px $background, 3px -9px 0px $background, 11px 23px 0px rgba(0, 0, 0, 0.8);
+	}
+	@else {
+		box-shadow: 3px 9px 0px $background, -3px 9px 0px $background, -3px -9px 0px $background, 3px -9px 0px $background;
+	}
+}
+
+@import "fonts/fonts";
+@import "layout";
+@import "base";
+@import "components";
+@import "tooltip";
+@import "calendar";
+@import "scrollbar";

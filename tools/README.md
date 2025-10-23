@@ -25,9 +25,10 @@ analyzer = MultiAgentAnalyzer(model="gpt-4")
 # 创建工具
 generator = CodeQLGeneratorTool(analyzer=analyzer)
 
-# 生成 CodeQL 查询
+# 生成 Python 的 CodeQL 查询
 codeql_code = await generator._arun(
-    requirement="Find all methods that process user input"
+    requirement="Find all functions that read HTTP request parameters",
+    language="python"
 )
 print(codeql_code)
 ```
@@ -57,7 +58,8 @@ result = runner._run(
         from Method m
         select m
     """,
-    database_path="./h5-vsan"
+    database_path="./h5-vsan",
+    language="java"
 )
 print(result)
 ```
@@ -98,11 +100,13 @@ response = await agent.arun(
 ### CodeQLGeneratorTool
 
 - `requirement` (str): 自然语言描述的 CodeQL 查询需求
+- `language` (Optional[str]): 目标语言（java/python/cpp），不提供时默认 `java`
 
 ### CodeQLRunnerTool
 
 - `query_content` (str): 完整的 CodeQL 查询代码
 - `database_path` (str): CodeQL 数据库目录路径
+- `language` (Optional[str]): 目标语言（java/python/cpp）。不提供时从查询内容中自动检测
 
 ## 错误处理
 

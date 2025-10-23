@@ -1,0 +1,71 @@
+{% set comments=get_comments_list(target) %}
+{{ prefetch_avatars_for_ip(comments) }}
+{% with root=comments.root_item, root_header=comments.root_header, user_attribute=comments.user_attribute %}
+<div class="module comments">
+	<a id="comments" href="#"></a>
+	<div class="links top">
+		{% if root.next_new %}
+			<a href="#link_{{ root.next_new }}" class="comment-link first">Prvý neprečítaný komentár</a>
+		{% endif %}
+		<div class="btn-group">
+			{% if not root.is_locked %}
+				{% if request.user.is_authenticated or ANONYMOUS_COMMENTS %}
+					<div class="btn reply"><span class="wrap"><a href="{{ url("comments:reply", root.pk) }}?time={{ request_timestamp() }}" class="text" rel="nofollow">Pridať komentár</a></span></div>
+					{% if request.user.is_authenticated %}
+						<div class="btn forget">
+							<span class="wrap">
+								<a href="{{ url("comments:forget", root_header.pk) }}" class="text forget">Zabudnúť</a>
+							</span>
+						</div>
+					{% endif %}
+				{% else %}
+					<p><small>Pre pridávanie komentárov sa <a href="{{ url("account_login") }}">musíte prihlásiť</a>.</small></p>
+				{% endif %}
+			{% endif %}
+
+			{% if request.user.is_authenticated %}
+				{% set flag_url_link=flag_url(target) %}
+				{% if flag_url_link %}
+					<div class="btn-group voting">
+						<div class="btn flag">
+							<span class="wrap">
+								<a href="{{ flag_url_link }}" class="text" rel="nofollow">Nahlásiť</a>
+							</span>
+						</div>
+					</div>
+				{% endif %}
+			{% endif %}
+		</div>
+		{% if request.user.is_authenticated %}
+			<form action="{{ url("comments:watch", root_header.pk) }}" method="post">{% csrf_token %}
+				<div class="btn-group reply">
+					<button class="btn watch{% if user_attribute.watch %} active{% endif %}" name="watch" value="{{ user_attribute.watch|yesno(",1") }}" title="{% if user_attribute.watch %}Nesledovať{% else %}Sledovať{% endif %}"><span class="wrap"><span class="text">{% if user_attribute.watch %}Nesledovať{% else %}Sledovať{% endif %}</span></span></button>
+				</div>
+			</form>
+		{% endif %}
+		{% if user.is_staff and perms.comments.change_comment %}
+			<div class="btn-group admin">
+				<form action="{{ url("comments:admin", root.pk) }}" method="post">{% csrf_token %}
+					<button class="btn lock{% if root.is_locked %} active{% endif %}" name="lock" value="{{ root.is_locked|yesno(",1") }}" title="{% if root.is_locked %}Odomknúť{% else %}Zamknúť{% endif %}"><span class="wrap"><span class="text">{% if root.is_locked %}Odomknúť{% else %}Zamknúť{% endif %}</span></span></button>
+				</form>
+				<a class="btn edit" title="Spravovať" href="{{ url("admin:comments_comment_changelist") }}?content_type_id__exact={{ root_header.content_type_id }}&object_id__exact={{ root_header.object_id }}">
+					<span class="wrap">
+						<span class="text">
+							Spravovať
+						</span>
+					</span>
+				</a>
+			</div>
+		{% endif %}
+	</div>
+	{% if comments|length > 1 %}
+		{% include "comments/comments_tree.html" %}
+		{% if not root.is_locked and (request.user.is_authenticated or ANONYMOUS_COMMENTS) %}
+			<div class="links bottom">
+				<div class="btn reply"><span class="wrap"><a href="{{ url("comments:reply", root.pk) }}?time={{ request_timestamp() }}" class="text" rel="nofollow">Pridať komentár</a></span></div>
+			</div>
+		{% endif %}
+	{% endif %}
+	<div class="clear"></div>
+</div>
+{% endwith %}

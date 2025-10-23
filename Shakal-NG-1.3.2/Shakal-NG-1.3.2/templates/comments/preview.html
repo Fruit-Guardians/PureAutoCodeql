@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb("Diskusia") }}
+{{ breadcrumb(content_object|truncatechars(50), url=content_object.get_absolute_url()) }}
+{{ breadcrumb(module_name, url=module_url) }}
+{{ super() }}
+{% endblock %}
+
+{% block head_title %}Pridať komentár{% endblock %}
+
+{% block extraheaders %}
+<meta name="robots" content="noindex, nofollow" />
+{% endblock %}
+
+{% block content %}
+<h1>Pridať komentár</h1>
+
+{% if parent %}
+<div class="module preview">
+	<h2 class="block-title">Príspevok, na ktorý odpovedáte</h2>
+	{% with comment=parent, readonly=1 %}
+		<div class="clearpadding">{% include "comments/comment_item.html" %}</div>
+	{% endwith %}
+</div>
+{% endif %}
+
+{% if valid %}
+<div class="module preview">
+	<h2 class="block-title">Náhľad</h2>
+	<div class="clearpadding">{% include "comments/comment_item.html" %}</div>
+</div>
+{% endif %}
+
+{% if form %}
+{% include "comments/form.html" %}
+{% endif %}
+
+{% endblock %}

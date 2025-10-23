@@ -1,0 +1,36 @@
+<div id="id_textareawrapper_{{ name }}" class="textareawrapper">
+	{% if formats %}
+		<div class="formatwrapper" {% if formats|length < 2 %}style="display: none"{% endif %}>
+			{% for format in formats %}
+				<label class="format">
+					<input type="radio" name="{{ name }}_format" value="{{ format.format }}"{% if format.checked %} checked="checked"{% endif %} />
+					{{ format.label }}
+				</label>
+			{% endfor %}
+		</div>
+	{% endif %}
+
+	{{ widget|safe }}
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+
+var settings = {
+	lang: '{{ lang }}',
+	{% if tags %}tags: {{ tags|safe }},{% endif %}
+	static_base: '{{ static("") }}',
+	parsers: {{ parsers|safe }},
+	preview: '{{ url("rich_editor:preview") }}',
+	namespace: '{% block namespace %}front{% endblock %}',
+	element: document.getElementById("id_textareawrapper_{{ name }}").getElementsByTagName('TEXTAREA')[0],
+	lexers: {{ lexers|safe }}
+};
+
+{% block init_editor %}
+	window.rich_editors = window.rich_editors || [];
+	window.rich_editors.push(settings);
+{% endblock %}
+
+//]]>
+</script>

@@ -1,0 +1,24 @@
+{% extends "account/user_posts_base.html" %}
+
+{% block head_title %}Zoznam komentovaných diskusií | {{ super() }}{% endblock %}
+
+{% block breadcrumbs %}
+{% if day %}{{ breadcrumb(day|localtime|date("SHORT_DATE_FORMAT")) }}{% endif %}
+{{ breadcrumb("Komentované diskusie", url=url(request.resolver_match.view_name, pk=view.kwargs.pk, page=1)) }}
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+
+<h1>{{ user_profile }} - Zoznam komentovaných diskusií</h1>
+
+{% include "account/partials/profile_tabs.html" %}
+
+{{ super() }}
+
+{% with caption="Komentované diskusie" %}
+	{{ add_discussion_attributes_heterogenous(object_list) }}
+	{% include "account/partials/post_list.html" %}
+{% endwith %}
+
+{% endblock %}

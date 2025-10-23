@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+
+{% load assets_manager i18n static %}
+
+{% block extrastyle %}
+	{{ block.super }}
+	<link rel="stylesheet" type="text/css" href="{% static 'admin/css/admin_extra.css' %}" media="all" />
+	{% assets_js "utils_ajax2" %}
+{% endblock %}
+
+{% block title %}{{ title }} | Shakal CMS{% endblock %}
+
+{% block branding %}
+	<h1 id="site-name">
+		<a href="{% url 'admin:index' %}">Shakal CMS<span class="header-label">Admin</span></a>
+	</h1>
+{% endblock %}
+
+{# block nav-global #}{# endblock #}

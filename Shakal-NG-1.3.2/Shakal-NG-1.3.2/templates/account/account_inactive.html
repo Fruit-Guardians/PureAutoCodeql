@@ -1,0 +1,14 @@
+{% extends "account/base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb("Účet neaktívny") }}
+{{ super() }}
+{% endblock %}
+
+{% block head_title %}Účet neaktívny{% endblock %}
+
+{% block content %}
+<h1>Účet neaktívny</h1>
+
+<p>Pre aktiváciu účtu kliknite na odkaz v potvrdzovacom e-maile.</p>
+{% endblock %}

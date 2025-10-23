@@ -1,0 +1,114 @@
+{% extends "blog/blog_base.html" %}
+
+{% block head_title %}{{ object }}{% endblock %}
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+{% block breadcrumbs %}
+	{{ breadcrumb(object) }}
+	{{ breadcrumb(object.blog, url=object.blog.get_absolute_url()) }}
+	{{ breadcrumb("Blog", url='blog:post-list', page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ object.perex|striptags }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		name=object.title,
+		gallery=attached_images(object, min_size=(400, 400)),
+		description=object.perex|striptags,
+		presentation_image=object.presentation_image,
+		fallback_image=object.series.image.url if object.series and object.series.image else none,
+		fallback_image2=object.category.image.url if object.category and object.category.image else none,
+		created=object.created,
+		updated=object.updated,
+		category=object.blog.name,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block right %}
+	{% with blog=object.blog, post=object %}
+		{% include "blog/partials/informations.html" %}
+	{% endwith %}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+<ul class="object-tools btn-group">
+	{% if user.is_staff and perms.blog.change_post %}
+		<li class="btn"><span class="wrap"><a href="{{ url("admin:blog_post_change", post.pk) }}" class="text">Admin</a></span></li>
+	{% endif %}
+	{% if post.author == user %}
+		<li class="btn"><span class="wrap"><a href="{{ url("blog:post-update", post.blog.slug, post.slug) }}" class="text">Upraviť</a></span></li>
+	{% endif %}
+</ul>
+
+<h1>{{ object }}</h1>
+
+<div class="info">
+	<span class="time">{{ object.pub_time|humandatetime }}</span> |
+	<span class="category"><a href="{{ object.blog.get_absolute_url() }}">{{ object.blog }}</a></span> |
+	<span class="user"><a href="{{ object.author.get_absolute_url() }}">{{ object.author }}</a></span>
+</div>
+
+{% if post.series %}
+	<div class="info">Seriál: <a href="{{ post.series.get_absolute_url() }}">{{ post.series }}</a></div>
+{% endif %}
+
+{% include "blog/partials/content.html" %}
+
+{% if object.blog.author == user or attachments_files or attachments_images %}
+	{% if object.blog.author == user %}
+		<ul class="object-tools">
+			<li class="btn"><span class="wrap"><a class="text" href="{{ url("blog:post-attachments-update", object.blog.slug, object.slug) }}">Spravovať</a></span></li>
+		</ul>
+	{% endif %}
+
+	<h2>Prílohy</h2>
+
+	{% if attachments_files %}
+		<ul>
+			{% for attachment in attachments_files %}
+				<li>
+					<a href="{{ attachment.url }}">{{ attachment.basename }}</a> <small>({{ attachment.size|filesizeformat }})</small>
+				</li>
+			{% endfor %}
+		</ul>
+	{% endif %}
+
+	{% if attachments_images %}
+		<br />
+		<hr />
+		<div class="gallery">
+			{% for attachment in attachments_images %}
+				<div class="image">
+					<a href="{{ attachment.url }}">
+						<img src="{{ thumbnail(attachment.attachmentimage.attachment, size=(256, 256)) }}" alt="{{ attachment.basename }}" />
+					</a>
+					<div class="title">
+						{{ attachment.basename }}
+						<small>({{ attachment.size|filesizeformat }})</small>
+					</div>
+				</div>
+			{% endfor %}
+		</div>
+	{% endif %}
+{% endif %}
+
+{% if post.series %}
+	{% with object=post, series=post.series %}
+		{% include "partials/related_documents.html" %}
+	{% endwith %}
+{% endif %}
+
+{% with is_article=1, name=object.title %}
+	{% include "partials/share.html" %}
+{% endwith %}
+
+{% endblock %}
+
+{% block discussion %}{{ render_comments_toplevel(object) }}{% endblock %}

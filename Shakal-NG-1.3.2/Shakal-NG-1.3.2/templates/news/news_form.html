@@ -1,0 +1,59 @@
+{% extends "news/news_base.html" %}
+
+{% block extraheaders %}
+<meta name="robots" content="noindex, nofollow" />
+{{ super() }}
+{% endblock %}
+
+{% block head_title %}{% if object %}Upraviť správu{% else %}Pridať správu{% endif %}{% endblock %}
+{% block breadcrumbs %}
+	{% if object %}
+		{{ breadcrumb("Upraviť správu") }}
+	{% else %}
+		{{ breadcrumb("Pridať správu") }}
+	{% endif %}
+	{{ breadcrumb("Správy", url="news:list", page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+<h1>{% if object %}Upraviť správu{% else %}Pridať správu{% endif %}</h1>
+
+{% if valid %}
+	<div class="module preview">
+		<h2>Náhľad</h2>
+		<h3>{{ item }}</h3>
+		<div class="info">
+			<span class="time">Teraz</span> |
+			<span class="user">{{ user_link(item.author, item.authors_name) }}</span>
+		</div>
+		<p>{{ item.short_text|safe }}</p>
+		{% if item.short_text != item.long_text %}
+			<hr />
+			<p>{{ item.long_text|safe }}</p>
+		{% endif %}
+		<hr />
+		{% with news=item %}
+			{% include "news/partials/source.html" %}
+		{% endwith %}
+	</div>
+{% endif %}
+
+<form action="{{ request.path }}" enctype="multipart/form-data" method="post" id="news-form">{% csrf_token %}
+	<fieldset class="module">
+		{% include "includes/form_attachment_loop.html" %}
+		<div class="submit-row">
+			<div class="positive">
+				<button class="btn" type="submit" title="Náhľad"><span class="wrap"><span class="text">Náhľad</span></span></button>
+				{% if valid %}
+					{% if object %}
+						<button class="btn primary" type="submit" title="Upraviť správu" name="update" value="1"><span class="wrap"><span class="text">Upraviť správu</span></span></button>
+					{% else %}
+						<button class="btn primary" type="submit" title="Vytvoriť správu" name="create" value="1"><span class="wrap"><span class="text">Vytvoriť správu</span></span></button>
+					{% endif %}
+				{% endif %}
+			</div>
+		</div>
+	</fieldset>
+</form>
+{% endblock %}

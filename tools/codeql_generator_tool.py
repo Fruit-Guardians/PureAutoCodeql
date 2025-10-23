@@ -12,6 +12,11 @@ class CodeQLGeneratorInput(BaseModel):
         description="Natural language description of the CodeQL query requirement. "
                     "For example: 'Find all user input sources' or 'Find paths from user input to SQL execution'"
     )
+    # Added: allow selecting target language
+    language: Optional[str] = Field(
+        default="java",
+        description="Target programming language for the CodeQL query ('java', 'python', 'c'). Defaults to 'java'."
+    )
 
 
 class CodeQLGeneratorTool(BaseTool):
@@ -21,6 +26,7 @@ class CodeQLGeneratorTool(BaseTool):
     description: str = (
         "Generates CodeQL query code based on natural language requirements. "
         "Input should be a clear description of what you want to find in the code. "
+        "Optionally specify the target language (java/python/c). "
         "Returns a complete CodeQL query that can be executed against a CodeQL database."
     )
     args_schema: Type[BaseModel] = CodeQLGeneratorInput
@@ -47,6 +53,7 @@ class CodeQLGeneratorTool(BaseTool):
     def _run(
         self,
         requirement: str,
+        language: Optional[str] = None,
         run_manager: Optional[Any] = None
     ) -> str:
         """
@@ -54,6 +61,7 @@ class CodeQLGeneratorTool(BaseTool):
         
         Args:
             requirement: Natural language requirement for CodeQL query
+            language: Target programming language (java/python/c)
             run_manager: Callback manager for tool execution
             
         Returns:
@@ -64,6 +72,7 @@ class CodeQLGeneratorTool(BaseTool):
     async def _arun(
         self,
         requirement: str,
+        language: Optional[str] = None,
         run_manager: Optional[Any] = None
     ) -> str:
         """
@@ -71,6 +80,7 @@ class CodeQLGeneratorTool(BaseTool):
         
         Args:
             requirement: Natural language requirement for CodeQL query
+            language: Target programming language (java/python/c). Defaults to 'java' if not provided.
             run_manager: Async callback manager for tool execution
             
         Returns:
@@ -84,7 +94,8 @@ class CodeQLGeneratorTool(BaseTool):
             from agents.codeql_generator_agent import CodeQLGeneratorAgent
             
             agent = CodeQLGeneratorAgent(self.analyzer)
-            result = await agent.generate_codeql(requirement)
+            # Pass language down to the agent (default to java)
+            result = await agent.generate_codeql(requirement, language=(language or "java"))
             
             if result.success:
                 codeql_code = self._extract_codeql_from_response(result.content)

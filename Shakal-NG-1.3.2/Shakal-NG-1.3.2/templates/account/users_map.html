@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block head_title %}Mapa používateľov{% endblock %}
+{% block breadcrumbs %}{{ breadcrumb("Mapa používateľov") }}{{ super() }}{% endblock %}
+
+{% block content %}
+{% if request.user.is_authenticated %}
+	<ul class="object-tools btn-group">
+		<li class="btn"><span class="wrap"><a href="{{ url("accounts:my_profile_position_edit") }}" class="text">Pridať moju polohu na mapu</a></span></li>
+	</ul>
+{% endif %}
+
+<h1>Mapa používateľov</h1>
+
+<div class="module">
+	<div class="module-row">
+		<div id="map" class="geoposition-widget"></div>
+		<div id="popup" class="ol-popup">
+			<a href="#" id="popup-closer" class="ol-popup-closer"></a>
+			<div id="popup-content"></div>
+		</div>
+	</div>
+</div>
+{% endblock %}
+
+{% block extrastyle %}
+	{{ super() }}
+	<link rel="stylesheet" type="text/css" href="{{ static('vendor/openlayers/ol.css') }}" />
+	<link rel="stylesheet" type="text/css" href="{{ static('geoposition/geoposition.css') }}" />
+	<style type="text/css" media="screen">
+.ol-popup {
+	position: absolute;
+	background-color: white;
+	-webkit-filter: drop-shadow(0 1px 4px rgba(0,0,0,0.2));
+	filter: drop-shadow(0 1px 4px rgba(0,0,0,0.2));
+	padding: 15px;
+	border-radius: 10px;
+	border: 1px solid #cccccc;
+	bottom: 12px;
+	left: -50px;
+	width: 200px;
+}
+.ol-popup:after, .ol-popup:before {
+	top: 100%;
+	border: solid transparent;
+	content: " ";
+	height: 0;
+	width: 0;
+	position: absolute;
+	pointer-events: none;
+}
+.ol-popup:after {
+	border-top-color: white;
+	border-width: 10px;
+	left: 48px;
+	margin-left: -10px;
+}
+.ol-popup:before {
+	border-top-color: #cccccc;
+	border-width: 11px;
+	left: 48px;
+	margin-left: -11px;
+}
+.ol-popup-closer {
+	text-decoration: none;
+	position: absolute;
+	top: 2px;
+	right: 8px;
+}
+.ol-popup-closer:after {
+	content: "✖";
+}
+	</style>
+{% endblock %}
+
+{% block extrajs %}
+	{{ super() }}
+	<script src="{{ static('vendor/openlayers/ol.js') }}"></script>
+<script type="text/javascript">
+//<![CDATA[
+
+(function(_) {
+
+var users = [
+{% for user in users %}
+{
+	username: '{{ user.username|escapejs }}',
+	url: '{{ user.url|escapejs }}',
+	geoposition: '{{ user.geoposition|escapejs }}'
+}
+{% if not loop.last %},{% endif %}
+{% endfor %}
+];
+
+var features = new Array(users.length);
+users.forEach(function(user, i) {
+	var geoposition = user.geoposition.split(',');
+	var lng = parseFloat(geoposition[1]);
+	var lat = parseFloat(geoposition[0]);
+	features[i] = new ol.Feature({
+		geometry: new ol.geom.Point(ol.proj.transform([lng, lat], 'EPSG:4326', 'EPSG:3857')),
+		username: user.username,
+		url: user.url
+	});
+});
+
+var vectorSource = new ol.source.Vector({
+	features: features
+});
+
+var clusterSource = new ol.source.Cluster({
+	distance: 10,
+	source: vectorSource
+});
+
+var styleCache = {};
+var iconStyle = function(feature, resolution) {
+	var size = feature.get('features').length;
+	var style = styleCache[size];
+	if (!style) {
+		if (size === 1) {
+			style = new ol.style.Style({
+				image: new ol.style.Icon({
+					anchor: [0.5, 0.5],
+					anchorXUnits: 'fraction',
+					anchorYUnits: 'fraction',
+					src: '/static/images/marker.png'
+				})
+			});
+		}
+		else {
+			style = new ol.style.Style({
+				image: new ol.style.Icon({
+					anchor: [0.5, 0.5],
+					anchorXUnits: 'fraction',
+					anchorYUnits: 'fraction',
+					src: '/static/images/marker.png'
+				}),
+				text: new ol.style.Text({
+					text: size.toString(),
+					fill: new ol.style.Fill({
+						color: '#fff'
+					})
+				})
+			});
+		}
+		styleCache[size] = style;
+	}
+	return style;
+};
+
+
+var map = new ol.Map({
+	target: _.id('map'),
+	layers: [
+		new ol.layer.Tile({source: new ol.source.OSM()}),
+		new ol.layer.Vector({source: clusterSource, style: iconStyle})
+	],
+	view: new ol.View({
+		center: ol.proj.fromLonLat([19.78, 48.65]),
+		zoom: 7
+	})
+});
+
+
+var popupElement = document.getElementById('popup');
+var content = document.getElementById('popup-content');
+var closer = document.getElementById('popup-closer');
+
+var popup = new ol.Overlay({
+	element: popupElement,
+	autoPan: true,
+	autoPanAnimation: {
+		duration: 250
+	}
+});
+map.addOverlay(popup);
+
+
+closer.onclick = function() {
+	popup.setPosition(undefined);
+	closer.blur();
+	return false;
+};
+
+
+
+map.on('click', function(evt) {
+	var feature = map.forEachFeatureAtPixel(
+		evt.pixel,
+		function(feature, layer) {
+			return feature;
+		}
+	);
+
+	if (feature) {
+		var geometry = feature.getGeometry();
+		var coord = geometry.getCoordinates();
+		content.innerHTML = '';
+
+		feature.get('features').forEach(function(feature) {
+			var user = document.createElement('DIV');
+			var usernameLink = document.createElement('A');
+			usernameLink.setAttribute('href', feature.get('url'));
+			usernameLink.appendChild(document.createTextNode(feature.get('username')));
+			user.appendChild(usernameLink);
+			content.appendChild(user);
+			popup.setPosition(coord);
+		});
+	}
+	else {
+		popup.setPosition(undefined);
+	}
+});
+
+
+map.on('pointermove', function(e) {
+	if (e.dragging) {
+		popup.setPosition(undefined);
+		return;
+	}
+	var pixel = map.getEventPixel(e.originalEvent);
+	var hit = map.hasFeatureAtPixel(pixel);
+	map.getTarget().style.cursor = hit ? 'pointer' : '';
+});
+
+
+}(_utils2));
+
+//]]>
+</script>
+{% endblock %}

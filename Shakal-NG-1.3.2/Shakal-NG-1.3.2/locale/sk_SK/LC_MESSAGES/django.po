@@ -1,0 +1,368 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2019-01-26 13:11+0100\n"
+"PO-Revision-Date: 2021-06-19 06:38+0200\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=((n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2);\n"
+"X-Language: sk_SK\n"
+"X-Source-Language: C\n"
+
+msgid "inactive"
+msgstr "neaktívny"
+
+msgid "super user"
+msgstr "super užívateľ"
+
+msgid "staff"
+msgstr "zamestnanec"
+
+msgid "active"
+msgstr "aktívny"
+
+msgid "status"
+msgstr "stav"
+
+msgid "Block user"
+msgstr "Zablokovať používateľa"
+
+msgid "Unblock user"
+msgstr "Odblokovať používateľa"
+
+msgid "Save"
+msgstr "Uložiť"
+
+msgid "Save and continue editing"
+msgstr "Uložiť a pokračovať v úprave"
+
+msgid "Save as new"
+msgstr "Uložiť ako nové"
+
+msgid "Save and add another"
+msgstr "Uložiť a pridať ďalší"
+
+msgid "Delete"
+msgstr "Vymazať"
+
+msgid "30 days"
+msgstr "30 dní"
+
+msgid "60 days"
+msgstr "60 dní"
+
+msgid "1 year (sum 30 days)"
+msgstr "1 rok (súčet 30 dní)"
+
+msgid "1 year (weekly)"
+msgstr "1 rok (týždenne)"
+
+msgid "2 years (sum 30 days)"
+msgstr "2 roky (súčet 30 dní)"
+
+msgid "2 years (weekly)"
+msgstr "2 roky (týždenne)"
+
+msgid "2 years (sum 4 weeks)"
+msgstr "2 roky (súčet 4 týždňov)"
+
+msgid "2 years (monthly)"
+msgstr "2 roky (mesačne)"
+
+msgid "4 years (weekly)"
+msgstr "4 roky (týždenne)"
+
+msgid "4 years (sum 4 weeks)"
+msgstr "4 roky (súčet 4 týždňov)"
+
+msgid "4 years (monthly)"
+msgstr "4 roky (mesačne)"
+
+msgid "8 years (weekly)"
+msgstr "8 rokov (týždenne)"
+
+msgid "8 years (sum 4 weeks)"
+msgstr "8 rokov (súčet 4 týždňov)"
+
+msgid "8 years (monthly)"
+msgstr "8 rokov (mesačne)"
+
+msgid "Comments"
+msgstr "Komentáre"
+
+msgid "News"
+msgstr "Správy"
+
+msgid "Articles"
+msgstr "Články"
+
+msgid "Date"
+msgstr "Dátum"
+
+msgid "Unpublish"
+msgstr "Nepublikovať"
+
+msgid "Publish"
+msgstr "Publikovať"
+
+msgid "Maximum size is: "
+msgstr "Maximálna veľkosť je: "
+
+msgid "File size exceeded, maximum size is "
+msgstr "Veľkosť súboru prekročená, maximálna veľkosť je "
+
+msgid "attachment"
+msgstr "príloha"
+
+msgid "created"
+msgstr "vytvorené"
+
+msgid "size"
+msgstr "veľkosť"
+
+msgid "is visible"
+msgstr "viditeľné"
+
+msgid "content type"
+msgstr "typ obsahu"
+
+msgid "object id"
+msgstr "ID objektu"
+
+msgid "attachments"
+msgstr "prílohy"
+
+msgid "image width"
+msgstr "šírka obrázka"
+
+msgid "image height"
+msgstr "výška obrázka"
+
+#| msgid "created"
+msgid "date created"
+msgstr "dátum vytvorenia"
+
+msgid "UUID"
+msgstr "UUID"
+
+#, python-format
+msgid "%(num)s comment"
+msgid_plural "%(num)s comments"
+msgstr[0] "%(num)s komentár"
+msgstr[1] "%(num)s komentáre"
+msgstr[2] "%(num)s komentárov"
+
+msgid "other"
+msgstr "iné"
+
+msgid "create"
+msgstr "vytvorenie"
+
+msgid "update"
+msgstr "aktualizácia"
+
+msgid "delete"
+msgstr "vymazanie"
+
+msgid "message"
+msgstr "správa"
+
+msgid "comment"
+msgstr "komentár"
+
+#| msgid "flagged"
+msgid "flag"
+msgstr "nahlásenie"
+
+msgid "Minimum 2 choices are required"
+msgstr "Sú požadované minimálne 2 odpovede"
+
+msgid "Choices"
+msgstr "Odpovede"
+
+#, python-format
+msgid "%(num)s user flagged this %(content_type)s"
+msgid_plural "%(num)s users flagged this %(content_type)s"
+msgstr[0] "%(num)s používateľ nahlásil tento %(content_type)s"
+msgstr[1] "%(num)s používatelia nahlásil tento %(content_type)s"
+msgstr[2] "%(num)s používateľov nahlásil tento %(content_type)s"
+
+msgid "Štatistiky"
+msgstr "Štatistiky"
+
+msgid "Delete?"
+msgstr "Vymazať?"
+
+#, python-format
+msgid "Add another %(verbose_name)s"
+msgstr "Pridať ďalšie %(verbose_name)s"
+
+msgid "Remove"
+msgstr "Odstrániť"
+
+msgid "My Actions"
+msgstr "Posledné akcie"
+
+msgid "None available"
+msgstr "Žiadna"
+
+msgid "added"
+msgstr "pridané"
+
+msgid "changed"
+msgstr "zmenené"
+
+msgid "deleted"
+msgstr "vymazané"
+
+msgid "Unknown content"
+msgstr "Neznámy obsah"
+
+#, python-format
+msgid "Models available in the %(name)s application."
+msgstr "Modely dostupné v aplikácii %(name)s."
+
+#, python-format
+msgid "%(name)s"
+msgstr "%(name)s"
+
+msgid "Change"
+msgstr "Zmena"
+
+msgid "Add"
+msgstr "Pridať"
+
+msgid "You don't have permission to edit anything."
+msgstr "Nemáte žiadne práva na editáciu."
+
+#, python-format
+msgid ""
+"<span class=\"count\">%(num)s</span><span class=\"text name\"> comment</span>"
+msgid_plural ""
+"<span class=\"count\">%(num)s</span><span class=\"text name\"> "
+"comments</span>"
+msgstr[0] ""
+"<span class=\"count\">%(num)s</span><span class=\"text name\"> "
+"komentár</span>"
+msgstr[1] ""
+"<span class=\"count\">%(num)s</span><span class=\"text name\"> "
+"komentáre</span>"
+msgstr[2] ""
+"<span class=\"count\">%(num)s</span><span class=\"text name\"> "
+"komentárov</span>"
+
+msgid "last"
+msgstr "posledný"
+
+msgid "No comments"
+msgstr "Žiadne komentáre"
+
+msgid "Notifications"
+msgstr "Upozornenia"
+
+msgid "Profile"
+msgstr "Profil"
+
+msgid "Site administration"
+msgstr "Správa stránky"
+
+msgid "Log out"
+msgstr "Odhlásiť"
+
+msgid "Blog"
+msgstr "Blog"
+
+msgid "Setup blog"
+msgstr "Nastaviť blog"
+
+msgid "Change password"
+msgstr "Zmeniť heslo"
+
+msgid "Log in"
+msgstr "Prihlásiť"
+
+msgid "Sign up"
+msgstr "Registrovať"
+
+msgid "Password reset"
+msgstr "Obnovenie hesla"
+
+msgid "login/"
+msgstr "prihlasit/"
+
+msgid "accounts/"
+msgstr "profil/"
+
+msgid "article/"
+msgstr "clanok/"
+
+msgid "blog/"
+msgstr "blog/"
+
+msgid "comments/"
+msgstr "komentare/"
+
+msgid "forum/"
+msgstr "forum/"
+
+msgid "news/"
+msgstr "spravy/"
+
+msgid "rating/"
+msgstr "hodnotenie/"
+
+msgid "tweets/"
+msgstr "tweety/"
+
+msgid "notifications/"
+msgstr "upozornenia/"
+
+msgid "polls/"
+msgstr "ankety/"
+
+msgid "wiki/"
+msgstr "wiki/"
+
+msgid "template-change/"
+msgstr "template-change/"
+
+msgid "templates/"
+msgstr "sablony/"
+
+msgid "search/"
+msgstr "hladat/"
+
+msgid "admin/"
+msgstr "administracia/"
+
+msgid "admin_dashboard/"
+msgstr "admin_dashboard/"
+
+#~ msgid "approved"
+#~ msgid_plural "approved"
+#~ msgstr[0] "schválené"
+#~ msgstr[1] "schválené"
+#~ msgstr[2] "schválené"
+
+#~ msgid "removed"
+#~ msgid_plural "removed"
+#~ msgstr[0] "odstránený"
+#~ msgstr[1] "odstránené"
+#~ msgstr[2] "odstránených"
+
+#~ msgid "1 comment was %(action)s."
+#~ msgid_plural "%(count)s comments were %(action)s."
+#~ msgstr[0] "1 komentár bol %(action)s."
+#~ msgstr[1] "%(count)s komentáre boli %(action)s."
+#~ msgstr[2] "%(count)s komentárov bolo %(action)s."

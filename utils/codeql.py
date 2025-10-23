@@ -7,12 +7,38 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 
 
-def create_temporary_qlpack(query_content: str) -> Path:
+# 功能：
+def detect_language_from_query(query_content: str) -> str:
+    """Simple heuristic to detect CodeQL language from query content."""
+    content = query_content.lower()
+    if 'import java' in content:
+        return 'java'
+    if 'import python' in content:
+        return 'python'
+    if 'import cpp' in content or 'import cplusplus' in content or 'import c' in content:
+        return 'cpp'
+    return 'java'
+
+
+def language_to_pack(language: str) -> str:
+    """Map language to the appropriate CodeQL pack dependency."""
+    lang = (language or 'java').lower()
+    mapping = {
+        'java': 'codeql/java-all',
+        'python': 'codeql/python-all',
+        'cpp': 'codeql/cpp-all',
+    }
+    return mapping.get(lang, 'codeql/java-all')
+
+
+def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
     """
     Create a temporary CodeQL query pack with a qlpack.yml file and install dependencies.
+    Dynamically selects pack dependencies based on target language.
     
     Args:
         query_content: The CodeQL query string.
+        language: Optional explicit language (e.g., 'java', 'python', 'cpp'). If omitted, auto-detect from query.
     
     Returns:
         Path to the created temporary query file inside the pack.
@@ -20,11 +46,15 @@ def create_temporary_qlpack(query_content: str) -> Path:
     # Create a temporary directory to act as the qlpack
     pack_dir = Path(tempfile.mkdtemp())
     
+    # Determine dependency pack
+    lang = language or detect_language_from_query(query_content)
+    dep_pack = language_to_pack(lang)
+    
     # Define the content of qlpack.yml
-    qlpack_content = """name: temp-query-pack
+    qlpack_content = f"""name: temp-query-pack
 version: 0.0.0
 dependencies:
-  codeql/java-all: "*"
+  {dep_pack}: "*"
 """
     
     # Write the qlpack.yml file
@@ -51,13 +81,14 @@ dependencies:
     return query_file
 
 
-def execute_codeql_query(query_content: str, database_path: str) -> Dict[str, Any]:
+def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None) -> Dict[str, Any]:
     """
     Execute a CodeQL query against a specified database.
     
     Args:
         query_content: The CodeQL query string to execute.
         database_path: Path to the CodeQL database.
+        language: Optional explicit language ( 'java', 'python', 'c'). If omitted, auto-detect from query.
     
     Returns:
         A dictionary containing:
@@ -68,7 +99,7 @@ def execute_codeql_query(query_content: str, database_path: str) -> Dict[str, An
     query_file = None
     pack_dir = None
     try:
-        query_file = create_temporary_qlpack(query_content)
+        query_file = create_temporary_qlpack(query_content, language=language)
         pack_dir = query_file.parent
         
         result = subprocess.run(

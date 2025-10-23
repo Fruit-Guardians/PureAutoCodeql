@@ -15,6 +15,11 @@ class CodeQLRunnerInput(BaseModel):
     database_path: str = Field(
         description="Path to the CodeQL database directory"
     )
+    # Added: target language to select proper qlpack dependencies
+    language: Optional[str] = Field(
+        default=None,
+        description="Target language for the query ('java', 'python', 'c'). If omitted, it will be auto-detected from the query content."
+    )
 
 
 class CodeQLRunnerTool(BaseTool):
@@ -24,6 +29,7 @@ class CodeQLRunnerTool(BaseTool):
     description: str = (
         "Executes CodeQL query code against a specified CodeQL database. "
         "Input should include the complete CodeQL query code and the path to the database. "
+        "Optionally specify the target language (java/python/c); otherwise language will be auto-detected. "
         "Returns the execution results or error messages."
     )
     args_schema: Type[BaseModel] = CodeQLRunnerInput
@@ -67,6 +73,7 @@ class CodeQLRunnerTool(BaseTool):
         self,
         query_content: str,
         database_path: str,
+        language: Optional[str] = None,
         run_manager: Optional[Any] = None
     ) -> str:
         """
@@ -75,13 +82,14 @@ class CodeQLRunnerTool(BaseTool):
         Args:
             query_content: The complete CodeQL query code
             database_path: Path to the CodeQL database
+            language: Target language (java/python/cpp). If None, auto-detect from query.
             run_manager: Callback manager for tool execution
             
         Returns:
             Formatted execution results or error message
         """
         try:
-            result = execute_codeql_query(query_content, database_path)
+            result = execute_codeql_query(query_content, database_path, language=language)
             return self._format_results(result)
         except Exception as e:
             return f"Error executing CodeQL query: {str(e)}"
@@ -90,6 +98,7 @@ class CodeQLRunnerTool(BaseTool):
         self,
         query_content: str,
         database_path: str,
+        language: Optional[str] = None,
         run_manager: Optional[Any] = None
     ) -> str:
         """
@@ -98,6 +107,7 @@ class CodeQLRunnerTool(BaseTool):
         Args:
             query_content: The complete CodeQL query code
             database_path: Path to the CodeQL database
+            language: Target language (java/python/c). If None, auto-detect from query.
             run_manager: Async callback manager for tool execution
             
         Returns:
@@ -106,5 +116,5 @@ class CodeQLRunnerTool(BaseTool):
         # Since execute_codeql_query is synchronous, we just call the sync version
         # In a production environment, you might want to run this in an executor
         # to avoid blocking the event loop
-        return self._run(query_content, database_path, run_manager=None)
+        return self._run(query_content, database_path, language=language, run_manager=None)
 

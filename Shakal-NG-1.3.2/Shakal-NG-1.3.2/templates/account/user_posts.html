@@ -1,0 +1,55 @@
+{% extends "account/user_posts_base.html" %}
+
+{% block head_title %}Zoznam príspevkov | {{ super() }}{% endblock %}
+
+{% block breadcrumbs %}
+{% if day %}{{ breadcrumb(day|localtime|date("SHORT_DATE_FORMAT")) }}{% endif %}
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+
+<h1>{{ user_profile }} - Zoznam príspevkov</h1>
+
+{% include "account/partials/profile_tabs.html" %}
+
+<div class="module">
+	<h2 class="block-title">Počet príspevkov</h2>
+
+	<div class="module-row">
+		<ul>
+			{% for stat in stats %}
+				{% if stat.count %}
+					<li><a href="{{ stat.url }}">{{ stat.label }} ({{ stat.count }})</a></li>
+				{% endif %}
+			{% endfor %}
+		</ul>
+	</div>
+</div>
+
+{% with caption="Najnovšie príspevky", object_list=last_contributions %}
+	{{ add_discussion_attributes_heterogenous(object_list) }}
+	{% include "account/partials/post_list.html" %}
+{% endwith %}
+
+{% if daily_stats and monthly_stats and (not page_obj or page_obj.number == 1) %}
+	<div class="module monthly-stats-container">
+		<div class="module-row">
+			<div class="monthly-stats">
+				<div id="monthly_stats"></div>
+			</div>
+		</div>
+	</div>
+	<div class="module daily-stats-container">
+		<div class="module-row">
+			<div class="daily-stats">
+				<div id="daily_stats"></div>
+				<div style="clear: both"></div>
+			</div>
+		</div>
+	</div>
+{% endif %}
+
+{% endblock %}
+
+{% block current_path_js %}{{ url(request.resolver_match.view_name, pk=view.kwargs.pk) }}{% endblock %}

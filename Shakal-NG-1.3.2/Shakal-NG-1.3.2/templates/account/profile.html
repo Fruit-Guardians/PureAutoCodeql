@@ -1,0 +1,101 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}{{ user_profile }} - Profil{% endblock %}
+{% block breadcrumbs %}
+{{ breadcrumb(firstof(user_profile.get_full_name(), user_profile.username)) }}
+{{ super() }}
+{% endblock %}
+
+{% block socialheaders %}
+	{% with
+		object=user_profile,
+		name=user_profile.get_full_name(),
+		is_profile=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block content %}
+<ul class="object-tools btn-group">
+	{% if user.is_staff and perms.accounts.change_user %}
+		<li class="btn"><span class="wrap"><a href="{{ url("admin:accounts_user_change", user_profile.pk) }}" class="text">Admin</a></span></li>
+	{% endif %}
+</ul>
+
+<h1>{{ user_profile }} - Profil</h1>
+
+{% include "account/partials/profile_tabs.html" %}
+
+<div class="module">
+
+<div class="vcard">
+
+<div class="module-row">
+<div class="avatar-profile">
+	<img src="{{ avatar_for_user(user_profile, 128) }}" class="photo gravatar" alt="Avatar" />
+</div>
+<dl class="profile">
+	{% for user_property in user_table %}
+		{% if user_property.value %}
+			<dt>{{ user_property.name|capfirst }}:</dt>
+			<dd{% if user_property.value %} class="{{ user_property.class }}"{% endif %}>{% if user_property.value %}{{ user_property.value }}{% else %}&nbsp;{% endif %}</dd>
+		{% endif %}
+	{% endfor %}
+</dl>
+</div>
+
+{% if user_profile.info %}
+<div class="module-row">
+	<h3>Informácie o mne</h3>
+	{{ user_profile.info|safe }}
+</div>
+{% endif %}
+
+{% if user_profile.blog %}
+<div class="module-row">
+	<h3>Blog - {{ user_profile.blog }}</h3>
+	{% with posts=user_profile.blog.post_set.all()[:10] %}
+		{{ add_discussion_attributes(posts) }}
+		<ul>
+			{% for post in posts %}
+				<li><a href="{{ post.get_absolute_url() }}">{{ post }}</a><span class="comments info"> | {{ get_comments_for_item(post) }}</span></li>
+			{% endfor %}
+		</ul>
+	{% endwith %}
+	<p><a href="{{ user_profile.blog.get_absolute_url() }}">Zobraziť všetky blogy</a></p>
+</div>
+{% endif %}
+
+{% with desktop=user_profile.last_desktop %}
+	{% if desktop %}
+		<div class="module-row">
+			{% if desktop %}
+				<h3>Môj desktop</h3>
+			{% endif %}
+
+			<a href="{{ desktop.get_absolute_url() }}" class="img-link">
+				<img src="{{ thumbnail(desktop.image, size=(2048, 2048), format="jpg", quality=85) }}" alt="{{ desktop }}" />
+			</a>
+
+			<p><a href="{{ url("desktops:list-author", category=user_profile.pk, page=1) }}" class="next">Ďalšie desktopy</a></p>
+		</div>
+	{% endif %}
+{% endwith %}
+
+{% if favorite_desktops %}
+	<div class="module-row">
+		<h3>Páčia sa mi tieto desktopy</h3>
+		<ul>
+			{% for desktop in favorite_desktops %}
+				<li><a href="{{ desktop.desktop.get_absolute_url() }}">{{ desktop.desktop }}</a></li>
+			{% endfor %}
+		</ul>
+	</div>
+{% endif %}
+
+</div>
+
+</div>
+
+{% endblock %}

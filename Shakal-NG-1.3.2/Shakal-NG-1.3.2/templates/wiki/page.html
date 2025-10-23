@@ -1,0 +1,93 @@
+{% extends "wiki/wiki_base.html" %}
+
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+{% block extraheaders %}
+	{{ super() }}
+	{% if revision %}<meta name="robots" content="noindex, nofollow" />{% endif %}
+{% endblock %}
+{% block socialheaders %}
+	<meta name="description" content="{{ page.text|striptags|truncatechars("160") }}" />
+	{% with
+		object=page,
+		name=page.title,
+		description=page.text|striptags|truncatechars("300"),
+		created=page.created,
+		updated=page.updated,
+		author=page.last_author,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block breadcrumbs %}
+	{% if revision %}{{ breadcrumb("História") }}{% endif %}
+	{{ breadcrumb(page, url="wiki:page", slug=page.slug, page=1) }}
+	{% for wiki_page in tree|reverse %}
+		{% if loop.revindex != 0 %}
+			{{ breadcrumb(wiki_page, url="wiki:page", slug=wiki_page.slug, page=1) }}
+		{% endif %}
+	{% endfor %}
+	{{ breadcrumb("Wiki", url="wiki:home") }}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+
+{% if request.user.is_authenticated and not revision %}
+<ul class="object-tools btn-group">
+	<li class="btn"><span class="wrap"><a class="text" href="{{ url("wiki:create", page.slug) }}">Pridať podstránku</a></span></li>
+	<li class="btn"><span class="wrap"><a class="text" href="{{ url("wiki:edit", page.slug) }}">Editovať</a></span></li>
+</ul>
+{% endif %}
+
+{% if revision %}
+	<h1>{{ object_version.object }}</h1>
+	{{ object_version.object.text|safe }}
+{% else %}
+	<h1>{{ page }}</h1>
+
+	<div class="info top">
+		{{ page.updated|humandatetime }} |
+		<a href="{{ tree.1.get_absolute_url() }}">{{ tree.1 }}</a>
+		{% if page.last_author %} | <a href="{{ page.last_author.get_absolute_url() }}">{{ page.last_author }}</a>{% endif %}
+	</div>
+
+	{% if children %}
+	<div class="module subpages">
+		<h2 class="block-title">Podstránky</h2>
+		<ul>
+			{% for child in children %}
+				<li><a href="{{ child.get_absolute_url() }}">{{ child }}</a></li>
+			{% endfor %}
+		</ul>
+	</div>
+	{% endif %}
+
+	{{ page.text|safe }}
+
+	{% with is_article=1, name=page.title %}
+		{% include "partials/share.html" %}
+	{% endwith %}
+{% endif %}
+
+{% if history %}
+	<div class="module tabular">
+		<h2 class="block-title">História úprav</h2>
+
+		<div class="module-row">
+			<table>
+				<tr><th class="title">Autor</th><th>Dátum</th></tr>
+				{% for item in history %}
+				<tr>
+					<td class="title"><a href="{{ item.revision.user.get_absolute_url() }}">{{ item.revision.user }}</a></td>
+					<td class="date"><a href="{{ url("wiki:page-history", slug=page.slug, history=item.pk) }}" rel="nofollow">{{ item.revision.date_created|humandatetime }}</a></td>
+				</tr>
+				{% endfor %}
+			</table>
+		</div>
+	</div>
+	{{ pagination() }}
+{% endif %}
+
+{% endblock %}

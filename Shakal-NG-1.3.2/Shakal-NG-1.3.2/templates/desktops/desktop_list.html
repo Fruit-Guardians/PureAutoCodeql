@@ -1,0 +1,55 @@
+{% extends "desktops/base.html" %}
+
+{% block head_title %}Desktopy | {{ super() }}{% endblock %}
+
+{% block breadcrumbs %}
+	{% if author %}
+		{{ breadcrumb(author, url='desktops:list-author', category=author.pk, page=1) }}
+	{% endif %}
+	{{ breadcrumb("Desktopy", url='desktops:list', page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+	<h1>Zoznam desktopov</h1>
+
+	{% if not author and page_obj.number == 1 %}
+		<div class="module desktops horizontal">
+			<h2 class="block-title">Obľúbené desktopy</h2>
+			<div class="module-row">
+				{{ add_discussion_attributes(favorite_desktops) }}
+				{% for desktop in favorite_desktops %}
+					{% include "desktops/partials/desktop_link.html" %}
+				{% endfor %}
+			</div>
+		</div>
+	{% endif %}
+
+	<div class="module desktop-list">
+		{{ add_discussion_attributes(desktop_list) }}
+		{% for desktop in desktop_list %}
+			<div class="module-row desktop item">
+				<div class="image">
+					<a href="{{ desktop.get_absolute_url() }}">
+						<img src="{{ thumbnail(desktop.image, size=(512, 512), format="jpg", quality=85) }}" alt="{{ desktop }}" />
+					</a>
+				</div>
+				<div class="detail">
+					<a class="title" href="{{ desktop.get_absolute_url() }}">{{ desktop }}</a>
+
+					<div class="info">
+						<span class="time">{{ desktop.created|humandatetime }}</span> |
+						<span class="comments">
+							{{ get_comments_for_item(desktop) }}
+						</span> |
+						<span class="user">{{ user_link(desktop.author) }}</span>
+					</div>
+
+					{{ desktop.text|safe }}
+				</div>
+			</div>
+		{% endfor %}
+		{{ pagination() }}
+	</div>
+
+{% endblock %}

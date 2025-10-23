@@ -1,0 +1,41 @@
+{% extends "includes/form_loop.html" %}
+
+{% block nested %}
+	{{ super() }}
+	{{ form.attachments.management_form }}
+	{% if form.attachments.forms %}
+	<div class="form-row tabular">
+		<div>
+			<table class="formset">
+				<thead>
+					<tr>
+						<th style="width: 16px"><span class="trashcan-icon">Zmazať</span></th>
+						<th><label class="formset-label">Prílohy</label></th>
+						{% if form.has_visibility %}
+							<th class="attachment_visibility"><label class="formset-label">Viditeľné</label></th>
+						{% endif %}
+					</tr>
+				</thead>
+				{% for attachment in form.attachments.forms %}
+					<tr class="{{ loop.cycle("row1", "row2") }}">
+						<td>
+							{% for hidden in attachment.hidden_fields() %}{{ hidden }}{% endfor %}
+							{{ attachment.DELETE }}
+						</td>
+						<td>
+							<a href="{{ attachment.instance.attachment.url }}">{{ attachment.instance.basename }}</a>
+							{% if attachment.instance.attachment.storage.exists(attachment.instance.attachment.name) %}({{ attachment.instance.attachment.size|filesizeformat }}){% endif %}
+						</td>
+						{% if form.has_visibility %}
+							<td class="attachment_visibility">
+								{{ attachment.is_visible }}
+							</td>
+						{% endif %}
+					</tr>
+				{% endfor %}
+			</table>
+		</div>
+	</div>
+	{% endif %}
+{% endblock %}
+

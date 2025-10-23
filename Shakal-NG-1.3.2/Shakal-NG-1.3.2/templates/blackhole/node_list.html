@@ -1,0 +1,32 @@
+{% extends "blackhole/base.html" %}
+
+{% block head_title %}Archív blackhole.sk{% endblock %}
+
+{% block breadcrumbs %}
+	{% if category %}
+		{{ breadcrumb(category) }}
+	{% endif %}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+<div class="module sidebar">
+	<h2 class="block-title">Kategórie</h2>
+
+	<ul class="menu">
+		{% for category in categories %}
+			<li><a href="{{ category.get_absolute_url() }}">{{ category }}</a></li>
+		{% endfor %}
+	</ul>
+</div>
+
+<h1>{% if category %}{{ category }} - {% endif %}Archív blackhole.sk</h1>
+
+<div class="module blackhole{% if category %} category{% endif %}">
+	{{ add_discussion_attributes(object_list) }}
+	{% for node in object_list %}
+		{% include "blackhole/partials/node_info.html" %}
+	{% endfor %}
+	{{ pagination() }}
+</div>
+{% endblock %}

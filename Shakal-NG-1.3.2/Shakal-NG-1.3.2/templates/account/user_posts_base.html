@@ -1,0 +1,57 @@
+{% extends "account/base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb("Zoznam príspevkov", url=url("accounts:user_posts", pk=user_profile.pk)) }}
+{{ breadcrumb(firstof(user_profile.get_full_name(), user_profile.username), url=user_profile.get_absolute_url()) }}
+{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+<meta name="robots" content="noindex, nofollow" />
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+	{% if daily_stats and monthly_stats and (not page_obj or page_obj.number == 1) %}
+		<div class="module monthly-stats-container">
+			<div class="mdoule-row">
+				<div class="monthly-stats">
+					<div id="monthly_stats"></div>
+				</div>
+			</div>
+		</div>
+		<div class="module daily-stats-container">
+			<div class="module-row">
+				<div class="daily-stats">
+					<div id="daily_stats"></div>
+					<div style="clear: both"></div>
+				</div>
+			</div>
+		</div>
+	{% endif %}
+{% endblock %}
+
+{% block extrajs %}
+{{ super() }}
+{% if daily_stats and monthly_stats and (not page_obj or page_obj.number == 1 or day) %}
+<script type="text/javascript">
+//<![CDATA[
+var daily_stats = [
+{% for day, count in daily_stats %}
+[[{{ day.year }}, {{ day.month }}, {{ day.day }}, {{ day.weekday() }}], {{ count }}]{% if not loop.last %},{% endif %}
+{% endfor %}
+];
+var monthly_stats = [
+{% for month, count in monthly_stats %}
+[[{{ month.year }}, {{ month.month }}, {{ month.day }}], {{ count }}]{% if not loop.last %},{% endif %}
+{% endfor %}
+];
+var current_path = '{% block current_path_js %}{{ url(request.resolver_match.view_name, pk=view.kwargs.pk, page=1) }}{% endblock %}';
+var current_day = {% if day %}'{{ day|localtime|date("Y-m-d") }}'{% else %}undefined{% endif %};
+//]]>
+</script>
+<script src="{{ static('js/dygraph-combined.js') }}" type="text/javascript" charset="utf-8"></script>
+<script src="{{ static('js/user-posts.js') }}" type="text/javascript" charset="utf-8"></script>
+{% endif %}
+</script>
+{% endblock %}

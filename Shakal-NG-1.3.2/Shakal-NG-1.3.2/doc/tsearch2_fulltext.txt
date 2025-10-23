@@ -1,0 +1,6 @@
+-- create unaccented dictionary: unidecode < sk.dict > sk_unaccent.dict, unidecode < sk.affix > sk_unaccent.affix, unidecode < sk.stop > sk_unaccent.stop
+CREATE EXTENSION unaccent;
+CREATE TEXT SEARCH CONFIGURATION sk (COPY = simple);
+CREATE TEXT SEARCH DICTIONARY slovak_unaccent_ispell (TEMPLATE = ispell, DictFile = sk_unaccent, AffFile = sk_unaccent, Stopwords = sk_unaccent);
+ALTER TEXT SEARCH CONFIGURATION sk ALTER MAPPING FOR asciiword, asciihword, hword_asciipart WITH slovak_unaccent_ispell, simple;
+ALTER TEXT SEARCH CONFIGURATION sk ALTER MAPPING FOR hword, hword_part, word WITH slovak_unaccent_ispell, unaccent, simple;

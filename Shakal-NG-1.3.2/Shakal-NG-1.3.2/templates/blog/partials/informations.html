@@ -1,0 +1,74 @@
+<div class="module block-informations">
+	<h2 class="block-title">Informácie</h2>
+	<div class="module-row">
+		<div class="info top">Autor: <a href="{{ blog.author.get_absolute_url() }}">{{ blog.author }}</a></div>
+		{% if blog.author == user %}
+			<hr />
+			<ul>
+				{% if post and blog.slug and post.slug %}
+					<li><a href="{{ url("blog:post-update", blog.slug, post.slug) }}">Upraviť zápis</a></li>
+					<li><a href="{{ url("blog:post-attachments-update", blog.slug, post.slug) }}">Spravovať prílohy</a></li>
+				{% endif %}
+				{% if blog.slug %}
+					<li><a href="{{ url("blog:post-category-management-list", blog.slug) }}">Spravovať kategórie</a></li>
+					<li><a href="{{ url("blog:post-series-management-list", blog.slug) }}">Spravovať seriály</a></li>
+				{% endif %}
+				<li><a href="{{ url("blog:post-create") }}">Pridať zápis</a></li>
+				<li><a href="{{ url("blog:blog-update") }}">Upraviť informácie</a></li>
+			</ul>
+		{% endif %}
+		<hr />
+		{% if categories %}
+			<h4>Kategórie</h4>
+			<ul>
+				{% for category in categories %}
+					<li><a href="{{ url("blog:post-list-blog-category", blog.slug, category.slug, 1) }}">{{ category }} <span class="info items-count">{{ category.post_count|number_format }}</span></a></li>
+				{% endfor %}
+			</ul>
+			<div class="info bottom">
+				{% if blog.author == user %}
+					<a href="{{ url("blog:post-category-management-list", blog.slug) }}">Spravovať</a>
+				{% endif %}
+			</div>
+			<hr />
+		{% endif %}
+		{% if series_list %}
+			<h4>Seriály</h4>
+			<ul>
+				{% for item in series_list %}
+					<li><a href="{{ url("blog:post-list-blog-series", blog.slug, item.slug, 1) }}">{{ item }} <span class="info items-count">{{ item.post_count|number_format }}</span></a></li>
+				{% endfor %}
+			</ul>
+			<div class="info bottom">
+				{% if blog.author == user %}
+					<a href="{{ url("blog:post-series-management-list", blog.slug) }}">Spravovať</a>
+				{% endif %}
+			</div>
+			<hr />
+		{% endif %}
+		{{ blog.sidebar|safe }}
+		{% if list and request.user.is_authenticated %}
+			{% set flag_url_link=flag_url(blog) %}
+			{% if flag_url_link %}
+				<div class="btn-group voting">
+					<div class="btn flag">
+						<span class="wrap">
+							<a href="{{ flag_url_link }}" class="text" rel="nofollow">Nahlásiť</a>
+						</span>
+					</div>
+				</div>
+			{% endif %}
+		{% endif %}
+	</div>
+	{% with desktop=blog.author.last_desktop %}
+		{% if desktop %}
+			<div class="module-row">
+				<div class="desktop item">
+					<a href="{{ desktop.get_absolute_url() }}" class="img-link">
+						<img src="{{ thumbnail(desktop.image, size=(512, 512), format='jpg', quality=85) }}" alt="{{ desktop }}" />
+					</a>
+				</div>
+			</div>
+		{% endif %}
+	{% endwith %}
+</div>

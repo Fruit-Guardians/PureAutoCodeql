@@ -1,0 +1,19 @@
+{% extends "polls/poll_base.html" %}
+
+{% block head_title %}Zoznam ankiet{% endblock %}
+
+{% block content %}
+<h1>Ankety</h1>
+<div class="module polls compact">
+	{{ add_discussion_attributes(polls) }}
+	{% for poll in polls %}
+		<div class="module-row">
+			<h3><a href="{{ poll.get_absolute_url() }}">{{ poll }}</a></h3>
+			<div class="poll">
+				{% include "polls/partials/poll_detail_embedded.html" %}
+			</div>
+		</div>
+	{% endfor %}
+	{{ pagination() }}
+</div>
+{% endblock %}

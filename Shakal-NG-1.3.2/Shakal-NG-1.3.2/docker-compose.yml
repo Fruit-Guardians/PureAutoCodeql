@@ -1,0 +1,17 @@
+version: '3.5'
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUN_AS: ${RUN_AS}
+    environment:
+      - DJANGO_SETTINGS_MODULE=web.settings_local
+    command: bash -c "bash install.sh --docker && make rundocker"
+    volumes:
+      - type: bind
+        source: ./
+        target: /opt/shakal
+    ports:
+      - "8000:8000"

@@ -1,0 +1,117 @@
+<div class="comment-container">
+
+{% if comment.parent_id %}
+{% with %}
+	{% set comment_type="entry" %}
+	{% set user=comment.user %}
+	{% set user_name=comment.user_name %}
+	{% include "comments/comment_header.html" %}
+{% endwith %}
+
+{% set is_authenticated=user.is_authenticated %}
+{% set is_staff=user.is_staff %}
+{% set is_removed=comment.is_removed %}
+{% set is_locked=comment.is_locked %}
+{% set is_public=comment.is_public %}
+
+<div class="discussion content">
+	{% if is_removed and not can_display_deleted %}
+		<ul class="messages"><li class="error">Príspevok bol vymazaný. {% if is_staff %} Zobraziť ho môžte na <a href="{{ comment.get_single_comment_url() }}" rel="nofollow">tejto adrese</a>.{% endif %}</li></ul>
+	{% elif not is_public and not single %}
+		<ul class="messages"><li class="warning">Príspevok bol označený závadným. Zobraziť ho môžte na <a href="{{ comment.get_single_comment_url() }}" rel="nofollow">tejto adrese</a>.</li></ul>
+	{% else %}
+		<div class="text">
+		{{ comment.comment|safe }}
+		</div>
+		{% if comment.user.signature %}
+			<div class="signature">
+				{{ comment.user.signature|safe }}
+			</div>
+		{% endif %}
+	{% endif %}
+</div>
+{% if comment.pk and not readonly and not single %}
+	<div class="links">
+		{% if not is_locked and (request.user.is_authenticated or ANONYMOUS_COMMENTS) %}
+			<div class="btn reply">
+				<span class="wrap">
+					<a href="{{ url("comments:reply", comment.pk) }}?time={{ request_timestamp() }}" class="text" rel="nofollow" title="Odpovedať">Odpovedať</a>
+				</span>
+			</div>
+		{% endif %}
+		{% if is_authenticated and not is_locked and is_public and not is_removed %}
+			<div class="btn-group voting">
+				<div class="btn flag">
+					<span class="wrap">
+						<a href="{{ flag_url(comment) }}" class="text" rel="nofollow">Nahlásiť</a>
+					</span>
+				</div>
+			<!--
+				<div class="btn up">
+					<span class="wrap">
+						<a href="#" class="text" rel="nofollow">+ 1</a>
+					</span>
+				</div>
+				<div class="btn down">
+					<span class="wrap">
+						<a href="#" class="text" rel="nofollow">- 1</a>
+					</span>
+				</div>
+			-->
+			</div>
+		{% endif %}
+		{% if is_authenticated %}
+			{% if is_staff and perms.comments.change_comment or not is_locked %}
+				{% if is_staff and perms.comments.change_comment %}
+					<form action="{{ url("comments:admin", comment.pk) }}" method="post">{% csrf_token %}
+						<div class="btn-group admin">
+							<button class="btn delete" type="submit" name="delete" value="{{ is_removed|yesno(",1") }}" title="{% if is_removed %}Obnoviť{% else %}Zmazať{% endif %}">
+								<span class="wrap">
+									<span class="text">
+										{% if is_removed %}Obnoviť{% else %}Zmazať{% endif %}
+									</span>
+								</span>
+							</button>
+							{% if not is_removed %}
+							<button class="btn private {% if not is_public %}active{% endif %}" type="submit" name="public" value="{{ is_public|yesno(",1") }}" title="{% if is_public %}Závadný{% else %}Nezávadný{% endif %}">
+									<span class="wrap">
+										<span class="text">
+											{% if is_public %}Závadný{% else %}Nezávadný{% endif %}
+										</span>
+									</span>
+								</button>
+							{% endif %}
+							<button class="btn lock{% if is_locked %} active{% endif %}" type="submit" name="lock" value="{{ is_locked|yesno(",1") }}" title="{% if is_locked %}Odomknúť{% else %}Zamknúť{% endif %}">
+								<span class="wrap">
+									<span class="text">
+										{% if is_locked %}Odomknúť{% else %}Zamknúť{% endif %}
+									</span>
+								</span>
+							</button>
+							<a class="btn edit" title="Spravovať" href="{{ url("admin:comments_comment_change", comment.pk) }}">
+								<span class="wrap">
+									<span class="text">
+										Spravovať
+									</span>
+								</span>
+							</a>
+						</div>
+					</form>
+				{% endif %}
+				{% if not is_locked and is_public and not is_removed %}
+					<!--
+					<div class="btn resolved">
+						<span class="wrap">
+							<a href="#" class="text" rel="nofollow">Riešenie</a>
+						</span>
+					</div>
+					-->
+				{% endif %}
+			{% endif %}
+		{% endif %}
+	</div>
+{% endif %}
+<div class="clear"></div>
+{% endif %}
+
+</div>

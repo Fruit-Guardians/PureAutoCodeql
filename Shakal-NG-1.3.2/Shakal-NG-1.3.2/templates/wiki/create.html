@@ -1,0 +1,15 @@
+{% extends "wiki/edit_base.html" %}
+
+{% block head_title %}Pridať stránku{% endblock %}
+
+{% block breadcrumbs %}
+	{{ breadcrumb("Pridať stránku") }}
+	{% if page.slug %}
+		{{ breadcrumb(page, url=page.get_absolute_url()) }}
+	{% endif %}
+	{{ breadcrumb("Wiki", url="wiki:home") }}
+	{{ super() }}
+{% endblock %}
+
+{% block form_url %}{{ url("wiki:create", slug=slug) }}{% endblock %}
+{% block submit_btn %}<button class="btn primary" type="submit" title="Vytvoriť" name="create" value="1"><span class="wrap"><span class="text">Vytvoriť</span></span></button>{% endblock %}

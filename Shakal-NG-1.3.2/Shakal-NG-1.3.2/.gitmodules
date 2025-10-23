@@ -1,0 +1,7 @@
+[submodule "static/vendor/ckeditor"]
+	path = static/vendor/ckeditor
+	url = https://github.com/ckeditor/ckeditor-releases.git
+	branch = stable
+[submodule "accounts/8biticon"]
+	path = accounts/8biticon
+	url = https://github.com/mireq/8biticon-data.git

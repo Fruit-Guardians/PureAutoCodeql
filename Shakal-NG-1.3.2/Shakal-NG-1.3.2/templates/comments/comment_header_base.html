@@ -1,0 +1,39 @@
+<div class="discussion header {% if user %}vcard {% endif %}{{ comment_type }}{% if not single %}{% if user.pk == request.user.pk %} me{% endif %}{{ comment.get_tags() }}{% endif %}">
+	<div class="comment_info">
+		{% block parent_link %}
+		{% endblock %}
+		<span class="subject">{% block comment_title %}{% endblock %}{% if comment.pk %}{% endif %}</span>
+		<span class="info">
+			{% if comment.created %}{{ comment.created|humandatetime }}{% else %}{{ comment.created|humandatetime }}{% endif %}
+			{% if comment.prev_new %}<span class="comment-link next"><a href="#link_{{ comment.prev_new }}">Predchádzajúci</a></span>{% endif %}
+			{% if comment.next_new %}<span class="comment-link prev"><a href="#link_{{ comment.next_new }}">Nasledujúci</a></span>{% endif %}
+		</span>
+	</div>
+	<span class="icon">
+		{% if user %}
+			<img src="{{ avatar_for_user(user, 48) }}" class="gravatar photo" alt="Avatar" />
+		{% else %}
+			{% if comment.ip_address_avatar %}
+				<img src="{{ static(comment.ip_address_avatar) }}" class="gravatar photo placeholder" alt="Avatar" />
+			{% endif %}
+		{% endif %}
+	</span>
+	<span class="user">
+		<span class="user_link">{{ user_link(user, user_name) }}</span>
+		<span class="user_rating {% if user.is_staff %}admin{% elif user.is_active and user.rating %}rating_{{ user.rating.get_rating_label() }}{% else %}rating_0{% endif %}"{% if user.rating %} title="Body: {{ user.rating.rating }}"{% endif %}></span>
+		<span class="note distribution">{% if user %}{{ user.distribution }}{% endif %}&nbsp;</span>
+		<span class="role rank">{% if user.is_staff %}Administrátor{% elif user.is_active %}Používateľ{% else %}Návštevník{% endif %}</span>
+	</span>
+	{% if comment.is_removed and not can_display_deleted %}
+	{% elif not comment.is_public and not single %}
+	{% else %}
+		{% if comment.attachment_count %}
+			<ul class="files">
+			{% for attachment in comment.attachments.all() %}
+				<li><a href="{{ attachment.url }}">{{ attachment.basename }}</a>{% if attachment.size %} <small>({{ attachment.size|filesizeformat }})</small>{% endif %}</li>
+			{% endfor %}
+			</ul>
+		{% endif %}
+	{% endif %}
+	<div class="clear"></div>
+</div>

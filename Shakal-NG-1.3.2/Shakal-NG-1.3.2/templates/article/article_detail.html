@@ -1,0 +1,102 @@
+{% extends "article/article_base.html" %}
+
+{% block head_title %}{{ article.title }}{% endblock %}
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+	{{ breadcrumb(article.title|truncatechars(80)) }}
+	{{ breadcrumb("Články", url="article:list", page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ article.annotation|striptags }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		name=article.title,
+		gallery=attached_images(article, min_size=(400, 400)),
+		description=article.annotation|striptags,
+		image=article.image and article.image.url,
+		presentation_image=article.presentation_image,
+		fallback_image=article.series.image.url if article.series and article.series.image else none,
+		fallback_image2=article.category.image.url if article.category and article.category.image else none,
+		created=article.created,
+		updated=article.updated,
+		category=article.category.name,
+		author=article.author,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block content %}
+{% if user.is_staff and perms.article.can_change %}
+<ul class="object-tools">
+	<li class="btn"><span class="wrap"><a href="{{ url('admin:article_article_change', article.pk) }}" class="text">Editovať článok</a></span></li>
+</ul>
+{% endif %}
+<h1>{{ article.title }}</h1>
+
+{% if article.image %}
+	<div class="article thumbnail pull-left">
+		<img src="{{ thumbnail(article.image, size=(100, 100), crop=True) }}" alt="{{ article.title }}" />
+	</div>
+{% endif %}
+
+<div class="info top">
+	{{ article.pub_time|localtime|date("d.m.Y H:i") }} |
+	<a href="{{ article.category.get_absolute_url() }}">{{ article.category }}</a> |
+	{% if article.author %}
+		<a href="{{ article.author.get_absolute_url() }}">
+			{{ firstof(article.author.get_full_name(), article.author.username) }}
+		</a>
+	{% else %}
+		{{ article.authors_name }}
+	{% endif %}
+</div>
+
+<div class="content">
+{% if article.annotation %}
+	<div class="annotation">{{ article.annotation|safe }}</div>
+{% endif %}
+{{ article.content|safe }}
+</div>
+
+{% for poll in article.poll_set %}
+<div class="module polls">
+<h3>{{ poll }}</h3>
+<form action="{{ url('polls:post', pk=poll.pk) }}" method="post" id="polls-form">
+	{{ render_messages(messages, poll.msg_id()) }}
+	{% with %}
+		{% set input=1 %}
+		{% include "polls/partials/poll_detail_embedded.html" %}
+	{% endwith %}
+	<input type="hidden" name="msg_id" value="{{ poll.msg_id() }}" />
+	<input type="hidden" name="next" value="{{ request.path }}" />
+	<div class="submit-row">
+		<div class="positive">
+			<button type="submit" class="btn"><span class="wrap"><span class="text">Hlasovať</span></span></button>
+		</div>
+	</div>
+</form>
+</div>
+{% endfor %}
+
+{% if article.series_object %}
+	{% with object=article, series=article.series_object %}
+		{% include "partials/related_documents.html" %}
+	{% endwith %}
+{% endif %}
+
+{% with is_article=1, name=article.title %}
+	{% include "partials/share.html" %}
+{% endwith %}
+
+{% endblock %}
+
+{% block discussion %}
+	{{ render_comments_toplevel(article) }}
+{% endblock %}

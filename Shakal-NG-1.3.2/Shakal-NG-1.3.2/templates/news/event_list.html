@@ -1,0 +1,19 @@
+{% extends "news/news_list.html" %}
+
+{% block head_title %}Udalosti{% endblock %}
+
+{% block breadcrumbs_detail %}
+	{{ breadcrumb("Udalosti", url="news:event-list", page=1) }}
+{% endblock %}
+
+{% block category_list %}
+{% endblock %}
+
+{% block page_title %}Udalosti{% endblock %}
+
+{% block list_content %}
+	{% with news=news_list, long=1, dates=1 %}
+		{% include "news/partials/list.html" %}
+	{% endwith %}
+	{{ pagination() }}
+{% endblock %}

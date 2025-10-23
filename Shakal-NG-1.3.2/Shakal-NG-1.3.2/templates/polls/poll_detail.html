@@ -1,0 +1,40 @@
+{% extends "polls/poll_base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb(poll) }}
+{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ poll.question|striptags }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		object=poll,
+		name=poll.question|striptags,
+		created=poll.created,
+		updated=poll.updated,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block head_title %}{{ poll }}{% endblock %}
+
+{% block content %}
+{{ add_discussion_attributes([poll]) }}
+<h1>{{ poll }}</h1>
+
+<div class="module poll">
+{% include "polls/partials/poll_detail_embedded.html" %}
+</div>
+
+{% with name=poll.question|striptags %}
+	{% include "partials/share.html" %}
+{% endwith %}
+
+{% endblock %}
+
+{% block discussion %}{{ render_comments_toplevel(poll) }}{% endblock %}

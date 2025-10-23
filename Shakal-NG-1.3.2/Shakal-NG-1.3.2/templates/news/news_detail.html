@@ -1,0 +1,85 @@
+{% extends "news/news_base.html" %}
+
+{% block breadcrumbs %}
+	{{ breadcrumb(news|truncatechars(80)) }}
+	{{ breadcrumb("Správy", url="news:list", page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ object.short_text|striptags }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		name=object.title,
+		gallery=attached_images(object, min_size=(400, 400)),
+		description=object.short_text|striptags,
+		created=object.created,
+		updated=object.updated,
+		author=object.author,
+		category=object.category.name,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block head_title %}{{ news }}{% endblock %}
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+
+{% block content %}
+{% if request.user.is_authenticated %}
+	<form action="{{ request.path }}" method="post">{% csrf_token %}
+		<ul class="object-tools btn-group">
+			{% if user.is_staff and perms.news.change_news %}
+				<li class="btn"><span class="wrap"><a href="{{ url("admin:news_news_change", news.pk) }}" class="text">Admin</a></span></li>
+			{% endif %}
+			{% if perms.news.change_news or (news.author == request.user and not news.approved) %}
+				<li class="btn"><span class="wrap"><a href="{{ url("news:update", news.slug) }}" class="text">Upraviť</a></span></li>
+			{% endif %}
+			{% if perms.news.change_news %}
+				{% with is_new = news.created == news.updated %}
+					{% if not news.approved or is_new %}<li class="btn"><button type="submit" name="approve" value="1" class="wrap"><span class="text">Schváliť</span></button></li>{% endif %}
+					{% if news.approved or is_new %}<li class="btn"><button type="submit" name="approve" value="" class="wrap"><span class="text">Zamietnúť</span></button></li>{% endif %}
+				{% endwith %}
+				<li class="btn"><a class="wrap" href="{{ url("news:note-create", news.slug) }}"><span class="text">Pridať poznámku</span></a></li>
+			{% endif %}
+		</ul>
+	</form>
+{% endif %}
+
+<h1>{{ news }}</h1>
+
+<div class="info">
+	<span class="time">{{ news.created|humandatetime }}</span> |
+	<span class="user">{{ user_link(news.author, news.authors_name) }}</span> |
+	<span class="category"><a href="{{ news.category.get_absolute_url() }}">{{ news.category }}</a></span>
+</div>
+{% if news.event_date %}
+	<div class="info">
+		Dátum udalosti: <span class="time">{{ news.event_date|date("SHORT_DATE_FORMAT") }}</span>
+	</div>
+{% endif %}
+
+<p>
+{{ news.long_text|safe }}
+</p>
+
+{% if not news.approved %}
+	<ul class="messages"><li class="warning">Správa čaká na schválenie.</li></ul>
+{% endif %}
+
+{% if (perms.news.change_news or news.author == request.user) %}
+	{% with notes=news.admin_notes %}{% include "news/partials/news_notes.html" %}{% endwith %}
+{% else %}
+	{% with notes=news.public_notes %}{% include "news/partials/news_notes.html" %}{% endwith %}
+{% endif %}
+
+{% include "news/partials/source.html" %}
+{% with name=object.title %}
+	{% include "partials/share.html" %}
+{% endwith %}
+{% endblock %}
+
+{% block discussion %}{{ render_comments_toplevel(news) }}{% endblock %}

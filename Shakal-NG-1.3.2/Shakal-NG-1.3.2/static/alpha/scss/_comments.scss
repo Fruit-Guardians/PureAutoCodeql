@@ -1,0 +1,507 @@
+.discussion-block {
+	margin-left: $base-margin;
+	margin-right: $base-margin;
+	.comments_tree .thread_1 .comment {
+		@include component-shadow();
+		.comment {
+			box-shadow: none;
+		}
+	}
+
+	@media #{$large-down} {
+		margin-left: 0;
+		margin-right: 0;
+		.comments_tree .thread_1 .comment {
+			box-shadow: none;
+		}
+	}
+}
+
+.discussion.header {
+	border: 1px solid $body-color;
+	background: mix($primary-color, $body-color, 10%);
+	min-height: 56px;
+	position: relative;
+	&.me {
+		background: mix($primary-color, $body-color, 30%);
+		.user { background: mix($primary-color, $body-color, 30%); }
+	}
+	&.resolved {
+		background: mix($success-color, $body-color, 10%);
+		.user { background: mix($success-color, $body-color, 10%); }
+	}
+	&.deleted {
+		background: mix($error-color, $body-color, 30%);
+		.user { background: mix($error-color, $body-color, 30%); }
+	}
+	&.new, &.highlight {
+		background: mix($alert-color, $body-color, 20%);
+		.user { background: mix($alert-color, $body-color, 20%); }
+	}
+	&.resolved:after { background: $success-color; }
+	&.entry {
+		&.me:after { background: $primary-color; }
+		&.resolved:after { background: $success-color; }
+		&.private:after { background: $warning-color; }
+		&.deleted:after { background: $error-color; }
+	}
+	ul.files {
+		border-top: 1px solid rgba(0, 0, 0, 0.05);
+		margin-top: 4px;
+		padding-bottom: 4px;
+		padding-top: 4px;
+		clear: both;
+		small {
+			color: $info-color;
+		}
+	}
+	.user {
+		float: right;
+		display: block;
+		text-align: right;
+		padding-right: 3px;
+		min-height: 56px;
+		position: absolute;
+		right: 56px;
+		top: 0px;
+		background: mix($primary-color, $body-color, 10%);
+		padding-left: $base-spacing-content;
+	}
+	.user_link {
+		display: block;
+		line-height: 22px;
+		vertical-align: bottom;
+		a {
+			line-height: 22px;
+			vertical-align: bottom;
+		}
+	}
+	.distribution, .rank {
+		display: block;
+		font-size: 80%;
+		color: $info-color;
+		white-space: nowrap;
+		padding-right: 28px;
+		line-height: 14px;
+	}
+	&.deleted {
+		.distribution, .rank, .info {
+			color: mix($error-color, $text-color, 50%);
+		}
+	}
+	.comment_info {
+		margin-left: 5px;
+		margin-right: 180px;
+		.subject {
+			display: block;
+			line-height: 25px;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			width: 100%;
+		}
+		.info {
+			line-height: 25px;
+			.comment-link:before {
+				content: " | ";
+			}
+		}
+	}
+	.parent-link {
+		position: absolute;
+		margin-top: 5px;
+		z-index: 1;
+		@include sprite-bw(parent, $dark: true);
+		& + .subject {
+			padding-left: sprite-width(parent_dark) + 5px;
+		}
+	}
+	.user_rating {
+		float: right;
+		width: 20px;
+		height: 36px;
+		margin: -3px 0 0 8px;
+		&.admin { @include sprite-bw(user_rating_admin, $setSize: false, $dark: true); }
+		&.rating_0 { @include sprite-bw(user_rating_0, $setSize: false, $dark: true); }
+		&.rating_1 { @include sprite-bw(user_rating_1, $setSize: false, $dark: true); }
+		&.rating_2 { @include sprite-bw(user_rating_2, $setSize: false, $dark: true); }
+		&.rating_3 { @include sprite-bw(user_rating_3, $setSize: false, $dark: true); }
+		&.rating_4 { @include sprite-bw(user_rating_4, $setSize: false, $dark: true); }
+		&.rating_5 { @include sprite-bw(user_rating_5, $setSize: false, $dark: true); }
+	}
+	.icon {
+		display: block;
+		float: right;
+		width: 48px;
+		height: 48px;
+		padding: 4px;
+		position: absolute;
+		right: 0px;
+		top: 0px;
+		@include sprite(avatar_placeholder, $setSize: false);
+	}
+	.comment_link {
+		position: absolute;
+		top: 0px;
+	}
+}
+
+.thread_1 .discussion.header:after {
+	background-color: mix($primary-color, $text-color, 80%);
+}
+
+.thread_2 .discussion.header:after {
+	background-color: mix($primary-color, $body-color, 100%);
+}
+
+.thread_3 .discussion.header:after {
+	background-color: mix($primary-color, $body-color, 80%);
+}
+
+.thread_4 .discussion.header:after {
+	background-color: mix($primary-color, $body-color, 60%);
+}
+
+.thread_5 .discussion.header:after {
+	background-color: mix($primary-color, $body-color, 40%);
+}
+
+.thread_6 .discussion.header {
+	margin-left: 0;
+	&:after {
+		display: none;
+	}
+}
+
+.comments_tree form, .links form {
+	display: inline;
+}
+
+.comments .links {
+	@include content-padding;
+	@include content-margin-vertical;
+}
+
+.comments_tree .thread_1 > .comment + .comment {
+	margin-top: $base-spacing-content;
+}
+
+.comments_tree .thread_2 .comment {
+	margin-bottom: 0;
+	border: none;
+	background: white;
+	border-left: 1px solid $light-border-color;
+}
+
+.discussion.header.new:after, .discussion.header.highlight:after {
+	background: $alert-color;
+}
+
+.discussion.header {
+	margin-left: 10px;
+	position: relative;
+	&:after {
+		content: "";
+		display: block;
+		position: absolute;
+		top: 0;
+		left: -11px;
+		bottom: 0;
+		width: 11px;
+		background: mix($primary-color, $text-color, 80%);
+	}
+}
+
+.discussion.header.topic {
+	border-top: 1px solid $light-border-color;
+}
+
+.discussion.header.entry .subject {
+	font-weight: bold;
+}
+
+.comments_tree ul.comment_thread {
+	margin: 0;
+	padding: 0;
+	clear: both;
+}
+
+.comments_tree ul.comment_thread ul.comment_thread ul.comment_thread {
+	margin-left: $base-spacing-content / 2;
+}
+
+.comments_tree ul.comment_thread.thread_1 {
+	margin-left: 0;
+}
+
+.discussion.content, .topic.content {
+	padding: .7em .7em 0 .7em;
+}
+
+.comments_tree li.comment {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	background: $body-color-background;
+	li.comment {
+		background: mix($primary-color, $body-color, 5%);
+		overflow: hidden;
+		li.comment {
+			background: $body-color;
+			.discussion.header {
+				border: 1px solid rgba($text-color, .1);
+				&:after {
+					top: -1px;
+					bottom: -1px;
+				}
+			}
+		}
+	}
+}
+
+.forum-topic {
+	@include cancel-content-padding;
+}
+
+.comments {
+	.btn {
+		margin-left: $base-margin-reduced;
+		.wrap {
+			border: none;
+			background: transparent;
+			box-shadow: none;
+		}
+		&:focus .wrap, a:focus {
+			box-shadow: none;
+		}
+		.text {
+			padding: 0;
+			color: $link-color;
+		}
+		&.reply {
+			float: right;
+			&:before {
+				content: "";
+				display: inline-block;
+				vertical-align: middle;
+				margin-right: .5em;
+				@include sprite-bw(reply);
+			}
+			.wrap {
+				display: inline-block;
+			}
+		}
+	}
+
+	.btn-group {
+		margin-right: $base-margin;
+		margin-left: $base-margin;
+	}
+
+	.links.top {
+		.btn-group {
+			display: inline;
+		}
+
+		.comment-link {
+			float: left;
+			font-size: 90%;
+			line-height: 1.4;
+			margin-right: $base-spacing-content;
+		}
+	}
+
+	@media #{$medium-down} {
+		.links.top {
+			.btn.forget {
+				margin-left: 0;
+			}
+			.comment-link {
+				float: none;
+				display: block;
+				margin-bottom: $base-spacing-content;
+			}
+		}
+	}
+
+	.btn.lock, .btn.private, .btn.delete, .btn.watch, .btn.edit, .btn.flag {
+		overflow: hidden;
+		text-indent: 9999px;
+	}
+
+	.btn.lock {
+		@include sprite-bw(lock);
+		&.active {
+			@include sprite-bw(unlock);
+		}
+	}
+
+	.btn.private {
+		@include sprite-bw(block);
+	}
+
+	.btn.delete {
+		@include sprite(delete_red);
+	}
+
+	.btn.watch {
+		@include sprite-bw(eye);
+		&.active {
+			@include sprite(eye_blue);
+		}
+	}
+
+	.btn.edit {
+		@include sprite-bw(pencil);
+	}
+
+	.btn.flag {
+		@include sprite-bw(flag);
+	}
+
+	.links.top {
+		.btn-group.reply {
+			margin-left: 0;
+			margin-right: $base-margin;
+		}
+
+		.btn-group.admin {
+			margin-left: 0;
+			margin-right: 0;
+		}
+	}
+
+	.comments_tree {
+
+		.links {
+			overflow: hidden;
+			min-width: (sprite-width(reply) + $base-margin-reduced) * 4 + 50px;
+			float: right;
+			margin-top: 0;
+			margin-bottom: 0;
+		}
+
+		.btn.reply {
+			&:before {
+				display: none;
+			}
+			.text {
+				overflow: hidden;
+				text-indent: 9999px;
+				@include sprite-bw(reply);
+			}
+		}
+
+		.signature {
+			float: left;
+		}
+
+	}
+}
+
+.signature {
+	color: $info-color;
+	font-size: 85%;
+	font-style: italic;
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.comments-stats {
+	.text {
+		display: none;
+	}
+
+	a {
+		padding-right: 0.75em;
+	}
+
+	.count {
+		font-size: 85%;
+		&:before {
+			@include sprite-bw(comments);
+			content: "";
+			display: inline-block;
+			vertical-align: middle;
+			margin-right: .25em;
+		}
+	}
+
+	&.empty a {
+		padding-right: 0;
+		&:before {
+			@include sprite-bw(comments);
+			content: "";
+			display: inline-block;
+			vertical-align: middle;
+		}
+	}
+}
+
+.status form {
+	display: inline;
+
+	button.watch {
+		float: right;
+		cursor: pointer;
+		border: none;
+		display: inline-block;
+		overflow: hidden;
+		text-indent: 9999px;
+		@include sprite-bw(eye);
+		&.active {
+			@include sprite(eye_blue);
+		}
+	}
+}
+
+.headerlink {
+	text-decoration: none;
+	color: $code-color;
+	display: none;
+	&:after {
+		content: "¶"
+	}
+}
+
+.comment_info:hover .headerlink {
+	display: inline;
+}
+
+.modal-overlay .comment-container, .comment-tooltip {
+	.links {
+		display: none;
+	}
+	.discussion.header {
+		margin-left: 0;
+		&:after {
+			display: none;
+		}
+	}
+}
+
+.comment-tooltip.tooltip {
+	position: absolute;
+	height: 10px;
+	left: 0;
+	right: 0;
+	z-index: 2;
+	.tooltip-bubble {
+		margin-left: $base-margin * 2;
+		margin-right: $base-margin * 2;
+		margin-top: 40px;
+		max-width: 800px;
+	}
+}
+
+.comment-tooltip.tooltip {
+	transition: z-index 0s 0s ease, transform $transition-duration ease-in, opacity $transition-duration ease;
+	transform: translateY(0px);
+	opacity: 1;
+	.parent-link {
+		display: none;
+		& + .subject {
+			padding-left: 0;
+		}
+	}
+}

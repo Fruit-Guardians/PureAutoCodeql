@@ -1,0 +1,71 @@
+{% extends "forum/forum_base.html" %}
+
+{% block head_title %}{{ topic }}{% endblock %}
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+	{{ breadcrumb(topic|truncatechars(60)) }}
+	{{ breadcrumb(topic.section|truncatechars(60), url="forum:section", category=topic.section.slug, page=1) }}
+	{{ breadcrumb("Fórum", url="forum:overview", page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ topic.text|striptags|html_entity_decode|truncatechars("160") }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		name=topic.title,
+		description=topic.text|striptags|html_entity_decode|truncatechars("300"),
+		created=topic.created,
+		updated=topic.updated,
+		author=topic.authors_name,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+
+{% block content %}
+
+{% if topic.delete_perm or topic.resolved_perm or (request.user.is_authenticated and request.user.is_staff) %}
+	<form action="{{ request.path }}" method="post">{% csrf_token %}
+		<ul class="object-tools btn-group">
+			{% if user.is_staff and perms.forum.change_topic %}
+				<li class="btn"><span class="wrap"><a href="{{ url("admin:forum_topic_change", topic.pk) }}" class="text">Admin</a></span></li>
+			{% endif %}
+			{% if topic.delete_perm %}
+				<li class="btn delete">
+					<button type="submit" name="removed" value="{{ topic.is_removed|yesno(",1") }}" class="wrap">
+						<span class="text">{% if topic.is_removed %}Obnoviť{% else %}Vymazať{% endif %}</span>
+					</button>
+				</li>
+			{% endif %}
+			{% if topic.resolved_perm %}
+				<li class="btn resolved">
+					<button type="submit" name="resolved" value="{{ topic.is_resolved|yesno(",1") }}" class="wrap">
+						<span class="text">{% if topic.is_resolved %}Nastaviť nevyriešené{% else %}Nastaviť vyriešené{% endif %}</span>
+					</button>
+				</li>
+			{% endif %}
+		</ul>
+	</form>
+{% endif %}
+
+<h1>{{ topic }}</h1>
+<div class="forum-topic">
+	{% with comment_type="topic", comment=topic, user=topic.author, user_name=topic.authors_name %}
+		{{ prefetch_avatars_for_ip([topic]) }}
+		{% include "forum/topic_header.html" %}
+	{% endwith %}
+	{% include "forum/topic_content.html" %}
+</div>
+
+{% with name=topic.title %}
+	{% include "partials/share.html" %}
+{% endwith %}
+{% endblock %}
+
+{% block discussion %}{{ render_comments_toplevel(topic) }}{% endblock %}

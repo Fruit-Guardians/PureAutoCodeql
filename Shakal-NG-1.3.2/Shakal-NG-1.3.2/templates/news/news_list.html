@@ -1,0 +1,43 @@
+{% extends "news/news_base.html" %}
+
+{% block head_title %}Správy{% endblock %}
+
+{% block breadcrumbs %}
+	{% if category %}
+		{{ breadcrumb(category) }}
+	{% endif %}
+	{% block breadcrumbs_detail %}
+		{{ breadcrumb("Správy", url="news:list", page=1) }}
+	{% endblock %}
+	{{ super() }}
+{% endblock %}
+
+{% block extraheaders %}
+	{% if page_obj.number == 1 %}
+		<meta name="description" lang="sk" content="{% if category %}{{ category.description }}{% else %}Správy zo sveta Linuxu, Open Source a IT.{% endif %}" />
+	{% endif %}
+{% endblock %}
+
+{% block content %}
+<h1>{% block page_title %}{% if category %}Správy - {{ category }}{% else %}Správy{% endif %}{% endblock %}</h1>
+{% block category_list %}
+	{% if category %}
+	<p class="description">{{ category.description }}</p>
+	{% else %}
+	<p class="description">Portál LinuxOS.sk prináša rôzne správy so sveta open source. Na tejto stránke nájdete zoznam správ zo všetkých kategórií.</p>
+	<ul>
+		{% for category in category_list %}
+			<li><a href="{{ category.get_absolute_url() }}">{{ category }}</a></li>
+		{% endfor %}
+	</ul>
+	{% endif %}
+{% endblock %}
+<div class="module">
+	{% block list_content %}
+		{% with news=news_list, long=1 %}
+			{% include "news/partials/list.html" %}
+		{% endwith %}
+		{{ pagination() }}
+	{% endblock %}
+</div>
+{% endblock %}

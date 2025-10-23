@@ -1,0 +1,50 @@
+@import url("../../admin_tools/css/theming.css");
+
+
+body #header {
+	background: #fafafa;
+}
+
+body #header #branding {
+	border-bottom: 1px solid #eee;
+}
+
+body #header #branding h1 {
+	width: 326px;
+	height: 76px;
+	background: url(../images/logo.png) 0px 0px no-repeat;
+	padding: 0;
+	border-bottom: 1px solid #888;
+}
+
+body #header #user-tools {
+	color: #888;
+}
+
+body #header #user-tools strong {
+	color: #444;
+}
+
+body #header #user-tools a, body #header #user-tools a:link, body #header #user-tools a:visited {
+	color: #5b80b2;
+}
+
+body.login #container {
+	width: 326px;
+}
+
+body.login #header #branding h1 {
+	background: url(../images/logo-admin.png) 0px 0px no-repeat;
+}
+
+body.login .form-row label {
+	width: 11em;
+}
+
+body.login .form-row #id_username, body.login .form-row #id_password {
+	width: 12em;
+}
+
+.collapsed .inline-related, .collapsed .add-row {
+	display: none;
+}

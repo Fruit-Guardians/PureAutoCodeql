@@ -1,0 +1,20 @@
+<div class="desktop item">
+	<div class="desktop-content">
+		<a class="title" href="{{ desktop.get_absolute_url() }}">{{ desktop }}</a>
+
+		<div class="info">
+			<span class="time">{{ desktop.created|humandatetime }}</span>
+		</div>
+
+		<a href="{{ desktop.get_absolute_url() }}" class="img-link">
+			<img src="{{ thumbnail(desktop.image, size=(256, 256), format="jpg", quality=85) }}" alt="{{ desktop }}" />
+		</a>
+
+		<div class="info">
+			<span class="comments">
+				{{ get_comments_for_item(desktop) }}
+			</span> |
+			<span class="user">{{ user_link(desktop.author) }}</span>
+		</div>
+	</div>
+</div>

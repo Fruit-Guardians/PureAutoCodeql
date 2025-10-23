@@ -1,0 +1,15 @@
+{% if "full" in request.GET %}
+	{{ obj.long_text|safe }}
+{% else %}
+	{{ obj.short_text|safe }}
+{% endif %}
+{% with news=obj %}
+	{% include "news/partials/source.html" %}
+{% endwith %}
+{% if "include_comments" in request.GET %}
+	<div>
+		<a href="{{ obj.get_absolute_url() }}#comments">
+			<img src="{{ comments_count_image_link(obj) }}" alt="Komentáre" />
+		</a>
+	</div>
+{% endif %}

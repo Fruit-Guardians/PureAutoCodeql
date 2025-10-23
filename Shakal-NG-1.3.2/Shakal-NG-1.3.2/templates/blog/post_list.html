@@ -1,0 +1,81 @@
+{% extends "blog/blog_base.html" %}
+
+{% block head_title %}Blogy{% endblock %}
+
+{% block breadcrumbs %}
+	{% if series %}
+		{{ breadcrumb(series) }}
+	{% endif %}
+	{% if category %}
+		{{ breadcrumb(category) }}
+	{% endif %}
+	{% if blog %}
+		{{ breadcrumb(blog, url='blog:post-list-blog', blog=blog.slug, page=1) }}
+	{% endif %}
+	{{ breadcrumb("Blog", url='blog:post-list', page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block socialheaders %}
+	{% if blog %}
+		{% with
+			object=blog,
+			name=blog.title,
+			description=blog.description|striptags,
+			created=blog.created,
+			updated=blog.updated,
+			author=blog.author,
+			is_article=1
+		%}
+			{% include "partials/social_media.html" %}
+		{% endwith %}
+	{% endif %}
+{% endblock %}
+
+{% block right %}
+	{% if blog %}
+		{% with list=1 %}
+			{% include "blog/partials/informations.html" %}
+		{% endwith %}
+	{% endif %}
+
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+{% if blog %}
+	{% if page_obj.number == 1 %}
+		<ul class="object-tools btn-group">
+			{% if user.is_staff and perms.blog.change_blog %}
+				<li class="btn"><span class="wrap"><a href="{{ url("admin:blog_blog_change", blog.pk) }}" class="text">Admin</a></span></li>
+			{% endif %}
+		</ul>
+	{% endif %}
+{% endif %}
+
+{% if blog %}
+	<h1>{% if series %}{{ series }}{% elif category %}{{ category }}{% else %}{{ blog }}{% endif %}</h1>
+
+	{% if page_obj.number == 1 and blog.description and not category and not series %}
+		<div class="annotation">{{ blog.description|safe }}</div>
+	{% endif %}
+{% else %}
+	{% if request.user.is_authenticated %}
+		<ul class="object-tools">
+			<li class="btn"><span class="wrap"><a class="text" href="{{ url('blog:post-create') }}">Vytvoriť príspevok</a></span></li>
+		</ul>
+	{% endif %}
+
+	<h1>Blogy</h1>
+{% endif %}
+
+<div class="module blog{% if blog %} category{% endif %}">
+	{{ add_discussion_attributes(post_list) }}
+	{% with long=1 %}
+		{% for post in post_list %}
+			{% include "blog/partials/item.html" %}
+		{% endfor %}
+	{% endwith %}
+	{{ pagination() }}
+</div>
+{% endblock %}

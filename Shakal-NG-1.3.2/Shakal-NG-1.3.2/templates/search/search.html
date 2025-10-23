@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block breadcrumbs %}
+{{ breadcrumb("Vyhľadávanie", url="fulltext:search", page=1) }}
+{{ super() }}
+{% endblock %}
+
+{% block head_title %}Vyhľadávanie{% endblock %}
+
+{% block content %}
+<h1>Výsledky vyhľadávania</h1>
+
+<form method="get" action="{{ url("fulltext:search", page=1) }}" class="search">
+	<fieldset class="module">
+		{% include "includes/form_loop.html" %}
+		<div class="submit-row">
+			<div class="positive">
+				<button class="btn primary" type="submit" title="Hľadať"><span class="wrap"><span class="text">Hľadať</span></span></button>
+			</div>
+		</div>
+	</fieldset>
+</form>
+
+{% if query %}
+{% for result in results %}
+	{% if result %}
+		<div class="module-row">
+			<h3><a href="{{ result.content_object.get_absolute_url() }}">{{ fulltext_highlight(result.highlighted_title, max_length=300) }}</a></h3>
+			{% with content_type=result.content_type.app_label + '.' + result.content_type.model %}
+				{% include "widgets/content_type_label.html" %}
+			{% endwith %}
+			{% if result.highlighted_document %}
+				{{ fulltext_highlight(result.highlighted_document, max_length=300) }}
+			{% else %}
+				{{ fulltext_highlight(result.highlighted_comments, max_length=300) }}
+			{% endif %}
+			<div class="info">
+			{% if result.authors_name %}Autor: {{ result.authors_name }}&nbsp;|&nbsp;{% endif %}
+			{% if result.created %}Vytvorené: {{ result.created|localtime|date("d.m.Y H:i") }}&nbsp;|&nbsp;{% endif %}
+			Skóre: {{ result.rank }}&nbsp;|&nbsp;
+			<a href="{{ result.content_object.get_absolute_url() }}">Čítať</a>
+			</div>
+		</div>
+	{% endif %}
+{% else %}
+	<p>Žiadne výsledky neboli nájdené.</p>
+{% endfor %}
+{{ pagination() }}
+
+{% endif %}
+
+{% endblock %}

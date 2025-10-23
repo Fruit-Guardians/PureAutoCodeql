@@ -1,0 +1,106 @@
+$xsmall-range: (0, 20em) !default;
+$small-range: (20.063em, 36em) !default;
+$medium-range: (36.063em, 52em) !default;
+$large-range: (52.063em, 60em) !default;
+$xlarge-range: (60.063em, 90em) !default;
+$xxlarge-range: (90.063em, 99999999em) !default;
+
+$text-color: #000000 !default;
+$body-color: #ffffff !default;
+$body-color-background: #eeeeee !default;
+$body-font-family: sans-serif !default;
+
+$highlight-color: #fafa40;
+$highlight-text-color: #000000;
+
+$base-margin: 16px !default;
+$base-spacing-content: 12px !default;
+$base-margin-reduced: $base-margin / 2 !default;
+
+$paragraph-line-height: 1.4 !default;
+$paragraph-margin: $base-spacing-content !default;
+
+$primary-color: #6b8fc7 !default;
+$primary-color-complement: #ffffff !default;
+
+$link-color: mix($primary-color, $text-color, 75%) !default;;
+$link-color-hover: mix($link-color, $text-color) !default;
+
+$info-color: mix($text-color, $body-color, 50%) !default;
+
+$header-line-height: 1.4 !default;
+$header-font-family: "Trebuchet MS", Helvetica, sans-serif !default;
+$header-font-weight: bold !default;
+$header-font-style: none !default;
+$header-font-color: mix($text-color, $primary-color, 50%) !default;
+$header-margin: $base-spacing-content !default;
+$header-background-color: $primary-color !default;
+
+$menu-width: 280px;
+
+$h1-font-size: 200% !default;
+$h2-font-size: 150% !default;
+$h3-font-size: 130% !default;
+$h4-font-size: 120% !default;
+$h5-font-size: 110% !default;
+$h6-font-size: 100% !default;
+
+$h1-font-reduction: 20% !default;
+$h2-font-reduction: 20% !default;
+$h3-font-reduction: 10% !default;
+$h4-font-reduction: 5% !default;
+$h5-font-reduction: 0% !default;
+$h6-font-reduction: 0% !default;
+
+$table-margin: $base-spacing-content !default;
+
+$button-font-size: 90% !default;
+
+$label-color: mix($text-color, $body-color, 80%);
+$label-required-color: $text-color;
+
+$input-border-color: mix($text-color, $body-color, 10%) !default;
+$light-border-color: mix($text-color, $body-color, 7%) !default;
+$light-block-background: mix($text-color, $body-color, 1%) !default;
+
+$flat-buttons: false;
+$comments-tree-fancy: false;
+
+$input-padding: $base-margin / 2 !default;
+$button-padding: ($base-margin / 3) $base-margin !default;
+
+$dark-theme: false !default;
+
+$new-color: #ffee55;
+$me-color: saturate($primary-color, 50%);
+
+$code-color: #d14;
+
+$transition-duration: 0.15s;
+
+$info-msg-color: $primary-color;
+$success-color: #468847;
+$warning-color: #f89406;
+$alert-color: #ffff00;
+$error-color: #b94a48;
+$text-color-alert: #e64;
+
+$debug-background: mix($text-color, $body-color, 10%);
+$debug-border-color: mix($text-color, $body-color, 15%);
+$debug-text-color: mix($text-color, $body-color, 60%);
+
+$info-background: mix($info-msg-color, $body-color, 20%);
+$info-border-color: mix($info-msg-color, $body-color, 30%);
+$info-text-color: $info-msg-color;
+
+$success-background: mix($success-color, $body-color, 10%);
+$success-border-color: mix($success-color, $body-color, 15%);
+$success-text-color: $success-color;
+
+$warning-background: mix($warning-color, $body-color, 15%);
+$warning-border-color: mix($warning-color, $body-color, 20%);
+$warning-text-color: $warning-color;
+
+$error-background: mix($error-color, $body-color, 15%);
+$error-border-color: mix($error-color, $body-color, 20%);
+$error-text-color: $error-color;

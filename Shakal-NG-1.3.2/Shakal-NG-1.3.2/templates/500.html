@@ -1,0 +1,41 @@
+{% extends "error.html" %}
+
+{% block details %}
+	<p>Táto chyba by sa štandardne nemala vyskytnúť. Znamená buď internú chybu v skripte, alebo neočakávané dáta od užívateľa. Ak problém pretrváva nahláste nám prosím chybu.</p>
+	<h2>Podrobnosti</h2>
+	<ul>
+		<li>Čas: {{ date_now }}</li>
+		<li>Požadovaná adresa: {{ request.get_full_path() }}</li>
+		{% if request.sentry and  request.sentry.id %}
+			<li>Sentry ID: {{ request.sentry.id }}</li>
+		{% endif %}
+	</ul>
+{% endblock %}
+
+{% block extraheaders %}
+<script src="https://cdn.ravenjs.com/2.3.0/raven.js"></script>
+{% endblock %}
+
+{% block extrajs %}
+{% if request.sentry and request.sentry.id %}
+
+<script>
+	if (window.Raven) {
+		document.getElementById('report_button').onclick = function() {
+			var dialog = Raven.showReportDialog({
+				eventId: '{{ request.sentry.id }}',
+				dsn: 'https://4a634b221f9f4e21a5f8c04df67c6fbb@sentry.linuxos.sk/2'
+			});
+			return false;
+		};
+		/*
+		Raven.showReportDialog({
+			eventId: '{{ request.sentry.id }}',
+			dsn: 'https://4a634b221f9f4e21a5f8c04df67c6fbb@sentry.linuxos.sk/2'
+		});
+		*/
+	}
+</script>
+{% endif %}
+
+{% endblock %}

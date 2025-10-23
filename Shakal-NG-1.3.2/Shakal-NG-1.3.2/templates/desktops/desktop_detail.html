@@ -1,0 +1,74 @@
+{% extends "desktops/base.html" %}
+
+{% block head_title %}{{ desktop }} | {{ super() }}{% endblock %}
+{% block html_extra %}{% include "partials/htmlscope_article.html" %}{% endblock %}
+
+{% block extraheaders %}
+	{{ super() }}
+	<meta name="description" content="{{ desktop.text|striptags|html_entity_decode|truncatechars("160") }}" />
+{% endblock %}
+{% block socialheaders %}
+	{% with
+		name=desktop.title,
+		description=desktop.text|striptags|html_entity_decode|truncatechars("300"),
+		image=thumbnail(desktop.image, size=(2048, 2048), format="jpg", quality=85).url,
+		created=desktop.created,
+		updated=desktop.updated,
+		author=desktop.author,
+		is_article=1
+	%}
+		{% include "partials/social_media.html" %}
+	{% endwith %}
+{% endblock %}
+
+{% block breadcrumbs %}
+	{{ breadcrumb(desktop) }}
+	{{ breadcrumb("Desktopy", url='desktops:list', page=1) }}
+	{{ super() }}
+{% endblock %}
+
+{% block content %}
+
+{% include "desktops/partials/informations.html" %}
+
+<div class="main-content with-sidebar">
+
+	<h1>{{ desktop }}</h1>
+
+	<div class="info">
+		<span class="time">{{ desktop.created|humandatetime }}</span> |
+		<span class="user">{{ user_link(desktop.author) }}</span>
+	</div>
+
+	<div class="desktop">
+		<a href="{{ desktop.image.url }}">
+			<img src="{{ thumbnail(desktop.image, size=(2048, 2048), format="jpg", quaity=85) }}" alt="{{ desktop }}" />
+		</a>
+	</div>
+
+	{{ desktop.text|safe }}
+
+	{% if request.user.is_authenticated and desktop.author != request.user %}
+		<form action="{{ request.path }}" method="post">{% csrf_token %}
+			<button class="btn" name="favorite" value="{{ favorited|yesno(",1") }}" type="submit">
+				<span class="wrap">
+					<span class="text">
+						{{ favorited|yesno("Odstrániť z obľúbených,Pridať medzi obľúbené") }}
+						({{ desktop.favorited_count }})
+					</span>
+				</span>
+			</button>
+		</form>
+	{% else %}
+		<p>
+			Medzi obľúbenými ({{ desktop.favorited_count }})
+		</p>
+	{% endif %}
+</div>
+
+{% with name=desktop.title %}
+	{% include "partials/share.html" %}
+{% endwith %}
+{% endblock %}
+
+{% block discussion %}{{ render_comments_toplevel(desktop) }}{% endblock %}

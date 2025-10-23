@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block head_title %}Screenshoty kancelárskych programov{% endblock %}
+{% block breadcrumbs %}
+{{ breadcrumb("Screenshoty kancelárskych programov") }}
+{{ breadcrumb("Linux v kancelárii", url="page_kancelaria") }}
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+<h1>Screenshoty kancelárskych programov</h1>
+
+<div class="gallery">
+
+<div class="image">
+	<a href="/media/IMG/oowriter.png"><img src="/media/IMG/thumbs/oowriter.png" style="width: 140px; height: 98px;" alt="thumbs/oowriter.png"/></a>
+	<div class="title">OpenOffice Writer</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/oocalc.png"><img src="/media/IMG/thumbs/oocalc.png" style="width: 140px; height: 105px;" alt="thumbs/oocalc.png"/></a>
+	<div class="title">OpenOffice Calc</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/impress.png"><img src="/media/IMG/thumbs/impress.png" style="width: 140px; height: 98px;" alt="thumbs/impress.png"/></a>
+	<div class="title">OpenOffice Impress</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/oodraw.jpg"><img src="/media/IMG/thumbs/oodraw.png" style="width: 140px; height: 98px;" alt="thumbs/oodraw.png"/></a>
+	<div class="title">OpenOffice Draw</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kword.jpg"><img src="/media/IMG/thumbs/kword.png" style="width: 140px; height: 98px;" alt="thumbs/kword.png"/></a>
+	<div class="title">KWord (Koffice)</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kspread.png"><img src="/media/IMG/thumbs/kspread.png" style="width: 140px; height: 98px;" alt="thumbs/kspread.png"/></a>
+	<div class="title">KSpread (Koffice)</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kpresenter.png"><img src="/media/IMG/thumbs/kpresenter.png" style="width: 140px; height: 98px;" alt="thumbs/kpresenter.png"/></a>
+	<div class="title">KPresenter (Koffice)</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kivio.png"><img src="/media/IMG/thumbs/kivio.png" style="width: 140px; height: 98px;" alt="thumbs/kivio.png"/></a>
+	<div class="title">Kivio (Koffice)</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kontour.png"><img src="/media/IMG/thumbs/kontour.png" style="width: 140px; height: 98px;" alt="thumbs/kontour.png"/></a>
+	<div class="title">Kontour (Koffice)</div>
+</div>
+
+<div class="image">
+	<a href="/media/IMG/kformula.png"><img src="/media/IMG/thumbs/kformula.png" style="width: 140px; height: 90px;" alt="thumbs/kformula.png"/></a>
+	<div class="title">KFormula (Koffice)</div>
+</div>
+
+</div>
+
+{% endblock %}
