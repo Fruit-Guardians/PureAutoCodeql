@@ -27,10 +27,11 @@ class CodeQLRunnerTool(BaseTool):
     
     name: str = "codeql_runner"
     description: str = (
-        "Executes CodeQL query code against a specified CodeQL database. "
+        "Executes CodeQL query code against a specified CodeQL database via 'codeql database analyze'. "
+        "Produces a SARIF v2.1.0 report at /output/result_YYYYMMDD_HHMMSS.sarif. "
         "Input should include the complete CodeQL query code and the path to the database. "
         "Optionally specify the target language (java/python/c); otherwise language will be auto-detected. "
-        "Returns the execution results or error messages."
+        "Returns the SARIF file path and any stdout/stderr details."
     )
     args_schema: Type[BaseModel] = CodeQLRunnerInput
     
@@ -44,30 +45,21 @@ class CodeQLRunnerTool(BaseTool):
         Returns:
             Formatted string representation of the results
         """
+        sarif_path = execution_result.get('sarif_path')
         if not execution_result['success']:
-            return f"Execution failed: {execution_result['output']}"
-        
-        results = execution_result.get('results', [])
-        if not results:
-            return "Query executed successfully but returned no results."
-        
-        # Format results as readable text
-        output_lines = [
-            f"Query executed successfully. Found {len(results)} result(s):",
-            ""
+            return (
+                f"Execution failed: {execution_result.get('output','')}. "
+                f"SARIF: {sarif_path}" if sarif_path else f"Execution failed: {execution_result.get('output','')}"
+            )
+
+        # Report SARIF location and any stdout
+        lines = [
+            "CodeQL analyze completed successfully.",
+            f"SARIF: {sarif_path}" if sarif_path else "SARIF: <not available>",
         ]
-        
-        for idx, result in enumerate(results, 1):
-            output_lines.append(f"Result {idx}:")
-            if isinstance(result, dict):
-                # Pretty print dictionary results
-                result_json = json.dumps(result, indent=2)
-                output_lines.append(result_json)
-            else:
-                output_lines.append(str(result))
-            output_lines.append("")
-        
-        return "\n".join(output_lines)
+        if execution_result.get('output'):
+            lines.extend(["", "stdout:", execution_result['output']])
+        return "\n".join(lines)
     
     def _run(
         self,

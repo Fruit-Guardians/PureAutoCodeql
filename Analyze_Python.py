@@ -17,7 +17,7 @@ from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
 @dataclass
 class AgentConfig:
     """Configuration for creating agents with consistent settings."""
-    model: str = "deepseek-reasoner"
+    model: str = "deepseek-chat"
     api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
     base_url: str = "https://api.deepseek.com/v1"
     temperature: float = 0

@@ -92,34 +92,37 @@ def test_codeql_runner_format_function():
     """Test result formatting."""
     tool = CodeQLRunnerTool()
     
-    # Test successful result with data
+    # Test successful result with SARIF output
     result = {
         'success': True,
-        'output': 'test output',
-        'results': [{'data': ['col1', 'col2']}, {'data': ['col3', 'col4']}]
+        'output': 'analyze ok',
+        'results': [],
+        'sarif_path': '/output/result_20240101_000000.sarif',
     }
     formatted = tool._format_results(result)
-    assert "Found 2 result(s)" in formatted
-    assert "Result 1:" in formatted
+    assert "CodeQL analyze completed successfully" in formatted
+    assert "/output/result_20240101_000000.sarif" in formatted
     
     # Test failed result
     failed_result = {
         'success': False,
         'output': 'Error message',
-        'results': []
+        'results': [],
+        'sarif_path': '/output/result_20240101_000000.sarif',
     }
     formatted_fail = tool._format_results(failed_result)
     assert "Execution failed" in formatted_fail
     assert "Error message" in formatted_fail
+    assert "/output/result_20240101_000000.sarif" in formatted_fail
     
-    # Test empty results
+    # Test success without SARIF path (edge case)
     empty_result = {
         'success': True,
         'output': 'ok',
-        'results': []
+        'results': [],
     }
     formatted_empty = tool._format_results(empty_result)
-    assert "no results" in formatted_empty.lower()
+    assert "CodeQL analyze completed successfully" in formatted_empty
 
 
 if __name__ == "__main__":

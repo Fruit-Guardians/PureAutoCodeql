@@ -44,3 +44,17 @@ uv run Analyze.py
 建议使用openspec辅助vibe coding
 
 
+
+## CodeQL 执行与输出
+
+本项目的 CodeQL 查询执行已统一为 `codeql database analyze`，并固定输出 **SARIF 2.1.0** 报告：
+
+```bash
+codeql database analyze <database> <query-or-pack> \
+  --format=sarif-v2.1.0 \
+  --output=/output/result_YYYYMMDD_HHMMSS.sarif
+```
+
+- 输出目录：`/output/`（若不可写则降级到当前目录下的 `./output/`）
+- 文件命名：`result_YYYYMMDD_HHMMSS.sarif`（时间戳取自工具调用时间）
+

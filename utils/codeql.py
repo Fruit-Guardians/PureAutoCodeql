@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional, Dict, List, Any
+from datetime import datetime
 
 
 # 功能：
@@ -75,8 +76,16 @@ dependencies:
         print(f"Warning: Failed to run codeql pack install: {str(e)}")
     
     # Write the query file
+    # Ensure any BOM/leading whitespace is removed so metadata starts at byte 0
+    sanitized = query_content
+    # Strip UTF-8 BOM if present
+    if sanitized.startswith('\ufeff'):
+        sanitized = sanitized.lstrip('\ufeff')
+    # Remove leading blank lines and spaces so the metadata comment is at the top
+    sanitized = sanitized.lstrip()
+
     query_file = pack_dir / "query.ql"
-    query_file.write_text(query_content, encoding='utf-8')
+    query_file.write_text(sanitized, encoding='utf-8')
     
     return query_file
 
@@ -95,51 +104,77 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         - success (bool): Whether execution succeeded
         - output (str): Query output or error message
         - results (List): Parsed results if successful, empty list otherwise
+        - sarif_path (str): Path to the SARIF output file
     """
     query_file = None
     pack_dir = None
+    sarif_path: Optional[Path] = None
     try:
         query_file = create_temporary_qlpack(query_content, language=language)
         pack_dir = query_file.parent
-        
+
+        # Prepare standardized SARIF output path
+        output_dir = Path('./output')
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # Fallback to current working directory if /output is not writable
+            output_dir = Path.cwd() / 'output'
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        sarif_path = output_dir / f'result_{timestamp}.sarif'
+
+        # Execute using `codeql database analyze` with SARIF v2.1.0 output
         result = subprocess.run(
-            ['codeql', 'query', 'run', '--database', database_path, str(query_file)],
+            [
+                'codeql', 'database', 'analyze',
+                database_path,
+                str(query_file),
+                '--rerun',
+                '--format=sarifv2.1.0',
+                f'--output={str(sarif_path)}',
+            ],
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=600
         )
-        
+
         if result.returncode == 0:
-            parsed_results = parse_codeql_results(result.stdout)
             return {
                 'success': True,
-                'output': result.stdout,
-                'results': parsed_results
+                'output': (result.stdout or '').strip(),
+                'results': [],
+                'sarif_path': str(sarif_path) if sarif_path else None,
             }
         else:
             return {
                 'success': False,
-                'output': result.stderr or result.stdout,
-                'results': []
+                'output': (result.stderr or result.stdout or '').strip(),
+                'results': [],
+                'sarif_path': str(sarif_path) if sarif_path else None,
             }
     
     except subprocess.TimeoutExpired:
         return {
             'success': False,
-            'output': 'Query execution timed out after 300 seconds',
-            'results': []
+            'output': 'Query execution timed out after 600 seconds',
+            'results': [],
+            'sarif_path': str(sarif_path) if sarif_path else None,
         }
     except FileNotFoundError:
         return {
             'success': False,
             'output': 'CodeQL CLI not found. Ensure codeql is in PATH',
-            'results': []
+            'results': [],
+            'sarif_path': str(sarif_path) if sarif_path else None,
         }
     except Exception as e:
         return {
             'success': False,
             'output': f'Execution error: {str(e)}',
-            'results': []
+            'results': [],
+            'sarif_path': str(sarif_path) if sarif_path else None,
         }
     finally:
         if pack_dir and pack_dir.exists():
