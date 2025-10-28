@@ -1,1 +1,0 @@
-Overovací e-mail odoslaný na adresu {{ email }}.

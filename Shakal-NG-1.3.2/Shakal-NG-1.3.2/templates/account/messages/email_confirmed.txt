@@ -1,1 +1,0 @@
-Potvrdili ste e-mailovú adresu {{ email }}.

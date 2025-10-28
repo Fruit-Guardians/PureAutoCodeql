@@ -1,2 +1,0 @@
-{% autoescape off %}{{ object.title }}
-{{ object.revision.body|striptags|html_entity_decode }}{% endautoescape %}

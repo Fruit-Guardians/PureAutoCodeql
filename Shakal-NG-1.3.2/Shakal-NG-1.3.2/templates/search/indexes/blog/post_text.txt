@@ -1,3 +1,0 @@
-{% load html_entity_decode %}{% autoescape off %}{{ object.title }}
-{{ object.perex|striptags|html_entity_decode }}
-{{ object.content|striptags|html_entity_decode }}{% endautoescape %}

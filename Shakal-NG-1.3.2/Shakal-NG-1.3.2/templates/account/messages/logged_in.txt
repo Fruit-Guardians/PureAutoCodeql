@@ -1,1 +1,0 @@
-Úspešne ste sa prihlásili ako {{user}}.
