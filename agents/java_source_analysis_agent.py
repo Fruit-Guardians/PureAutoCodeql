@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 import os
 import json
 import logging
@@ -25,13 +25,19 @@ logger = logging.getLogger(__name__)
 
 
 class JavaSourceAnalysisAgent:
-    
-    def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "h5-vsan-service.jar_Decompiler.com"):
+
+    def __init__(
+        self,
+        analyzer: "MultiAgentAnalyzer",
+        source_root: str = "h5-vsan-service.jar_Decompiler.com",
+        database_path: Optional[str] = None,
+    ):
         self.analyzer = analyzer
         self.source_root = source_root
         # Initialize CodeQL tools
         self.codeql_generator = CodeQLGeneratorTool(analyzer=analyzer)
         self.codeql_runner = CodeQLRunnerTool()
+        self.database_path = database_path
     
     def build_prompt(self, cve_analysis: str, java_paths: List[str]) -> str:
         """Build a simplified prompt for CodeQL-based analysis."""
@@ -139,12 +145,17 @@ class JavaSourceAnalysisAgent:
             logger.error(error_msg)
             return error_msg
     
-    async def execute_source_codeql_query(self, query_content: str, database_path: str = "h5-vsan/db-java") -> str:
+    async def execute_source_codeql_query(
+        self,
+        query_content: str,
+        database_path: Optional[str] = None,
+    ) -> str:
         """Execute CodeQL query for source analysis."""
-        logger.info(f"Starting CodeQL query execution on database: {database_path}")
+        resolved_db = database_path or self.database_path or "h5-vsan/db-java"
+        logger.info(f"Starting CodeQL query execution on database: {resolved_db}")
         try:
             logger.debug(f"CodeQL query content: {query_content[:200]}...")
-            result = await self.codeql_runner._arun(query_content, database_path)
+            result = await self.codeql_runner._arun(query_content, resolved_db)
             logger.info("CodeQL query execution completed successfully")
             return result
         except Exception as e:
