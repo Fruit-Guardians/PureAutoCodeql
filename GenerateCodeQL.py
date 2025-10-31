@@ -9,6 +9,7 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 from agents.codeql_generator_agent import CodeQLGeneratorAgent
+from rag_codeql_tool import create_codeql_rag_tool
 
 
 @dataclass
@@ -107,19 +108,59 @@ def extract_codeql_from_content(content: str) -> str:
         return match.group(1).strip()
     return content.strip()
 
-async def generate_codeql_query() -> None:
-    """Generate CodeQL query based on user requirement with streaming output."""
+async def generate_codeql_query(requirement: str = None, use_rag: bool = True) -> None:
+    """
+    生成基于用户需求的CodeQL查询，支持RAG增强。
+    
+    Args:
+        requirement: 用户需求描述，如果为None则使用默认需求
+        use_rag: 是否使用RAG技术增强提示词
+    """
     try:
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
         
         codeql_agent = CodeQLGeneratorAgent(analyzer)
         
-        # 直接在代码中定义需求
-        requirement = "查找Java 的可能的Source点"
+        # 设置默认需求
+        if requirement is None:
+            requirement = "查找Java 的可能的Source点"
         
         print("正在生成 CodeQL 查询...")
+        print(f"需求: {requirement}")
+        print(f"使用RAG增强: {'是' if use_rag else '否'}")
         print("=" * 50)
+        
+        # 使用RAG增强提示词
+        if use_rag:
+            print("正在检索CodeQL Java标准库文档...")
+            rag_tool = create_codeql_rag_tool()
+            
+            # 获取相关文档上下文
+            context = rag_tool.get_relevant_context(requirement)
+            print("检索完成，开始生成查询...")
+            
+            # 构建增强的提示词
+            enhanced_prompt = f"""
+基于以下CodeQL Java标准库知识，请生成相应的CodeQL查询：
+
+相关文档上下文：
+{context}
+
+用户需求：{requirement}
+
+请基于上述文档生成准确、符合CodeQL语法的查询。确保：
+1. 使用正确的导入语句
+2. 遵循CodeQL最佳实践
+3. 包含适当的注释说明
+4. 输出完整的可执行查询
+
+请直接生成CodeQL代码，用<codeql>标签包裹：
+"""
+            prompt = enhanced_prompt
+        else:
+            # 使用原始提示词
+            prompt = codeql_agent.build_prompt(requirement)
         
         # 流式输出
         full_content = ""
@@ -128,7 +169,6 @@ async def generate_codeql_query() -> None:
             full_content += text
             print(text, end='', flush=True)
         
-        prompt = codeql_agent.build_prompt(requirement)
         result = await analyzer.run_agent_stream(prompt, stream_callback)
         
         print("\n" + "=" * 50)
@@ -139,13 +179,35 @@ async def generate_codeql_query() -> None:
             # 提取 CodeQL 代码
             codeql_code = extract_codeql_from_content(full_content)
             
+            print("生成的CodeQL查询:")
+            print("=" * 50)
             print(codeql_code)
             
+            # 保存到文件
+            output_file = "generated_query.ql"
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(codeql_code)
+            print(f"\n查询已保存到: {output_file}")
+            
     except Exception as e:  
-        print(e)
+        print(f"生成过程中出现错误: {e}")
 
 async def main() -> None:
-    await generate_codeql_query()
+    """主函数，支持命令行参数控制RAG功能。"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="生成CodeQL查询")
+    parser.add_argument("--requirement", "-r", type=str, 
+                       help="用户需求描述，例如：查找Java中的SQL注入漏洞")
+    parser.add_argument("--no-rag", action="store_true", 
+                       help="禁用RAG增强功能")
+    
+    args = parser.parse_args()
+    
+    requirement = args.requirement
+    use_rag = not args.no_rag
+    
+    await generate_codeql_query(requirement, use_rag)
 
 
 if __name__ == "__main__":

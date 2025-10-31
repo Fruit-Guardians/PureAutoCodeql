@@ -16,14 +16,14 @@ if TYPE_CHECKING:
 
 
 class CPathAnalysisAgent:
-    """Analyze C/C++ source files to summarize potential Sink points."""
+    """分析C/C++源文件以总结潜在的Sink点。"""
 
     def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "src"):
         self.analyzer = analyzer
         self.source_root = source_root
 
     def find_c_files(self, directory: Path) -> List[str]:
-        """Return relative paths to C/C++ files for downstream analysis."""
+        """返回C/C++文件的相对路径用于下游分析。"""
         patterns = ("*.c", "*.cc", "*.cpp", "*.cxx", "*.h", "*.hh", "*.hpp", "*.hxx")
         results = set()
         if directory.exists():
@@ -37,7 +37,7 @@ class CPathAnalysisAgent:
         return sorted(results)
 
     def build_prompt(self, cve_analysis: str, c_paths: List[str], diff_path: str = "") -> str:
-        """Construct the analysis prompt for locating Sink points."""
+        """构建用于定位Sink点的分析提示词。"""
         paths_listing = "\n".join(c_paths)
         return f"""你是一名资深的 CodeQL 安全研究员与 C/C++ 漏洞审计专家。
 
@@ -98,7 +98,7 @@ void vulnerable() {{
 """
 
     async def analyze_c_paths(self, cve_analysis: str, diff_path: str = "") -> "AgentResult":
-        """Run the Sink path analysis workflow for C/C++ code."""
+        """运行C/C++代码的Sink路径分析工作流。"""
         try:
             directory = Path(self.source_root)
             c_paths = self.find_c_files(directory)

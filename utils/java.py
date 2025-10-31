@@ -4,16 +4,15 @@ from typing import Optional
 
 def find_path_from_java_file(java_file_path: str, source_root: str = "src/main/java") -> Optional[str]:
     """
-    Parses a single .java file to find its canonical source path based on its
-    package and class declaration.
+    解析单个.java文件，根据其包和类声明查找其规范源路径。
 
     Args:
-        java_file_path: The path to the .java file to parse.
-        source_root: The source root directory (e.g., "src/main/java").
+        java_file_path: 要解析的.java文件的路径。
+        source_root: 源根目录（例如"src/main/java"）。
 
     Returns:
-        The canonical path as a string (e.g., "src/main/java/com/foo/Bar.java"),
-        or None if parsing fails (file not found, or package/class not found).
+        规范路径字符串（例如"src/main/java/com/foo/Bar.java"），
+        如果解析失败（文件未找到，或包/类未找到）则返回None。
     """
     
     package_regex = re.compile(r"^\s*package\s+([a-zA-Z0-9_.]+);")

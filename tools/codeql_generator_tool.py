@@ -1,4 +1,4 @@
-"""LangChain tool for generating CodeQL queries from natural language."""
+"""用于从自然语言生成CodeQL查询的LangChain工具。"""
 
 import re
 from typing import Optional, Type, Any
@@ -7,27 +7,27 @@ from langchain_core.tools import BaseTool
 
 
 class CodeQLGeneratorInput(BaseModel):
-    """Input schema for CodeQL Generator Tool."""
+    """CodeQL生成器工具的输入模式。"""
     requirement: str = Field(
-        description="Natural language description of the CodeQL query requirement. "
-                    "For example: 'Find all user input sources' or 'Find paths from user input to SQL execution'"
+        description="CodeQL查询需求的自然语言描述。 "
+                    "例如：'查找所有用户输入源'或'查找从用户输入到SQL执行的路径'"
     )
     # Added: allow selecting target language
     language: Optional[str] = Field(
         default="java",
-        description="Target programming language for the CodeQL query ('java', 'python', 'c'). Defaults to 'java'."
+        description="CodeQL查询的目标编程语言（'java', 'python', 'c'）。默认为'java'。"
     )
 
 
 class CodeQLGeneratorTool(BaseTool):
-    """Tool for generating CodeQL query code from natural language requirements."""
+    """用于从自然语言需求生成CodeQL查询代码的工具。"""
     
     name: str = "codeql_generator"
     description: str = (
-        "Generates CodeQL query code based on natural language requirements. "
-        "Input should be a clear description of what you want to find in the code. "
-        "Optionally specify the target language (java/python/c). "
-        "Returns a complete CodeQL query that can be executed against a CodeQL database."
+        "基于自然语言需求生成CodeQL查询代码。 "
+        "输入应清晰描述您想在代码中查找的内容。 "
+        "可选指定目标语言（java/python/c）。 "
+        "返回可在CodeQL数据库上执行的完整CodeQL查询。"
     )
     args_schema: Type[BaseModel] = CodeQLGeneratorInput
     
@@ -36,10 +36,10 @@ class CodeQLGeneratorTool(BaseTool):
     
     def __init__(self, analyzer=None, **kwargs):
         """
-        Initialize the tool with a MultiAgentAnalyzer instance.
+        使用MultiAgentAnalyzer实例初始化工具。
         
         Args:
-            analyzer: Instance of MultiAgentAnalyzer that provides LLM capabilities
+            analyzer: 提供LLM能力的MultiAgentAnalyzer实例
         """
         super().__init__(**kwargs)
         self.analyzer = analyzer
@@ -57,15 +57,15 @@ class CodeQLGeneratorTool(BaseTool):
         run_manager: Optional[Any] = None
     ) -> str:
         """
-        Synchronous execution (not supported for async-only agent).
+        同步执行（不支持仅异步的agent）。
         
         Args:
-            requirement: Natural language requirement for CodeQL query
-            language: Target programming language (java/python/c)
-            run_manager: Callback manager for tool execution
+            requirement: CodeQL查询的自然语言需求
+            language: 目标编程语言（java/python/c）
+            run_manager: 工具执行的回调管理器
             
         Returns:
-            Generated CodeQL query code or error message
+            生成的CodeQL查询代码或错误消息
         """
         return "Synchronous execution not supported. Please use async version (arun)."
     
@@ -76,15 +76,15 @@ class CodeQLGeneratorTool(BaseTool):
         run_manager: Optional[Any] = None
     ) -> str:
         """
-        Asynchronously generate CodeQL query code.
+        异步生成CodeQL查询代码。
         
         Args:
-            requirement: Natural language requirement for CodeQL query
-            language: Target programming language (java/python/c). Defaults to 'java' if not provided.
-            run_manager: Async callback manager for tool execution
+            requirement: CodeQL查询的自然语言需求
+            language: 目标编程语言（java/python/c）。如果未提供，默认为'java'
+            run_manager: 异步工具执行的回调管理器
             
         Returns:
-            Generated CodeQL query code or error message
+            生成的CodeQL查询代码或错误消息
         """
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."

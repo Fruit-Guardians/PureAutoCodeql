@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class CSourceAnalysisAgent:
-    """Use CodeQL tooling to identify potential Source points in C/C++ codebases."""
+    """使用CodeQL工具识别C/C++代码库中的潜在Source点。"""
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class CSourceAnalysisAgent:
         self.codeql_runner = CodeQLRunnerTool()
 
     def find_c_files(self, directory: Path) -> List[str]:
-        """Collect C/C++ source files under the given directory."""
+        """收集给定目录下的C/C++源文件。"""
         patterns = ("*.c", "*.cc", "*.cpp", "*.cxx", "*.h", "*.hh", "*.hpp", "*.hxx")
         collected = set()
         if directory.exists():
@@ -170,7 +170,7 @@ class CSourceAnalysisAgent:
 """
 
     async def generate_source_codeql_query(self, cve_analysis: str) -> str:
-        """Generate a CodeQL query tailored for C/C++ source discovery."""
+        """生成针对C/C++源码发现的CodeQL查询。"""
         try:
             requirement = f"""
             Based on the CVE analysis: {cve_analysis}
@@ -191,7 +191,7 @@ class CSourceAnalysisAgent:
             return f"Error generating CodeQL query: {str(exc)}"
 
     async def execute_source_codeql_query(self, query_content: str, database_path: str = None) -> str:
-        """Execute the generated CodeQL query against the configured C/C++ database."""
+        """对配置的C/C++数据库执行生成的CodeQL查询。"""
         try:
             db_path = database_path or self.database_path
             return await self.codeql_runner._arun(query_content, db_path, language="cpp")

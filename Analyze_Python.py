@@ -16,7 +16,7 @@ from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
 
 @dataclass
 class AgentConfig:
-    """Configuration for creating agents with consistent settings."""
+    """用于创建具有一致设置的Agent的配置。"""
     model: str = "deepseek-chat"
     api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
     base_url: str = "https://api.deepseek.com/v1"
@@ -28,14 +28,14 @@ class AgentConfig:
 
 @dataclass
 class AgentResult:
-    """Result from an agent execution."""
+    """Agent执行的结果。"""
     content: str
     success: bool
     error: Optional[str] = None
 
 
 class MultiAgentAnalyzer:
-    """Multi-agent analyzer for vulnerability analysis workflows (Python-focused)."""
+    """用于漏洞分析工作流的多Agent分析器（Python专用）。"""
 
     def __init__(self, config: AgentConfig = None):
         self.config = config or AgentConfig()
@@ -44,7 +44,7 @@ class MultiAgentAnalyzer:
         self.tools = None
 
     async def initialize(self) -> None:
-        """Initialize LLM and MCP client for reuse across agents."""
+        """初始化LLM和MCP客户端以便在多个Agent之间复用。"""
         self.llm = ChatOpenAI(
             model=self.config.model,
             api_key=self.config.api_key,
@@ -80,7 +80,7 @@ class MultiAgentAnalyzer:
         self.tools = await self.mcp_client.get_tools()
 
     async def run_agent(self, prompt: str) -> AgentResult:
-        """Run a single agent with the given prompt."""
+        """使用给定的提示词运行单个Agent。"""
         try:
             if not self.llm or not self.tools:
                 await self.initialize()
@@ -115,7 +115,7 @@ def write_python_analysis_output(
     source_result: AgentResult,
     output_path: Path = Path("output_python.md"),
 ) -> None:
-    """Write combined analysis results to a Markdown file (Python headings)."""
+    """将合并的分析结果写入Markdown文件（Python标题）。"""
     try:
         sections = [
             "# Multi-Agent Analysis Output (Python)\n",
@@ -135,9 +135,9 @@ def write_python_analysis_output(
 
 
 def ensure_python_codeql_db(source_root: str, db_path: str) -> bool:
-    """Ensure a Python CodeQL database exists; create it if missing.
+    """确保Python CodeQL数据库存在；如果缺失则创建它。
 
-    Returns True if database exists or created successfully, False otherwise.
+    如果数据库存在或创建成功则返回True，否则返回False。
     """
     try:
         db_dir = Path(db_path)
@@ -175,7 +175,7 @@ async def run_python_multi_agent_analysis(
     source_root: str,
     database_path: str,
 ) -> None:
-    """Run Python CVE, Sink, and Source analysis on the given project."""
+    """在给定项目上运行Python CVE、Sink和Source分析。"""
     try:
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()

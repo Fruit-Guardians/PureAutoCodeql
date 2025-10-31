@@ -16,14 +16,14 @@ if TYPE_CHECKING:
 
 
 class PythonPathAnalysisAgent:
-    """Analyze Python project structure to locate and summarize Sink points."""
+    """分析Python项目结构以定位和总结Sink点。"""
 
     def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "src"):
         self.analyzer = analyzer
         self.source_root = source_root
 
     def find_python_files(self, directory: Path) -> List[str]:
-        """Return relative paths to Python files located under source_root."""
+        """返回位于source_root下的Python文件的相对路径。"""
         results = []
         if directory.exists():
             for path in directory.rglob("*.py"):
@@ -35,7 +35,7 @@ class PythonPathAnalysisAgent:
         return sorted(results)
 
     def build_prompt(self, cve_analysis: str, py_paths: List[str], diff_path: str = "") -> str:
-        """Build a detailed prompt instructing the LLM to locate Sink points."""
+        """构建详细的提示词，指导LLM定位Sink点。"""
         paths_listing = "\n".join(py_paths)
         return f"""你是一名资深的 CodeQL 安全研究员与 Python 代码审计专家，专注识别可能的 Sink 函数及其调用路径。
 任务目标：基于提供的 CVE 分析、Python 文件路径和可选的 diff 文件，定位可能的漏洞接收点（Sink），并输出结构化的审计报告。
@@ -104,7 +104,7 @@ def vulnerable():
 """
 
     async def analyze_python_paths(self, cve_analysis: str, diff_path: str = "") -> "AgentResult":
-        """Execute sink path analysis for Python projects."""
+        """执行Python项目的Sink路径分析。"""
         try:
             directory = Path(self.source_root)
             py_paths = self.find_python_files(directory)

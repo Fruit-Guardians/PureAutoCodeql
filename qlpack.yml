@@ -1,0 +1,4 @@
+name: spring-reflection-injection-query
+version: 1.0.0
+libraryPathDependencies: codeql/java-all
+extractor: java

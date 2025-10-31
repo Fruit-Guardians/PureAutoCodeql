@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class PythonSourceAnalysisAgent:
-    """Analyze Python sources to identify possible Source points using CodeQL tools."""
+    """使用CodeQL工具分析Python源码，识别可能的Source点。"""
 
     def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "src", database_path: str = "db-python"):
         self.analyzer = analyzer
@@ -33,7 +33,7 @@ class PythonSourceAnalysisAgent:
         self.codeql_runner = CodeQLRunnerTool()
 
     def find_python_files(self, directory: Path) -> List[str]:
-        """Find all Python files in the specified directory and return relative paths."""
+        """在指定目录中查找所有Python文件并返回相对路径。"""
         py_files = []
         if directory.exists():
             for py_file in directory.rglob("*.py"):
@@ -103,21 +103,21 @@ class PythonSourceAnalysisAgent:
 """
 
     async def generate_source_codeql_query(self, cve_analysis: str) -> str:
-        """Generate CodeQL query for source analysis (Python)."""
+        """生成用于源码分析的CodeQL查询（Python）。"""
         try:
             requirement = f"""
-            Based on the CVE analysis: {cve_analysis}
+            基于CVE分析：{cve_analysis}
 
-            Generate a CodeQL query to find potential source points in Python code that could receive untrusted input.
-            Focus on:
-            - Web framework request parameters and bodies (Flask/Django/FastAPI)
-            - File system operations
-            - Environment variables
-            - Network input
-            - Deserialization entry points (pickle/yaml/json/xml)
-            - Template/expression evaluation (jinja2/eval/exec)
+            生成一个CodeQL查询来查找Python代码中可能接收不可信输入的潜在Source点。
+            重点关注：
+            - Web框架请求参数和请求体（Flask/Django/FastAPI）
+            - 文件系统操作
+            - 环境变量
+            - 网络输入
+            - 反序列化入口点（pickle/yaml/json/xml）
+            - 模板/表达式评估（jinja2/eval/exec）
 
-            The query should identify functions or methods that could be entry points for untrusted data.
+            查询应识别可能作为不可信数据入口点的函数或方法。
             """
             result = await self.codeql_generator._arun(requirement, language="python")
             return result
@@ -125,7 +125,7 @@ class PythonSourceAnalysisAgent:
             return f"Error generating CodeQL query: {str(e)}"
 
     async def execute_source_codeql_query(self, query_content: str, database_path: str = None) -> str:
-        """Execute CodeQL query for Python source analysis."""
+        """执行用于Python源码分析的CodeQL查询。"""
         try:
             db_path = database_path or self.database_path
             result = await self.codeql_runner._arun(query_content, db_path, language="python")
@@ -134,7 +134,7 @@ class PythonSourceAnalysisAgent:
             return f"Error executing CodeQL query: {str(e)}"
 
     async def analyze_python_sources(self, cve_analysis: str) -> "AgentResult":
-        """Analyze Python sources and identify possible Source points using CodeQL tools."""
+        """分析Python源码并使用CodeQL工具识别可能的Source点。"""
         try:
             directory = Path(self.source_root)
             py_paths = self.find_python_files(directory)

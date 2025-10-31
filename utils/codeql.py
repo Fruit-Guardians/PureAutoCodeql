@@ -10,7 +10,7 @@ from datetime import datetime
 
 # 功能：
 def detect_language_from_query(query_content: str) -> str:
-    """Simple heuristic to detect CodeQL language from query content."""
+    """简单的启发式方法，从查询内容中检测CodeQL语言。"""
     content = query_content.lower()
     if 'import java' in content:
         return 'java'
@@ -22,7 +22,7 @@ def detect_language_from_query(query_content: str) -> str:
 
 
 def language_to_pack(language: str) -> str:
-    """Map language to the appropriate CodeQL pack dependency."""
+    """将语言映射到相应的CodeQL包依赖。"""
     lang = (language or 'java').lower()
     mapping = {
         'java': 'codeql/java-all',
@@ -34,15 +34,15 @@ def language_to_pack(language: str) -> str:
 
 def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
     """
-    Create a temporary CodeQL query pack with a qlpack.yml file and install dependencies.
-    Dynamically selects pack dependencies based on target language.
+    创建一个临时的CodeQL查询包，包含qlpack.yml文件。
+    根据目标语言动态选择包依赖。
     
     Args:
-        query_content: The CodeQL query string.
-        language: Optional explicit language (e.g., 'java', 'python', 'cpp'). If omitted, auto-detect from query.
+        query_content: CodeQL查询字符串。
+        language: 可选的显式语言（例如：'java'、'python'、'cpp'）。如果省略，则从查询中自动检测。
     
     Returns:
-        Path to the created temporary query file inside the pack.
+        包内创建的临时查询文件的路径。
     """
     # Create a temporary directory to act as the qlpack
     pack_dir = Path(tempfile.mkdtemp())
@@ -61,14 +61,14 @@ dependencies:
     # Write the qlpack.yml file
     (pack_dir / "qlpack.yml").write_text(qlpack_content, encoding='utf-8')
     
-    # Install pack dependencies
+    # Install dependencies to create proper lock file
     try:
         result = subprocess.run(
             ['codeql', 'pack', 'install'],
             cwd=pack_dir,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=30
         )
         if result.returncode != 0:
             print(f"Warning: Failed to install pack dependencies: {result.stderr}")
@@ -92,19 +92,19 @@ dependencies:
 
 def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None) -> Dict[str, Any]:
     """
-    Execute a CodeQL query against a specified database.
+    对指定的数据库执行CodeQL查询。
     
     Args:
-        query_content: The CodeQL query string to execute.
-        database_path: Path to the CodeQL database.
-        language: Optional explicit language ( 'java', 'python', 'c'). If omitted, auto-detect from query.
+        query_content: 要执行的CodeQL查询字符串。
+        database_path: CodeQL数据库的路径。
+        language: 可选的显式语言（'java'、'python'、'c'）。如果省略，则从查询中自动检测。
     
     Returns:
-        A dictionary containing:
-        - success (bool): Whether execution succeeded
-        - output (str): Query output or error message
-        - results (List): Parsed results if successful, empty list otherwise
-        - sarif_path (str): Path to the SARIF output file
+        包含以下内容的字典：
+        - success (bool): 执行是否成功
+        - output (str): 查询输出或错误消息
+        - results (List): 如果成功则包含解析结果，否则为空列表
+        - sarif_path (str): SARIF输出文件的路径
     """
     query_file = None
     pack_dir = None
@@ -186,13 +186,13 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
 
 def parse_codeql_results(result_output: str) -> List[Dict[str, Any]]:
     """
-    Parse CodeQL query output into structured data.
+    将CodeQL查询输出解析为结构化数据。
     
     Args:
-        result_output: Raw output from CodeQL query execution.
+        result_output: CodeQL查询执行的原始输出。
     
     Returns:
-        List of parsed result records. Returns empty list if no results or parsing fails.
+        解析后的结果记录列表。如果没有结果或解析失败，则返回空列表。
     """
     if not result_output or not result_output.strip():
         return []

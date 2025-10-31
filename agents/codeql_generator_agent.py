@@ -15,53 +15,45 @@ if TYPE_CHECKING:
 
 
 class CodeQLGeneratorAgent:
-    """Agent for generating CodeQL query code based on natural language requirements."""
+    """基于自然语言需求生成CodeQL查询代码的Agent。"""
     
     def __init__(self, analyzer: "MultiAgentAnalyzer"):
         self.analyzer = analyzer
     
     def build_prompt(self, requirement: str, language: str = "java") -> str:
-        """Build a prompt to generate CodeQL code based on user requirements and target language."""
+        """构建提示词来生成基于用户需求和目标语言的CodeQL代码。"""
         lang = (language or "java").lower()
+        
+        # 简化的中文提示词
         common_intro = (
-            "You are a CodeQL expert. Generate CodeQL query code based on the user's requirement.\n"
-            "Only output the CodeQL code wrapped in <codeql></codeql> tags without any extra explanation or styling.\n\n"
-            "Common scenarios:\n"
-            "- Querying source points (e.g., user input entry points)\n"
-            "- Querying specific function calls\n"
-            "- Analyzing data flow paths (taint tracking)\n"
-            "- Finding security vulnerabilities\n\n"
+            "你是CodeQL专家。根据用户需求生成CodeQL查询代码。\n"
+            "只输出用<codeql></codeql>标签包裹的CodeQL代码，不要额外解释。\n\n"
         )
+        
+        # 语言特定的导入提示
         if lang == "python":
-            imports_hint = (
-                "Requirements:\n"
-                "1. Generate valid CodeQL syntax for Python\n"
-                "2. Include necessary imports (e.g., import python, import semmle.code.python.dataflow.TaintTracking or appropriate dataflow/security modules)\n"
-                "3. Wrap the entire code in <codeql></codeql> tags\n"
-                "4. Do not include any explanation outside the tags\n\n"
-            )
+            imports_hint = "生成Python的CodeQL语法，包含必要导入（如import python, import semmle.code.python.dataflow.TaintTracking）\n"
         elif lang in {"cpp", "c", "c++"}:
-            imports_hint = (
-                "Requirements:\n"
-                "1. Generate valid CodeQL syntax for C/C++\n"
-                "2. Include necessary imports (e.g., import cpp, import semmle.code.cpp.dataflow.TaintTracking)\n"
-                "3. Wrap the entire code in <codeql></codeql> tags\n"
-                "4. Do not include any explanation outside the tags\n\n"
-            )
+            imports_hint = "生成C/C++的CodeQL语法，包含必要导入（如import cpp, import semmle.code.cpp.dataflow.TaintTracking）\n"
         else:
+            # Java特定要求
             imports_hint = (
-                "Requirements:\n"
-                "1. Generate valid CodeQL syntax for Java\n"
-                "2. Include necessary imports (e.g., import java, import semmle.code.java.dataflow.TaintTracking)\n"
-                "3. Wrap the entire code in <codeql></codeql> tags\n"
-                "4. Do not include any explanation outside the tags\n\n"
+                "生成Java的CodeQL语法，包含必要导入（如import java, import semmle.code.java.dataflow.TaintTracking）\n"
+                "**重要要求：**\n"
+                "- 禁止使用MethodAccess（已废弃）\n"
+                "- 必须使用MethodCall\n"
+                "- 示例：使用`exists(MethodCall mc | mc.getMethod().hasName(\"invoke\"))`\n"
             )
+        
         return (
-            common_intro + imports_hint + f"User requirement: {requirement}\n"
+            common_intro + 
+            imports_hint + 
+            "将代码包裹在<codeql></codeql>标签中，不要额外解释。\n\n" +
+            f"用户需求：{requirement}\n"
         )
     
     async def generate_codeql(self, requirement: str, language: str = "java") -> "AgentResult":
-        """Generate CodeQL code based on user requirement and target language."""
+        """基于用户需求和目标语言生成CodeQL代码。"""
         try:
             prompt = self.build_prompt(requirement, language=language)
             return await self.analyzer.run_agent(prompt)

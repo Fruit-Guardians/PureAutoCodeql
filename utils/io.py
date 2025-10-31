@@ -33,8 +33,10 @@ def write_analysis_output(
     output_path: Path = Path("output.md"),
     *,
     intel_bundle: Optional["IntelBundle"] = None,
+    codeql_result: Optional["AgentResult"] = None,
+    codeql_execution_result: Optional["AgentResult"] = None,
 ) -> None:
-    """将合并的Source和Sink分析结果写入Markdown文件。"""
+    """将合并的Source和Sink分析结果以及CodeQL查询和执行结果写入Markdown文件。"""
     try:
         sections = [
             "# Multi-Agent Analysis Output\n",
@@ -54,9 +56,29 @@ def write_analysis_output(
                 (sink_result.content if sink_result and sink_result.success else f"(failed) {sink_result.error if sink_result else 'no result'}"),
                 "\n\n## Java Source Analysis\n",
                 (source_result.content if source_result and source_result.success else f"(failed) {source_result.error if source_result else 'no result'}"),
-                "\n"
             ]
         )
+        
+        # 添加CodeQL查询结果
+        if codeql_result:
+            sections.extend(
+                [
+                    "\n\n## Generated CodeQL Query\n",
+                    (codeql_result.content if codeql_result and codeql_result.success else f"(failed) {codeql_result.error if codeql_result else 'no result'}"),
+                ]
+            )
+        
+        # 添加CodeQL执行结果
+        if codeql_execution_result:
+            sections.extend(
+                [
+                    "\n\n## CodeQL Execution Results\n",
+                    (codeql_execution_result.content if codeql_execution_result and codeql_execution_result.success else f"(failed) {codeql_execution_result.error if codeql_execution_result else 'no result'}"),
+                ]
+            )
+        
+        sections.append("\n")
+        
         output = "".join(sections)
         output_path.write_text(output, encoding="utf-8")
         print(f"Output written to {output_path}")
