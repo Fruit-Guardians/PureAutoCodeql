@@ -211,3 +211,5 @@ __marimo__/
 h5-vsan-service.jar_Decompiler.com/
 h5-vsan/
 build.bat
+output/
+temp/

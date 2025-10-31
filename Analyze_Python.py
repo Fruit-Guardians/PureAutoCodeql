@@ -8,23 +8,17 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
+# 导入集中化配置
+from config import get_chat_config, LLMConfig
+
 # Import agents
 from agents.cve_analysis_agent import CVEAnalysisAgent
 from agents.python_sink_path_agent import PythonPathAnalysisAgent
 from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
 
 
-@dataclass
-class AgentConfig:
-    """用于创建具有一致设置的Agent的配置。"""
-    model: str = "deepseek-chat"
-    api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
-    base_url: str = "https://api.deepseek.com/v1"
-    temperature: float = 0
-    streaming: bool = True
-    max_tokens: Optional[int] = None
-    max_retries: int = 3
-
+# AgentConfig 已移至 config.py，此处保留类型提示
+# 使用 get_chat_config() 获取对话模型配置
 
 @dataclass
 class AgentResult:
@@ -37,8 +31,8 @@ class AgentResult:
 class MultiAgentAnalyzer:
     """用于漏洞分析工作流的多Agent分析器（Python专用）。"""
 
-    def __init__(self, config: AgentConfig = None):
-        self.config = config or AgentConfig()
+    def __init__(self, config: LLMConfig = None):
+        self.config = config or get_chat_config()  # 默认使用对话模型
         self.llm = None
         self.mcp_client = None
         self.tools = None

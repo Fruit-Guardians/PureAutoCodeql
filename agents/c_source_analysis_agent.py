@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, TYPE_CHECKING
 
@@ -16,8 +17,7 @@ if TYPE_CHECKING:
     class MultiAgentAnalyzer:
         pass
 
-from tools.codeql_generator_tool import CodeQLGeneratorTool
-from tools.codeql_runner_tool import CodeQLRunnerTool
+from tools.codeql_compose import CodeQLComposeTool
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,11 @@ class CSourceAnalysisAgent:
         self.analyzer = analyzer
         self.source_root = source_root
         self.database_path = database_path
-        self.codeql_generator = CodeQLGeneratorTool(analyzer=analyzer)
-        self.codeql_runner = CodeQLRunnerTool()
+        self.codeql_composer = CodeQLComposeTool(
+            analyzer=analyzer,
+            database_path=database_path,
+            language="cpp",
+        )
 
     def find_c_files(self, directory: Path) -> List[str]:
         """收集给定目录下的C/C++源文件。"""
@@ -169,8 +172,8 @@ class CSourceAnalysisAgent:
 - 请确保输出为合法可解析的 JSON，并与查询结果一致。
 """
 
-    async def generate_source_codeql_query(self, cve_analysis: str) -> str:
-        """生成针对C/C++源码发现的CodeQL查询。"""
+    async def generate_source_codeql_query(self, cve_analysis: str):
+        """生成针对C/C++源码发现的CodeQL查询，返回(ql, exec_output)。"""
         try:
             requirement = f"""
             Based on the CVE analysis: {cve_analysis}
@@ -185,16 +188,26 @@ class CSourceAnalysisAgent:
 
             The query should target user-controlled data entry and output relevant function locations.
             """
-            return await self.codeql_generator._arun(requirement, language="cpp")
+            compose_output = await self.codeql_composer._arun(requirement)
+            ql_code = None
+            block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
+            if block:
+                ql_code = block.group(1).strip()
+            if not ql_code:
+                tag = re.search(r"<codeql>(.*?)</codeql>", compose_output, re.DOTALL)
+                if tag:
+                    ql_code = tag.group(1).strip()
+            if not ql_code:
+                return "Error: Could not extract CodeQL code from compose result", compose_output
+            return ql_code, compose_output
         except Exception as exc:
             logger.error("Failed to generate C/C++ source CodeQL query: %s", exc)
-            return f"Error generating CodeQL query: {str(exc)}"
+            return f"Error generating CodeQL query: {str(exc)}", ""
 
     async def execute_source_codeql_query(self, query_content: str, database_path: str = None) -> str:
-        """对配置的C/C++数据库执行生成的CodeQL查询。"""
+        """对配置的C/C++数据库执行生成的CodeQL查询（已由Compose执行，保留兼容）。"""
         try:
-            db_path = database_path or self.database_path
-            return await self.codeql_runner._arun(query_content, db_path, language="cpp")
+            return "Execution handled by CodeQLComposeTool during generation."
         except Exception as exc:
             logger.error("Failed to execute C/C++ CodeQL query: %s", exc)
             return f"Error executing CodeQL query: {str(exc)}"
@@ -215,8 +228,8 @@ class CSourceAnalysisAgent:
 
                 return AgentResult(content=json.dumps({"candidates": []}), success=True)
 
-            codeql_query = await self.generate_source_codeql_query(cve_analysis)
-            if codeql_query.startswith("Error"):
+            codeql_query, compose_exec_output = await self.generate_source_codeql_query(cve_analysis)
+            if isinstance(codeql_query, str) and codeql_query.startswith("Error"):
                 from dataclasses import dataclass
 
                 @dataclass
@@ -231,21 +244,7 @@ class CSourceAnalysisAgent:
                     error=codeql_query
                 )
 
-            query_results = await self.execute_source_codeql_query(codeql_query)
-            if query_results.startswith("Error"):
-                from dataclasses import dataclass
-
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
-
-                return AgentResult(
-                    content=json.dumps({"candidates": []}),
-                    success=False,
-                    error=query_results
-                )
+            query_results = compose_exec_output
 
             prompt = self.build_prompt_with_codeql_results(
                 cve_analysis,

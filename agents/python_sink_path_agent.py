@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -34,7 +34,9 @@ class PythonPathAnalysisAgent:
                     results.append(str(path))
         return sorted(results)
 
-    def build_prompt(self, cve_analysis: str, py_paths: List[str], diff_path: str = "") -> str:
+    def build_prompt(
+        self, cve_analysis: str, py_paths: List[str], diff_path: str = ""
+    ) -> str:
         """构建详细的提示词，指导LLM定位Sink点。"""
         paths_listing = "\n".join(py_paths)
         return f"""你是一名资深的 CodeQL 安全研究员与 Python 代码审计专家，专注识别可能的 Sink 函数及其调用路径。
@@ -103,7 +105,9 @@ def vulnerable():
 - 输出必须为可读的 Markdown 文本
 """
 
-    async def analyze_python_paths(self, cve_analysis: str, diff_path: str = "") -> "AgentResult":
+    async def analyze_python_paths(
+        self, cve_analysis: str, diff_path: str = ""
+    ) -> "AgentResult":
         """执行Python项目的Sink路径分析。"""
         try:
             directory = Path(self.source_root)
@@ -120,7 +124,7 @@ def vulnerable():
 
                 return AgentResult(
                     content="No Python files found in the specified directory.",
-                    success=True
+                    success=True,
                 )
 
             prompt = self.build_prompt(cve_analysis, py_paths, diff_path)

@@ -45,6 +45,35 @@ uv run Analyze.py
 
 
 
+## LLM 配置
+
+本项目使用集中化的 LLM 配置系统（`config.py`），支持两类模型：
+
+- **think（推理模型）**: `deepseek-reasoner` - 用于 CodeQL 查询生成/验证等需要强推理的场景
+- **chat（对话模型）**: `deepseek-chat` - 用于一般分析任务和普通对话
+
+### 环境变量配置
+
+推荐通过环境变量设置 API 密钥：
+
+```bash
+export DEEPSEEK_API_KEY="your_api_key_here"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"  # 可选，默认已设置
+```
+
+### 代码中使用
+
+```python
+from config import get_think_config, get_chat_config, LLMRole, get_llm_config
+
+# 便捷方式
+think_config = get_think_config()  # 用于 CodeQL 生成/验证
+chat_config = get_chat_config()    # 用于一般分析
+
+# 通过角色获取
+config = get_llm_config(LLMRole.THINK)  # 或 LLMRole.CHAT
+```
+
 ## CodeQL 执行与输出
 
 本项目的 CodeQL 查询执行已统一为 `codeql database analyze`，并固定输出 **SARIF 2.1.0** 报告：

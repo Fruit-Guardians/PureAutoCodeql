@@ -33,25 +33,15 @@ def language_to_pack(language: str) -> str:
 
 
 def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
-    """
-    创建一个临时的CodeQL查询包，包含qlpack.yml文件。
-    根据目标语言动态选择包依赖。
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    temp_base_dir = Path('./temp/codeql_temp')
+    temp_base_dir.mkdir(parents=True, exist_ok=True)
+    pack_dir = temp_base_dir / timestamp
+    pack_dir.mkdir(parents=True, exist_ok=True)
     
-    Args:
-        query_content: CodeQL查询字符串。
-        language: 可选的显式语言（例如：'java'、'python'、'cpp'）。如果省略，则从查询中自动检测。
-    
-    Returns:
-        包内创建的临时查询文件的路径。
-    """
-    # Create a temporary directory to act as the qlpack
-    pack_dir = Path(tempfile.mkdtemp())
-    
-    # Determine dependency pack
     lang = language or detect_language_from_query(query_content)
     dep_pack = language_to_pack(lang)
     
-    # Define the content of qlpack.yml
     qlpack_content = f"""name: temp-query-pack
 version: 0.0.0
 dependencies:
@@ -68,7 +58,7 @@ dependencies:
             cwd=pack_dir,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=60
         )
         if result.returncode != 0:
             print(f"Warning: Failed to install pack dependencies: {result.stderr}")
@@ -84,7 +74,7 @@ dependencies:
     # Remove leading blank lines and spaces so the metadata comment is at the top
     sanitized = sanitized.lstrip()
 
-    query_file = pack_dir / "query.ql"
+    query_file = pack_dir / f"query_{timestamp}.ql"
     query_file.write_text(sanitized, encoding='utf-8')
     
     return query_file
@@ -143,14 +133,24 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         if result.returncode == 0:
             return {
                 'success': True,
-                'output': (result.stdout or '').strip(),
+                'output': 'Query executed successfully',
                 'results': [],
                 'sarif_path': str(sarif_path) if sarif_path else None,
             }
         else:
+            # Combine stderr and stdout to capture all error information
+            error_output = []
+            if result.stderr:
+                error_output.append(result.stderr.strip())
+            if result.stdout:
+                error_output.append(result.stdout.strip())
+            
+            combined_error = '\n'.join(filter(None, error_output))
+            
+            print(f"CodeQL execution failed with error: \n {combined_error}")
             return {
                 'success': False,
-                'output': (result.stderr or result.stdout or '').strip(),
+                'output': combined_error or 'Unknown CodeQL execution error',
                 'results': [],
                 'sarif_path': str(sarif_path) if sarif_path else None,
             }
@@ -158,29 +158,35 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
     except subprocess.TimeoutExpired:
         return {
             'success': False,
-            'output': 'Query execution timed out after 600 seconds',
+            'output': 'CodeQL query execution timed out after 600 seconds. This may indicate a complex query or performance issue.',
             'results': [],
             'sarif_path': str(sarif_path) if sarif_path else None,
         }
     except FileNotFoundError:
         return {
             'success': False,
-            'output': 'CodeQL CLI not found. Ensure codeql is in PATH',
+            'output': 'CodeQL CLI not found in PATH. Please ensure CodeQL is properly installed and accessible.',
             'results': [],
             'sarif_path': str(sarif_path) if sarif_path else None,
         }
     except Exception as e:
+        # Capture detailed error information including potential QL compilation errors
+        error_msg = f'CodeQL execution failed: {str(e)}'
+        if hasattr(e, '__cause__') and e.__cause__:
+            error_msg += f'\nCause: {str(e.__cause__)}'
+        
         return {
             'success': False,
-            'output': f'Execution error: {str(e)}',
+            'output': error_msg,
             'results': [],
             'sarif_path': str(sarif_path) if sarif_path else None,
         }
     finally:
-        if pack_dir and pack_dir.exists():
-            try:
-                shutil.rmtree(pack_dir)
-            except Exception:
+        # 删除临时目录
+        # if pack_dir and pack_dir.exists():
+        #     try:
+        #         shutil.rmtree(pack_dir)
+        #     except Exception:
                 pass
 
 

@@ -1,0 +1,7 @@
+{
+    "sarif-viewer.connectToGithubCodeScanning": "off",
+    "workbench.editorAssociations": {
+        "*.md": "default",
+        "*.markdown": "default"
+    }
+}

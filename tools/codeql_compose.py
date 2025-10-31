@@ -1,0 +1,227 @@
+"""LangChain tool for composing CodeQL queries with iterative generation and execution."""
+
+import re
+from typing import Optional, Type, Any, Dict
+from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
+
+
+class CodeQLComposeInput(BaseModel):
+    """Input schema for CodeQL Compose Tool."""
+    requirement: str = Field(
+        description="Natural language description of the CodeQL query requirement. "
+                    "For example: 'Find all user input sources' or 'Find paths from user input to SQL execution'"
+    )
+
+
+class CodeQLComposeTool(BaseTool):
+    """Tool for composing CodeQL queries with iterative generation, execution, and error fixing."""
+    
+    name: str = "codeql_compose"
+    description: str = (
+        "Generates and validates CodeQL queries from natural language requirements. "
+        "Simply provide a description of what you want to find in the code, "
+        "and the tool will automatically generate, test, and refine the query until it works correctly."
+    )
+    args_schema: Type[BaseModel] = CodeQLComposeInput
+    
+    # The analyzer will be injected during initialization
+    analyzer: Optional[object] = None
+    # Internal configuration - not exposed to agents
+    default_language: str = "java"
+    default_database_path: str = ""
+    default_max_rounds: int = 5
+    
+    def __init__(self, analyzer=None, database_path: str = "", language: str = "java", max_rounds: int = 5, **kwargs):
+        """
+        Initialize the tool with a MultiAgentAnalyzer instance and internal configuration.
+        
+        Args:
+            analyzer: Instance of MultiAgentAnalyzer that provides LLM capabilities
+            database_path: Default CodeQL database path for execution
+            language: Default target programming language ('java', 'python', 'cpp')
+            max_rounds: Default maximum number of iterative rounds
+        """
+        super().__init__(**kwargs)
+        self.analyzer = analyzer
+        self.default_database_path = database_path
+        self.default_language = language
+        self.default_max_rounds = max_rounds
+    
+    def _extract_codeql_from_response(self, content: str) -> Optional[str]:
+        """Extract CodeQL code from response content using ```ql code blocks."""
+        match = re.search(r'```ql\s*\n(.*?)\n```', content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        match = re.search(r'<codeql>(.*?)</codeql>', content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        return None
+    
+    def _format_error_info(self, error_output: str, round_index: int) -> str:
+        """Format error information for better readability."""
+        return f"Round {round_index} Error:\n{error_output}"
+    
+    def _format_success_result(self, query: str, round_index: int, sarif_path: Optional[str] = None) -> str:
+        """Format successful result with query and execution info."""
+        result = f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n```ql\n{query}\n```"
+        if sarif_path:
+            result += f"\n\nSARIF output saved to: {sarif_path}"
+        return result
+    
+    def _run(
+        self,
+        requirement: str,
+        run_manager: Optional[Any] = None
+    ) -> str:
+        """
+        Synchronous execution (not supported for async-only agent).
+        
+        Args:
+            requirement: Natural language requirement for CodeQL query
+            run_manager: Callback manager for tool execution
+            
+        Returns:
+            Error message indicating sync execution is not supported
+        """
+        return "Synchronous execution not supported. Please use async version (arun)."
+    
+    async def _arun(
+        self,
+        requirement: str,
+        run_manager: Optional[Any] = None
+    ) -> str:
+        """
+        Asynchronously compose CodeQL query with iterative generation and execution.
+        
+        Args:
+            requirement: Natural language requirement for CodeQL query
+            run_manager: Async callback manager for tool execution
+            
+        Returns:
+            Final CodeQL query if successful, or error message with details
+        """
+        if not self.analyzer:
+            return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
+        
+        if not self.default_database_path:
+            return "Error: No database path configured. Tool needs to be initialized with a valid database_path."
+        
+        # Use internal configuration
+        target_language = self.default_language
+        database_path = self.default_database_path
+        max_iterations = self.default_max_rounds
+        
+        try:
+            # 开始进行ql生成
+            import sys
+            import os
+            from pathlib import Path
+            
+            # 添加项目根目录到Python路径
+            project_root = Path(__file__).parent.parent
+            sys.path.insert(0, str(project_root))
+            
+            # 添加agents目录到路径
+            agents_path = project_root / "agents"
+            sys.path.insert(0, str(agents_path))
+            
+            # 直接导入模块，这里最后改成直接import CodeQLGenAgent，为了测试方便先这么写吧
+            import importlib.util
+            
+            # 导入 CodeQLGenAgent
+            gen_agent_path = project_root / "agents" / "codeql_gen_agents" / "codeql_gen_agent.py"
+            spec = importlib.util.spec_from_file_location("codeql_gen_agent", gen_agent_path)
+            gen_agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(gen_agent_module)
+            CodeQLGenAgent = gen_agent_module.CodeQLGenAgent
+            
+            # 导入 CodeQLErrorAgent
+            error_agent_path = project_root / "agents" / "codeql_gen_agents" / "codeql_error_agent.py"
+            spec = importlib.util.spec_from_file_location("codeql_error_agent", error_agent_path)
+            error_agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(error_agent_module)
+            CodeQLErrorAgent = error_agent_module.CodeQLErrorAgent
+            
+            # 导入 execute_codeql_query
+            utils_path = project_root / "utils" / "codeql.py"
+            spec = importlib.util.spec_from_file_location("codeql_utils", utils_path)
+            utils_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(utils_module)
+            execute_codeql_query = utils_module.execute_codeql_query
+            
+            gen_agent = CodeQLGenAgent(self.analyzer)
+            error_agent = CodeQLErrorAgent(self.analyzer)
+            
+            round_index = 1
+            prev_original_ql = None
+            prev_fix_suggestions = None
+            
+            while round_index <= max_iterations:
+                try:
+                    # Generate CodeQL query
+                    gen_result = await gen_agent.generate(
+                        language=target_language,
+                        requirement=requirement,
+                        round_index=round_index,
+                        prev_original_ql=prev_original_ql,
+                        prev_fix_suggestions=prev_fix_suggestions
+                    )
+                    
+                    if not gen_result.success:
+                        return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
+                    
+                    # Extract CodeQL code from response
+                    current_ql = self._extract_codeql_from_response(gen_result.content)
+                    if not current_ql:
+                        return f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
+                    
+                    # Execute CodeQL query
+                    exec_result = execute_codeql_query(
+                        query_content=current_ql,
+                        database_path=database_path,
+                        language=target_language
+                    )
+                    
+                    # Check execution result
+                    if exec_result.get('success', False):
+                        # Success! Return the final query
+                        return self._format_success_result(
+                            query=current_ql,
+                            round_index=round_index,
+                            sarif_path=exec_result.get('sarif_path')
+                        )
+                    else:
+                        # Execution failed, analyze error if not at max rounds
+                        if round_index >= max_iterations:
+                            error_info = self._format_error_info(exec_result.get('output', 'Unknown error'), round_index)
+                            return f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\nFinal error:\n{error_info}\n\nLast attempted query:\n```ql\n{current_ql}\n```"
+                        
+                        # Analyze error for next iteration
+                        error_output = exec_result.get('output', 'Unknown execution error')
+                        
+                        error_analysis_result = await error_agent.analyze(
+                            error_log=error_output,
+                            curr_ql_content=current_ql,
+                            round_index=round_index,
+                            prev_original_ql=prev_original_ql
+                        )
+                        
+                        if not error_analysis_result.success:
+                            return f"Error in error analysis (Round {round_index}): {error_analysis_result.error or 'Unknown error'}"
+                        
+                        # Prepare for next iteration
+                        prev_original_ql = current_ql
+                        prev_fix_suggestions = error_analysis_result.content
+                        round_index += 1
+                
+                except Exception as e:
+                    return f"Error during iteration {round_index}: {str(e)}"
+            
+            # Should not reach here, but just in case
+            return f"Unexpected end of iteration loop after {max_iterations} rounds"
+        
+        except Exception as e:
+            return f"Error during CodeQL composition: {str(e)}"

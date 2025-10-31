@@ -1,32 +1,38 @@
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-    
+
     @dataclass
     class AgentResult:
         content: str
         success: bool
         error: str = None
-    
+
     class MultiAgentAnalyzer:
         pass
+
 
 from utils.java import find_path_from_java_file
 
 
 class JavaPathAnalysisAgent:
     """用于分析反编译源码中Java文件路径的Agent。"""
-    
-    def __init__(self, analyzer: "MultiAgentAnalyzer", source_root: str = "h5-vsan-service.jar_Decompiler.com"):
+
+    def __init__(
+        self,
+        analyzer: "MultiAgentAnalyzer",
+        source_root: str = "h5-vsan-service.jar_Decompiler.com",
+    ):
         self.analyzer = analyzer
         self.source_root = source_root
-    
-    def build_prompt(self, cve_analysis: str, source_path: Path, diff_path: str = "") -> str:
+
+    def build_prompt(
+        self, cve_analysis: str, source_path: Path, diff_path: str = ""
+    ) -> str:
         """构建Java路径分析Agent的提示词。"""
-        return (
-        f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
+        return f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
 
 你的核心任务是基于提供的CVE信息、代码差异和文件路径，精准定位并深度分析Java代码中的漏洞利用终点（Sink），最终生成一份结构化的、高质量的Sink点分析报告。
 
@@ -74,24 +80,24 @@ class JavaPathAnalysisAgent:
 * 整个过程必须保持自主性，直接按步骤执行并输出最终报告。
 * 如果分析后无法明确找到Sink点，请在报告的"分析与理由"部分清楚地说明，并解释可能的原因（例如，漏洞逻辑复杂，关键代码不在提供的文件范围内等）。
 """
-    )
-    
-    
-    async def analyze_java_paths(self, cve_analysis: str, diff_path: str = "") -> "AgentResult":
+
+    async def analyze_java_paths(
+        self, cve_analysis: str, diff_path: str = ""
+    ) -> "AgentResult":
         """分析Java文件路径并提供全面的分析。"""
         try:
             directory = Path(self.source_root)
-            
+
             prompt = self.build_prompt(cve_analysis, directory, diff_path)
             return await self.analyzer.run_agent(prompt)
-        
+
         except Exception as e:
             from dataclasses import dataclass
-            
+
             @dataclass
             class AgentResult:
                 content: str
                 success: bool
                 error: str = None
-            
+
             return AgentResult(content="", success=False, error=str(e))

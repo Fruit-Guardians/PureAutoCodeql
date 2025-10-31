@@ -8,20 +8,15 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
-from agents.codeql_generator_agent import CodeQLGeneratorAgent
+# 导入集中化配置
+from config import get_think_config, LLMConfig
+
+from tools.codeql_compose import CodeQLComposeTool
 from rag_codeql_tool import create_codeql_rag_tool
 
 
-@dataclass
-class AgentConfig:
-    """Configuration for creating agents with consistent settings."""
-    model: str = "deepseek-chat"
-    api_key: str = "sk-a2d1b4e295d6404694f45f45cb236c91"
-    base_url: str = "https://api.deepseek.com/v1"
-    temperature: float = 0
-    streaming: bool = True
-    max_tokens: Optional[int] = None
-    max_retries: int = 3
+# AgentConfig 已移至 config.py，此处保留类型提示
+# 使用 get_think_config() 获取推理模型配置
 
 
 @dataclass
@@ -35,8 +30,8 @@ class AgentResult:
 class MultiAgentAnalyzer:
     """Multi-agent analyzer for CodeQL generation."""
     
-    def __init__(self, config: AgentConfig = None):
-        self.config = config or AgentConfig()
+    def __init__(self, config: LLMConfig = None):
+        self.config = config or get_think_config()  # 默认使用推理模型
         self.llm = None
         self.mcp_client = None
         self.tools = None
@@ -108,7 +103,7 @@ def extract_codeql_from_content(content: str) -> str:
         return match.group(1).strip()
     return content.strip()
 
-async def generate_codeql_query(requirement: str = None, use_rag: bool = True) -> None:
+async def generate_codeql_query(requirement: str = None, use_rag: bool = True, db_path: str = None) -> None:
     """
     生成基于用户需求的CodeQL查询，支持RAG增强。
     
@@ -120,7 +115,11 @@ async def generate_codeql_query(requirement: str = None, use_rag: bool = True) -
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
         
-        codeql_agent = CodeQLGeneratorAgent(analyzer)
+        codeql_tool = CodeQLComposeTool(
+            analyzer=analyzer,
+            database_path=db_path or "",
+            language="java",
+        )
         
         # 设置默认需求
         if requirement is None:
@@ -159,8 +158,8 @@ async def generate_codeql_query(requirement: str = None, use_rag: bool = True) -
 """
             prompt = enhanced_prompt
         else:
-            # 使用原始提示词
-            prompt = codeql_agent.build_prompt(requirement)
+            # 非RAG时直接使用用户需求作为compose的requirement
+            prompt = requirement
         
         # 流式输出
         full_content = ""
@@ -169,25 +168,32 @@ async def generate_codeql_query(requirement: str = None, use_rag: bool = True) -
             full_content += text
             print(text, end='', flush=True)
         
-        result = await analyzer.run_agent_stream(prompt, stream_callback)
-        
+        # 通过Compose工具执行生成+验证
+        compose_output = await codeql_tool._arun(prompt)
         print("\n" + "=" * 50)
-        
-        if not result.success:
-            print(f"CodeQL 生成失败: {result.error}")
+        print("Compose 输出:")
+        print(compose_output)
+
+        # 提取 CodeQL 代码
+        # 优先提取```ql代码块，否则提取<codeql>标签
+        import re
+        code_block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
+        if code_block:
+            codeql_code = code_block.group(1).strip()
         else:
-            # 提取 CodeQL 代码
-            codeql_code = extract_codeql_from_content(full_content)
-            
+            codeql_code = extract_codeql_from_content(compose_output)
+
+        if codeql_code:
             print("生成的CodeQL查询:")
             print("=" * 50)
             print(codeql_code)
-            
             # 保存到文件
             output_file = "generated_query.ql"
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(codeql_code)
             print(f"\n查询已保存到: {output_file}")
+        else:
+            print("未能从Compose输出中提取CodeQL代码")
             
     except Exception as e:  
         print(f"生成过程中出现错误: {e}")
@@ -196,18 +202,19 @@ async def main() -> None:
     """主函数，支持命令行参数控制RAG功能。"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="生成CodeQL查询")
+    parser = argparse.ArgumentParser(description="生成并验证CodeQL查询（使用CodeQLComposeTool）")
     parser.add_argument("--requirement", "-r", type=str, 
                        help="用户需求描述，例如：查找Java中的SQL注入漏洞")
     parser.add_argument("--no-rag", action="store_true", 
                        help="禁用RAG增强功能")
+    parser.add_argument("--db", type=str, help="CodeQL数据库路径，用于Compose验证执行")
     
     args = parser.parse_args()
     
     requirement = args.requirement
     use_rag = not args.no_rag
     
-    await generate_codeql_query(requirement, use_rag)
+    await generate_codeql_query(requirement, use_rag, args.db)
 
 
 if __name__ == "__main__":

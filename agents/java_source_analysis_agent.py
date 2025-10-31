@@ -1,17 +1,18 @@
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-    
+
     @dataclass
     class AgentResult:
         content: str
         success: bool
         error: str = None
-    
+
     class MultiAgentAnalyzer:
         pass
+
 
 from utils.java import find_path_from_java_file
 
@@ -26,11 +27,10 @@ class JavaSourceAnalysisAgent:
     ):
         self.analyzer = analyzer
         self.source_root = source_root
-    
+
     def build_prompt(self, sink_analysis: str, source_path: Path) -> str:
         """构建Java源码分析Agent的提示词。"""
-        return (
-        f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
+        return f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
 
 你的核心任务是通过分析sink点的漏洞信息，分析出可能的source点
 
@@ -72,24 +72,22 @@ class JavaSourceAnalysisAgent:
 * 整个过程必须保持自主性，直接按步骤执行并输出最终报告。
 * 如果分析后无法明确找到Source点，请在报告的“分析与理由”部分清楚地说明，并解释可能的原因（例如，漏洞逻辑复杂，关键代码不在提供的文件范围内等）。
 """
-    )
-    
-    
+
     async def analyze_java_sources(self, sink_analysis: str) -> "AgentResult":
         """分析Java源码并识别可能的Source点。"""
         try:
             directory = Path(self.source_root)
-            
+
             prompt = self.build_prompt(sink_analysis, directory)
             return await self.analyzer.run_agent(prompt)
-        
+
         except Exception as e:
             from dataclasses import dataclass
-            
+
             @dataclass
             class AgentResult:
                 content: str
                 success: bool
                 error: str = None
-            
+
             return AgentResult(content="", success=False, error=str(e))

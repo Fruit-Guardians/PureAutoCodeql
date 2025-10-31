@@ -1,130 +1,64 @@
-# LangChain Tools for CodeQL Operations
+# LangChain Tool: CodeQLComposeTool
 
-这个目录包含用于 CodeQL 操作的 LangChain 工具集成。
+该目录提供统一的 CodeQL 生成与校验工具 `CodeQLComposeTool`。
 
-## 工具列表
+## 工具
 
-### 1. CodeQLGeneratorTool
+### CodeQLComposeTool
 
-根据自然语言需求生成 CodeQL 查询代码。
+- 从自然语言 `requirement` 生成 CodeQL 查询
+- 迭代式“生成→执行→纠错”，在成功后返回包含查询与执行信息的文本
+- 支持从输出中的 ```ql 代码块或 `<codeql></codeql>` 标签提取最终查询
+- 需要提供 CodeQL 数据库路径以完成验证执行
 
-**特性：**
-- 接受自然语言描述作为输入
-- 使用 CodeQLGeneratorAgent 生成完整的 CodeQL 查询
-- 自动提取和格式化生成的代码
-- 支持异步调用
+**入参（初始化）**
+- `analyzer`: 复用的多 Agent 分析器实例
+- `database_path`: CodeQL 数据库路径
+- `language`: 目标语言（`java`/`python`/`cpp`），默认 `java`
+- `max_rounds`: 最大迭代轮数，默认 5
 
-**使用示例：**
+**入参（运行）**
+- `requirement` (str): 自然语言描述的 CodeQL 查询需求
+
+## 使用示例
+
 ```python
-from tools import CodeQLGeneratorTool
+from tools import CodeQLComposeTool
 from Analyze import MultiAgentAnalyzer
 
-# 初始化分析器
-analyzer = MultiAgentAnalyzer(model="gpt-4")
+analyzer = MultiAgentAnalyzer()
+await analyzer.initialize()
 
-# 创建工具
-generator = CodeQLGeneratorTool(analyzer=analyzer)
-
-# 生成 Python 的 CodeQL 查询
-codeql_code = await generator._arun(
-    requirement="Find all functions that read HTTP request parameters",
-    language="python"
-)
-print(codeql_code)
-```
-
-### 2. CodeQLRunnerTool
-
-执行 CodeQL 查询并返回结果。
-
-**特性：**
-- 执行完整的 CodeQL 查询代码
-- 支持指定数据库路径
-- 格式化输出结果为可读文本
-- 完善的错误处理
-- 支持同步和异步调用
-
-**使用示例：**
-```python
-from tools import CodeQLRunnerTool
-
-# 创建工具
-runner = CodeQLRunnerTool()
-
-# 执行查询
-result = runner._run(
-    query_content="""
-        import java
-        from Method m
-        select m
-    """,
+tool = CodeQLComposeTool(
+    analyzer=analyzer,
     database_path="./h5-vsan",
-    language="java"
+    language="java",
 )
-print(result)
+
+output_text = await tool._arun("查找可能的Source点")
+
+# 提取最终QL（优先```ql，其次<codeql>）
+import re
+match = re.search(r"```ql\s*\n(.*?)\n```", output_text, re.DOTALL)
+ql = match.group(1).strip() if match else output_text
 ```
 
-## 与 LangChain Agent 集成
+## 与 Agent 集成
 
-这些工具可以直接与 LangChain 的 agent 框架集成：
+- 可作为 LangChain 工具在自定义 Agent 中调用
+- 也可在工作流中直接实例化并调用 `_arun(requirement)`
 
-```python
-from langchain.agents import initialize_agent, AgentType
-from langchain_openai import ChatOpenAI
-from tools import CodeQLGeneratorTool, CodeQLRunnerTool
+## 结果说明
 
-# 初始化工具
-generator_tool = CodeQLGeneratorTool(analyzer=your_analyzer)
-runner_tool = CodeQLRunnerTool()
-
-tools = [generator_tool, runner_tool]
-
-# 创建 agent
-llm = ChatOpenAI(temperature=0)
-agent = initialize_agent(
-    tools=tools,
-    llm=llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True
-)
-
-# 使用 agent
-response = await agent.arun(
-    "Generate a CodeQL query to find SQL injection vulnerabilities "
-    "and execute it against the database at ./h5-vsan"
-)
-```
-
-## 输入参数
-
-### CodeQLGeneratorTool
-
-- `requirement` (str): 自然语言描述的 CodeQL 查询需求
-- `language` (Optional[str]): 目标语言（java/python/cpp），不提供时默认 `java`
-
-### CodeQLRunnerTool
-
-- `query_content` (str): 完整的 CodeQL 查询代码
-- `database_path` (str): CodeQL 数据库目录路径
-- `language` (Optional[str]): 目标语言（java/python/cpp）。不提供时从查询内容中自动检测
-
-## 错误处理
-
-两个工具都实现了完善的错误处理：
-
-- **CodeQLGeneratorTool**: 捕获生成过程中的错误，返回详细的错误信息
-- **CodeQLRunnerTool**: 处理查询执行失败、超时、语法错误等情况
-
-所有错误都会以字符串形式返回，包含错误描述和上下文信息。
+- 成功时返回包含如下内容的文本：
+  - 生成成功提示与轮次
+  - 最终查询（```ql 代码块）
+  - 可选的 SARIF 输出路径
+- 失败时返回包含错误详情的文本，包含最后一次尝试的查询和错误原因
 
 ## 依赖项
 
 - `langchain >= 1.0.1`
 - `pydantic`
-- 项目中的 `agents.codeql_generator_agent`
-- 项目中的 `utils.codeql`
-
-## 更多示例
-
-查看 `examples/langchain_tools_usage.py` 获取更多使用示例和最佳实践。
+- 本项目中的 `agents/codeql_gen_agents/*` 与 `utils/codeql.py`
 

@@ -13,13 +13,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools import CodeQLRunnerTool  # type: ignore
-from Analyze import AgentConfig  # type: ignore
+
+# 导入集中化配置
+from config import get_chat_config
 
 QUERY_PATH = PROJECT_ROOT / "templates/java/target_query.ql"
 DATABASE_PATH = PROJECT_ROOT / "h5-vsan"
 
 
-async def run_with_agent(query_content: str, database_path: str, config: AgentConfig) -> str:
+async def run_with_agent(query_content: str, database_path: str, config) -> str:
     """Run the CodeQL query via a LangChain Agent if LLM is configured."""
     # Lazy import to avoid requiring langchain deps unless needed
     from langchain.agents import initialize_agent, AgentType
@@ -94,7 +96,7 @@ async def main() -> None:
     print("Mode: Agent (Analyze.py config) -> fallback to Direct Tool if needed")
     print("=" * 60)
 
-    config = AgentConfig()
+    config = get_chat_config()
     try:
         output = await run_with_agent(query_content, database_path, config)
     except Exception as e:
