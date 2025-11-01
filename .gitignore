@@ -214,3 +214,5 @@ build.bat
 output/
 temp/
 projects/
+/projects
+# /projects/CVE-2021-21985/db/db-java/default/cache/predicates

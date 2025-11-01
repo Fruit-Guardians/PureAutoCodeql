@@ -1,9 +1,13 @@
 """LangChain tool for composing CodeQL queries with iterative generation and execution."""
 
 import re
+from pathlib import Path
 from typing import Optional, Type, Any, Dict
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
+
+from config import get_sarif2json_config
+from utils.sarif_utils import write_paths_json
 
 
 class CodeQLComposeInput(BaseModel):
@@ -63,11 +67,22 @@ class CodeQLComposeTool(BaseTool):
         """Format error information for better readability."""
         return f"Round {round_index} Error:\n{error_output}"
     
-    def _format_success_result(self, query: str, round_index: int, sarif_path: Optional[str] = None) -> str:
+    def _format_success_result(
+        self,
+        query: str,
+        round_index: int,
+        sarif_path: Optional[str] = None,
+        paths_json_path: Optional[str] = None,
+        paths_count: Optional[int] = None,
+    ) -> str:
         """Format successful result with query and execution info."""
         result = f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n```ql\n{query}\n```"
         if sarif_path:
             result += f"\n\nSARIF output saved to: {sarif_path}"
+        if paths_json_path:
+            result += f"\n路径 JSON 输出: {paths_json_path}"
+            if paths_count is not None:
+                result += f"（包含 {paths_count} 条路径）"
         return result
 
     def _load_ql_template(self, lang: str) -> str:
@@ -177,7 +192,6 @@ class CodeQLComposeTool(BaseTool):
             # 开始进行ql生成循环
             import sys
             import os
-            from pathlib import Path
             
             # 添加项目根目录到Python路径
             project_root = Path(__file__).parent.parent
@@ -215,6 +229,7 @@ class CodeQLComposeTool(BaseTool):
             error_agent = CodeQLErrorAgent(self.analyzer)
             
             ql_template = self._load_ql_template(target_language)
+            print("ql_template:", ql_template)
             
             round_index = 1
             prev_original_ql = None
@@ -258,11 +273,35 @@ class CodeQLComposeTool(BaseTool):
                     
                     # Check execution result
                     if exec_result.get('success', False):
+                        sarif_path = exec_result.get('sarif_path')
+                        json_path: Optional[str] = None
+                        paths_count: Optional[int] = None
+
+                        if sarif_path:
+                            try:
+                                # 成功执行后自动导出同名 JSON，方便后续可视化.
+                                config = get_sarif2json_config()
+                                sarif_file = Path(sarif_path)
+                                json_file = sarif_file.with_suffix('.json')
+                                paths_count = write_paths_json(
+                                    sarif_path,
+                                    str(json_file),
+                                    max_results=config.max_results,
+                                    threadflow_index=config.threadflow_index,
+                                    rule_filter=config.rule_filter,
+                                    relative_to=None,
+                                )
+                                json_path = str(json_file)
+                            except Exception as convert_error:
+                                print(f"SARIF->JSON 转换失败: {convert_error}")
+
                         # Success! Return the final query
                         return self._format_success_result(
                             query=current_ql,
                             round_index=round_index,
-                            sarif_path=exec_result.get('sarif_path')
+                            sarif_path=sarif_path,
+                            paths_json_path=json_path,
+                            paths_count=paths_count,
                         )
                     else:
                         # Execution failed, analyze error if not at max rounds
