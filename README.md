@@ -1,6 +1,6 @@
 # PureAutoCodeql
 
-基于多智能体架构的自动化漏洞分析工具，使用 CodeQL 和 AI 技术进行 Java 代码安全分析。
+基于多智能体架构的自动化漏洞分析工具，使用 CodeQL 和 AI 技术进行 Java 、C、Python代码安全分析。
 
 ## 项目结构
 
@@ -31,7 +31,7 @@ uv sync
 pip install -r requirements.txt
 ```
 
-## 使用示例
+## 使用示例a
 
 ### 快速运行
 
@@ -39,27 +39,14 @@ pip install -r requirements.txt
 uv run Analyze.py
 ```
 
-结果会输出到output.md方便查看
-
-建议使用openspec辅助vibe coding
-
-
+临时结果会输出到output.md，分析得到的sarif文件会保存到output，推荐使用sarif viewer读取
 
 ## LLM 配置
 
-本项目使用集中化的 LLM 配置系统（`config.py`），支持两类模型：
+本项目使用集中化的 LLM 配置系统（`config.py`），推荐使用两种模型：
 
-- **think（推理模型）**: `deepseek-reasoner` - 用于 CodeQL 查询生成/验证等需要强推理的场景
-- **chat（对话模型）**: `deepseek-chat` - 用于一般分析任务和普通对话
-
-### 环境变量配置
-
-推荐通过环境变量设置 API 密钥：
-
-```bash
-export DEEPSEEK_API_KEY="your_api_key_here"
-export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"  # 可选，默认已设置
-```
+- 推理模型: 用于 CodeQL 查询生成/验证等需要强推理的场景
+- 一般模型:  用于一般分析任务和普通对话
 
 ### 代码中使用
 
@@ -86,4 +73,3 @@ codeql database analyze <database> <query-or-pack> \
 
 - 输出目录：`/output/`（若不可写则降级到当前目录下的 `./output/`）
 - 文件命名：`result_YYYYMMDD_HHMMSS.sarif`（时间戳取自工具调用时间）
-

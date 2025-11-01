@@ -49,7 +49,6 @@ class CodeQLComposeTool(BaseTool):
         self.default_max_rounds = max_rounds
     
     def _extract_codeql_from_response(self, content: str) -> Optional[str]:
-        """Extract CodeQL code from response content using ```ql code blocks."""
         match = re.search(r'```ql\s*\n(.*?)\n```', content, re.DOTALL)
         if match:
             return match.group(1).strip()
@@ -69,6 +68,66 @@ class CodeQLComposeTool(BaseTool):
         result = f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n```ql\n{query}\n```"
         if sarif_path:
             result += f"\n\nSARIF output saved to: {sarif_path}"
+        return result
+
+    def _load_ql_template(self, lang: str) -> str:
+        """根据不同语言加载对应的QL模板"""
+        from pathlib import Path
+        try:
+            l = (lang or "").lower()
+            prompts_dir = Path(__file__).parent.parent / "agents" / "prompts"
+            java_path = prompts_dir / "java_temple_ql.md"
+            py_path = prompts_dir / "python_template_ql.md"
+            c_path = prompts_dir / "c_template_ql.md"
+
+            if l == "java":
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            if l == "python":
+                if py_path.exists():
+                    return py_path.read_text(encoding="utf-8")
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            if l == "c":
+                if c_path.exists():
+                    return c_path.read_text(encoding="utf-8")
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+        except Exception:
+            try:
+                from pathlib import Path as _P
+                java_path = _P(__file__).parent.parent / "agents" / "prompts" / "java_temple_ql.md"
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            except Exception:
+                return ""
+
+    @staticmethod
+    def _build_placeholder_map(
+        language: str,
+        requirement: Optional[str],
+        round_index: int,
+        prev_original_ql: Optional[str],
+        prev_fix_suggestions: Optional[str],
+        ql_template: str,
+        error_log: Optional[str] = None,
+        curr_ql_content: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Centralize placeholder values for both generation and error-analysis prompts."""
+        return {
+            "ROUND_INDEX": str(round_index or 1),
+            "LANGUAGE": (language or "java"),
+            "REQUIREMENT": (requirement or ""),
+            "PREV_ORIGINAL_QL": (prev_original_ql or ""),
+            "PREV_FIX_SUGGESTIONS": (prev_fix_suggestions or ""),
+            "QL_TEMPLATE": (ql_template or ""),
+            "ERROR_LOG": (error_log or ""),
+            "CURR_QL_CONTENT": (curr_ql_content or ""),
+        }
+
+    @staticmethod
+    def _apply_placeholders(content: str, values: Dict[str, str]) -> str:
+        """Apply [[KEY]] placeholder replacements using a unified function."""
+        result = content
+        for k, v in (values or {}).items():
+            result = result.replace(f"[[{k}]]", v or "")
         return result
     
     def _run(
@@ -115,7 +174,7 @@ class CodeQLComposeTool(BaseTool):
         max_iterations = self.default_max_rounds
         
         try:
-            # 开始进行ql生成
+            # 开始进行ql生成循环
             import sys
             import os
             from pathlib import Path
@@ -155,20 +214,32 @@ class CodeQLComposeTool(BaseTool):
             gen_agent = CodeQLGenAgent(self.analyzer)
             error_agent = CodeQLErrorAgent(self.analyzer)
             
+            ql_template = self._load_ql_template(target_language)
+            
             round_index = 1
             prev_original_ql = None
             prev_fix_suggestions = None
             
             while round_index <= max_iterations:
                 try:
-                    # Generate CodeQL query
-                    gen_result = await gen_agent.generate(
+                    gen_prompt_base = gen_agent.build_prompt(
                         language=target_language,
                         requirement=requirement,
                         round_index=round_index,
                         prev_original_ql=prev_original_ql,
-                        prev_fix_suggestions=prev_fix_suggestions
+                        prev_fix_suggestions=prev_fix_suggestions,
                     )
+                    # Centralized placeholder map and application
+                    gen_values = self._build_placeholder_map(
+                        language=target_language,
+                        requirement=requirement,
+                        round_index=round_index,
+                        prev_original_ql=prev_original_ql,
+                        prev_fix_suggestions=prev_fix_suggestions,
+                        ql_template=ql_template,
+                    )
+                    gen_prompt = self._apply_placeholders(gen_prompt_base, gen_values)
+                    gen_result = await self.analyzer.run_agent(gen_prompt)
                     
                     if not gen_result.success:
                         return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
@@ -202,12 +273,24 @@ class CodeQLComposeTool(BaseTool):
                         # Analyze error for next iteration
                         error_output = exec_result.get('output', 'Unknown execution error')
                         
-                        error_analysis_result = await error_agent.analyze(
+                        err_prompt_base = error_agent.build_prompt(
                             error_log=error_output,
                             curr_ql_content=current_ql,
                             round_index=round_index,
-                            prev_original_ql=prev_original_ql
+                            prev_original_ql=prev_original_ql,
                         )
+                        err_values = self._build_placeholder_map(
+                            language=target_language,
+                            requirement=requirement,
+                            round_index=round_index,
+                            prev_original_ql=prev_original_ql,
+                            prev_fix_suggestions=prev_fix_suggestions,
+                            ql_template=ql_template,
+                            error_log=error_output,
+                            curr_ql_content=current_ql,
+                        )
+                        err_prompt = self._apply_placeholders(err_prompt_base, err_values)
+                        error_analysis_result = await self.analyzer.run_agent(err_prompt)
                         
                         if not error_analysis_result.success:
                             return f"Error in error analysis (Round {round_index}): {error_analysis_result.error or 'Unknown error'}"
