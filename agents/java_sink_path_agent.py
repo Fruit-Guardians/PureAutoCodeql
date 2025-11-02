@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
@@ -51,7 +52,7 @@ class JavaPathAnalysisAgent:
    ```
    * **作用**: 这是定位Sink的关键线索。通过分析补丁前后的代码变化，找出sink点所在的具体位置，再根据{source_path}找到具体文件（尽量少地去看文件）去分析出sink点的具体信息。
 
-3. **工作目录**: 你的工作目录在 `{Path.cwd()}`。所有文件路径都是基于此目录的相对路径。
+3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`。所有工具访问的文件路径必须在该目录内，且以此为基准的相对路径。
 
 **可用工具:**
 
@@ -86,9 +87,27 @@ class JavaPathAnalysisAgent:
     ) -> "AgentResult":
         """分析Java文件路径并提供全面的分析。"""
         try:
-            directory = Path(self.source_root)
+            directory = Path(self.source_root).resolve()
 
-            prompt = self.build_prompt(cve_analysis, directory, diff_path)
+            # 将路径规范化为相对于 MCP 文件系统根目录（projects）的相对路径
+            server_root = (Path.cwd() / "projects").resolve()
+            try:
+                source_rel = os.path.relpath(directory, start=server_root)
+            except Exception:
+                source_rel = str(directory)
+
+            abs_diff_path = Path(diff_path).resolve() if diff_path else None
+            if abs_diff_path is not None:
+                try:
+                    diff_rel = os.path.relpath(abs_diff_path, start=server_root)
+                except Exception:
+                    diff_rel = str(abs_diff_path)
+            else:
+                diff_rel = ""
+
+            print("diff_rel:", server_root / diff_rel)
+
+            prompt = self.build_prompt(cve_analysis, source_rel, server_root / diff_rel)
             return await self.analyzer.run_agent(prompt)
 
         except Exception as e:

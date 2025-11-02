@@ -86,7 +86,7 @@ class MultiAgentAnalyzer:
             content_parts = []
 
             async for event in agent.astream_events(
-                {"messages": [("user", prompt)]}, version="v1"
+                {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
             ):
                 if event.get("event") == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -182,8 +182,7 @@ async def run_multi_agent_analysis(
         # 构建CodeQL生成需求，包含sink和source分析结果
         codeql_requirement = f"""
         基于以下分析结果生成CodeQL查询：
-
-        CVE分析结果：
+        CVE路径分析结果：
         {cve_result.content if cve_result.success else "CVE分析失败"}
 
         Sink路径分析结果：
@@ -200,6 +199,7 @@ async def run_multi_agent_analysis(
         codeql_analyzer = MultiAgentAnalyzer(get_think_config())
         await codeql_analyzer.initialize()
         
+        # 这里直接调用CodeQLComposeTool的run方法
         codeql_tool = CodeQLComposeTool(
             analyzer=codeql_analyzer,
             database_path=db_path,

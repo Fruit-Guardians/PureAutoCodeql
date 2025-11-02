@@ -193,11 +193,9 @@ class CodeQLComposeTool(BaseTool):
             import sys
             import os
             
-            # 添加项目根目录到Python路径
             project_root = Path(__file__).parent.parent
             sys.path.insert(0, str(project_root))
             
-            # 添加agents目录到路径
             agents_path = project_root / "agents"
             sys.path.insert(0, str(agents_path))
             
@@ -229,7 +227,7 @@ class CodeQLComposeTool(BaseTool):
             error_agent = CodeQLErrorAgent(self.analyzer)
             
             ql_template = self._load_ql_template(target_language)
-            print("ql_template:", ql_template)
+            # print("ql_template:", ql_template)
             
             round_index = 1
             prev_original_ql = None
@@ -273,6 +271,7 @@ class CodeQLComposeTool(BaseTool):
                     
                     # Check execution result
                     if exec_result.get('success', False):
+                        print("codeql query:", current_ql)
                         sarif_path = exec_result.get('sarif_path')
                         json_path: Optional[str] = None
                         paths_count: Optional[int] = None
@@ -304,12 +303,10 @@ class CodeQLComposeTool(BaseTool):
                             paths_count=paths_count,
                         )
                     else:
-                        # Execution failed, analyze error if not at max rounds
                         if round_index >= max_iterations:
                             error_info = self._format_error_info(exec_result.get('output', 'Unknown error'), round_index)
                             return f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\nFinal error:\n{error_info}\n\nLast attempted query:\n```ql\n{current_ql}\n```"
                         
-                        # Analyze error for next iteration
                         error_output = exec_result.get('output', 'Unknown execution error')
                         
                         err_prompt_base = error_agent.build_prompt(
@@ -334,7 +331,6 @@ class CodeQLComposeTool(BaseTool):
                         if not error_analysis_result.success:
                             return f"Error in error analysis (Round {round_index}): {error_analysis_result.error or 'Unknown error'}"
                         
-                        # Prepare for next iteration
                         prev_original_ql = current_ql
                         prev_fix_suggestions = error_analysis_result.content
                         round_index += 1
@@ -342,7 +338,6 @@ class CodeQLComposeTool(BaseTool):
                 except Exception as e:
                     return f"Error during iteration {round_index}: {str(e)}"
             
-            # Should not reach here, but just in case
             return f"Unexpected end of iteration loop after {max_iterations} rounds"
         
         except Exception as e:

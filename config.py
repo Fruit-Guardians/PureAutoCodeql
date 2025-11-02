@@ -21,11 +21,11 @@ class LLMConfig:
 
 
 def _get_env_config() -> tuple[str, str]:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    
-    if not api_key:
-        api_key = "sk-2f0911b0688c4d5684ec7f75a8caecce"
+    api_key = "sk-2f0911b0688c4d5684ec7f75a8caecce"
+    base_url = "https://api.deepseek.com/v1"
+
+    # api_key = "b643ab5dc3fcbb7b861252279fc2acdf.AQVfZa97Drdz45EV"
+    # base_url = "https://open.bigmodel.cn/api/paas/v4/"
     
     return api_key, base_url
 
@@ -48,7 +48,7 @@ def get_llm_config(role: LLMRole) -> LLMConfig:
             api_key=api_key,
             base_url=base_url,
             temperature=0,
-            streaming=True,
+            streaming=True, 
             max_tokens=None,
             max_retries=3
         )

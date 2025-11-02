@@ -51,8 +51,8 @@ class CPathAnalysisAgent:
 2. C/C++ 文件路径列表：
 {paths_listing}
 
-3. Diff 文件路径（可选）：
-{diff_path}
+3. Diff 文件路径：
+{diff_path} 注意路径是相对于工作目录的，不要错误读取不存在的文件
 
 4. 工作目录：`{Path.cwd()}`（所有路径均相对于该目录）
 

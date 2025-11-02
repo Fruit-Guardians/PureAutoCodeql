@@ -72,7 +72,7 @@ class MultiAgentAnalyzer:
             agent = create_agent(self.llm, self.tools)
             content_parts = []
             
-            async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1"):
+            async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}):
                 if event.get("event") == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
