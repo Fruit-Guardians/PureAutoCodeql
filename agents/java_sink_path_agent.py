@@ -105,9 +105,12 @@ class JavaPathAnalysisAgent:
             else:
                 diff_rel = ""
 
+            if diff_rel == "":
+                diff_rel = "注意，diff文件并未给出，请根据CVE分析结果综合判断sink的类型"
+
             print("diff_rel:", server_root / diff_rel)
 
-            prompt = self.build_prompt(cve_analysis, source_rel, server_root / diff_rel)
+            prompt = self.build_prompt(cve_analysis, source_rel, diff_rel)
             return await self.analyzer.run_agent(prompt)
 
         except Exception as e:
