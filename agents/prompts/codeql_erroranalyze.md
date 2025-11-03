@@ -110,4 +110,27 @@
 
 遵循此规范可避免"Expected at least two result patterns"和"edges result set"相关错误。
 
+## Python 专用：知识库智能推荐（仅 Python 语言时有效）
+
+如果当前是 Python CodeQL 查询，请参考以下智能推荐来修复错误：
+
+### 相关标签
+[[RELEVANT_TAGS]]
+
+### 知识库资源目录
+[[KB_DIRECTORY_INDEX]]
+
+### 推荐的模块、辅助谓词和已知错误模式
+[[KB_SUGGESTED_ITEMS]]
+
+**错误修复建议**：
+- 检查是否使用了推荐的正确 import 路径
+- 参考 errors 部分的已知错误模式和修复方法
+- 如果类型错误，查看 helpers 中的正确类型使用方式
+- 参考成功的 cases 来对比你的实现
+
+---
+
+## 语言通用模板
+
 [[QL_TEMPLATE]]

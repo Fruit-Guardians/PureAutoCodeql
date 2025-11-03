@@ -137,4 +137,27 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
 
 注意参考的模板可以结合 [[PREV_FIX_SUGGESTIONS]] 的修复思路进行适当调整（若存在）。
 
+## Python 专用：知识库智能推荐（仅 Python 语言时有效）
+
+如果你正在生成 Python CodeQL 查询，以下是基于需求分析的智能推荐：
+
+### 相关标签
+[[RELEVANT_TAGS]]
+
+### 知识库资源目录
+[[KB_DIRECTORY_INDEX]]
+
+### 推荐使用的模块、辅助谓词和模板
+[[KB_SUGGESTED_ITEMS]]
+
+**使用建议**：
+- 优先使用推荐的 modules（import 语句）
+- 参考推荐的 helpers 来实现辅助谓词
+- 如果有匹配的 cases（成功案例），可以借鉴其结构
+- 注意避免推荐的 errors 中列出的常见错误
+
+---
+
+## 语言通用模板
+
 [[QL_TEMPLATE]]
