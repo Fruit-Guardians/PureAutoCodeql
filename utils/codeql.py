@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import os
 import shutil
+import textwrap
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
@@ -10,20 +11,34 @@ from datetime import datetime
 
 # 功能：
 def detect_language_from_query(query_content: str) -> str:
-    """简单的启发式方法，从查询内容中检测CodeQL语言。"""
-    content = query_content.lower()
+    """�򵥵�����ʽ�������Ӳ�ѯ�����м��CodeQL���ԡ�"""
+    content = (query_content or '').lower()
     if 'import java' in content:
         return 'java'
     if 'import python' in content:
         return 'python'
-    if 'import cpp' in content or 'import cplusplus' in content or 'import c' in content:
+    if (
+        'import cpp' in content
+        or 'import cplusplus' in content
+        or 'import c ' in content
+        or '\nimport c\n' in content
+    ):
         return 'cpp'
     return 'java'
 
 
+def normalize_language(language: Optional[str]) -> str:
+    lang = (language or 'java').strip().lower()
+    if lang in {'c', 'cplusplus', 'cpp'}:
+        return 'cpp'
+    if lang in {'python', 'java'}:
+        return lang
+    return 'java'
+
+
 def language_to_pack(language: str) -> str:
-    """将语言映射到相应的CodeQL包依赖。"""
-    lang = (language or 'java').lower()
+    """������ӳ�䵽��Ӧ��CodeQL��������"""
+    lang = normalize_language(language)
     mapping = {
         'java': 'codeql/java-all',
         'python': 'codeql/python-all',
@@ -38,20 +53,23 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
     temp_base_dir.mkdir(parents=True, exist_ok=True)
     pack_dir = temp_base_dir / timestamp
     pack_dir.mkdir(parents=True, exist_ok=True)
-    
-    lang = language or detect_language_from_query(query_content)
+
+    lang = normalize_language(language or detect_language_from_query(query_content))
     dep_pack = language_to_pack(lang)
-    
-    qlpack_content = f"""name: temp-query-pack
-version: 0.0.0
-dependencies:
-  {dep_pack}: "*"
-"""
-    
-    # Write the qlpack.yml file
-    (pack_dir / "qlpack.yml").write_text(qlpack_content, encoding='utf-8')
-    
-    # Install dependencies to create proper lock file
+
+    qlpack_content = textwrap.dedent(f"""\
+    name: temp-query-pack
+    version: 0.0.0
+    kind: query
+    language: {lang}
+    dependencies:
+      {dep_pack}: "*"
+    """)
+
+    # д��qlpack.yml�ļ�
+    (pack_dir / 'qlpack.yml').write_text(qlpack_content, encoding='utf-8')
+
+    # ��װ�����Դ�����ȷ�����ļ�
     try:
         result = subprocess.run(
             ['codeql', 'pack', 'install'],
@@ -64,19 +82,18 @@ dependencies:
             print(f"Warning: Failed to install pack dependencies: {result.stderr}")
     except Exception as e:
         print(f"Warning: Failed to run codeql pack install: {str(e)}")
-    
-    # Write the query file
-    # Ensure any BOM/leading whitespace is removed so metadata starts at byte 0
+
+    # д���ѯ�ļ�
     sanitized = query_content
-    # Strip UTF-8 BOM if present
+    # �Ƴ�UTF-8 BOM
     if sanitized.startswith('\ufeff'):
         sanitized = sanitized.lstrip('\ufeff')
-    # Remove leading blank lines and spaces so the metadata comment is at the top
+    # �Ƴ�ǰ���հ��кͿո��Ա�Ԫ����ע��λ�ڶ���
     sanitized = sanitized.lstrip()
 
-    query_file = pack_dir / f"query_{timestamp}.ql"
+    query_file = pack_dir / f'query_{timestamp}.ql'
     query_file.write_text(sanitized, encoding='utf-8')
-    
+
     return query_file
 
 
@@ -103,19 +120,19 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         query_file = create_temporary_qlpack(query_content, language=language)
         pack_dir = query_file.parent
 
-        # Prepare standardized SARIF output path
+        # 准备标准化的SARIF输出路径
         output_dir = Path('./output')
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
-            # Fallback to current working directory if /output is not writable
+            # 如果/output不可写，则回退到当前工作目录
             output_dir = Path.cwd() / 'output'
             output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         sarif_path = output_dir / f'result_{timestamp}.sarif'
 
-        # Execute using `codeql database analyze` with SARIF v2.1.0 output
+        # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出
         result = subprocess.run(
             [
                 'codeql', 'database', 'analyze',
@@ -138,7 +155,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
                 'sarif_path': str(sarif_path) if sarif_path else None,
             }
         else:
-            # Combine stderr and stdout to capture all error information
+            # 合并stderr和stdout以捕获所有错误信息
             error_output = []
             if result.stderr:
                 error_output.append(result.stderr.strip())
@@ -170,7 +187,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             'sarif_path': str(sarif_path) if sarif_path else None,
         }
     except Exception as e:
-        # Capture detailed error information including potential QL compilation errors
+        # 捕获详细的错误信息，包括潜在的QL编译错误
         error_msg = f'CodeQL execution failed: {str(e)}'
         if hasattr(e, '__cause__') and e.__cause__:
             error_msg += f'\nCause: {str(e.__cause__)}'
