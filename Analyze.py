@@ -1,3 +1,8 @@
+""""
+入口文件
+用于协调多Agent漏洞分析工作流。
+"""
+
 import argparse
 import asyncio
 from dataclasses import dataclass
@@ -297,7 +302,7 @@ async def run_multi_agent_analysis(
         codeql_tool = CodeQLComposeTool(
             analyzer=codeql_analyzer,
             database_path=db_path,
-            language="java",
+            language=language,
         )
         
         compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=stream)
