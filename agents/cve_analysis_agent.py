@@ -62,12 +62,13 @@ class CVEAnalysisAgent:
         json_path: Path,
         *,
         intel_prompt: Optional[str] = None,
+        show_thinking: bool = True,
     ) -> "AgentResult":
         """分析CVE JSON文件并返回Markdown报告。"""
         try:
             json_text = read_json_text(json_path)
             prompt = self.build_prompt(json_text, intel_prompt)
-            return await self.analyzer.run_agent(prompt)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
         except Exception as e:
             from dataclasses import dataclass
             

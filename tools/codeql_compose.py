@@ -165,7 +165,8 @@ class CodeQLComposeTool(BaseTool):
     async def _arun(
         self,
         requirement: str,
-        run_manager: Optional[Any] = None
+        run_manager: Optional[Any] = None,
+        show_thinking: bool = False
     ) -> str:
         """
         Asynchronously compose CodeQL query with iterative generation and execution.
@@ -173,6 +174,7 @@ class CodeQLComposeTool(BaseTool):
         Args:
             requirement: Natural language requirement for CodeQL query
             run_manager: Async callback manager for tool execution
+            show_thinking: 是否显示AI思考过程
             
         Returns:
             Final CodeQL query if successful, or error message with details
@@ -252,7 +254,7 @@ class CodeQLComposeTool(BaseTool):
                         ql_template=ql_template,
                     )
                     gen_prompt = self._apply_placeholders(gen_prompt_base, gen_values)
-                    gen_result = await self.analyzer.run_agent(gen_prompt)
+                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking)
                     
                     if not gen_result.success:
                         return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
@@ -326,7 +328,7 @@ class CodeQLComposeTool(BaseTool):
                             curr_ql_content=current_ql,
                         )
                         err_prompt = self._apply_placeholders(err_prompt_base, err_values)
-                        error_analysis_result = await self.analyzer.run_agent(err_prompt)
+                        error_analysis_result = await self.analyzer.run_agent(err_prompt, show_thinking=show_thinking)
                         
                         if not error_analysis_result.success:
                             return f"Error in error analysis (Round {round_index}): {error_analysis_result.error or 'Unknown error'}"

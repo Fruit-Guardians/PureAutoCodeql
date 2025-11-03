@@ -63,8 +63,8 @@ class MultiAgentAnalyzer:
         
         self.tools = await self.mcp_client.get_tools()
     
-    async def run_agent_stream(self, prompt: str, output_callback=None):
-        """Run a single agent with the given prompt and stream output."""
+    async def run_agent_stream(self, prompt: str, output_callback=None, show_thinking: bool = True):
+        """Run a single agent with the given prompt and stream output, with optional thinking process display."""
         try:
             if not self.llm or not self.tools:
                 await self.initialize()
@@ -73,7 +73,42 @@ class MultiAgentAnalyzer:
             content_parts = []
             
             async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}):
-                if event.get("event") == "on_chat_model_stream":
+                event_name = event.get("event")
+                
+                # 显示AI的思考过程
+                if show_thinking:
+                    if event_name == "on_agent_action":
+                        # AI决定使用工具
+                        action = event.get("data", {}).get("action")
+                        if action and hasattr(action, "tool"):
+                            print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
+                            if hasattr(action, "tool_input") and action.tool_input:
+                                print(f"   工具输入: {action.tool_input}")
+                    
+                    elif event_name == "on_tool_start":
+                        # 工具开始执行
+                        tool_name = event.get("name", "")
+                        print(f"🔧 工具执行: {tool_name}")
+                    
+                    elif event_name == "on_tool_end":
+                        # 工具执行完成
+                        tool_name = event.get("name", "")
+                        output = event.get("data", {}).get("output", "")
+                        if output:
+                            # 截断过长的输出
+                            output_preview = str(output)[:200] + ("..." if len(str(output)) > 200 else "")
+                            print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
+                        else:
+                            print(f"✅ 工具完成: {tool_name}")
+                    
+                    elif event_name == "on_agent_step":
+                        # AI完成一步思考
+                        step_output = event.get("data", {}).get("output", "")
+                        if step_output and hasattr(step_output, "intermediate_steps"):
+                            print("💭 AI完成一步推理")
+                
+                # 捕获最终的模型输出
+                if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
                         try:
@@ -86,12 +121,21 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
+                            # 实时显示AI的最终回答
+                            if show_thinking:
+                                print(text, end="", flush=True)
                             if output_callback:
                                 output_callback(text)
+
+            final_content = "".join(content_parts)
+            if show_thinking:
+                print("\n🎯 AI推理完成")
             
-            return AgentResult(content="".join(content_parts), success=True)
+            return AgentResult(content=final_content, success=True)
         
         except Exception as e:
+            if show_thinking:
+                print(f"❌ 推理出错: {e}")
             return AgentResult(content="", success=False, error=str(e))
 
 
@@ -103,13 +147,14 @@ def extract_codeql_from_content(content: str) -> str:
         return match.group(1).strip()
     return content.strip()
 
-async def generate_codeql_query(requirement: str = None, use_rag: bool = True, db_path: str = None) -> None:
+async def generate_codeql_query(requirement: str = None, use_rag: bool = True, db_path: str = None, show_thinking: bool = False) -> None:
     """
     生成基于用户需求的CodeQL查询，支持RAG增强。
     
     Args:
         requirement: 用户需求描述，如果为None则使用默认需求
         use_rag: 是否使用RAG技术增强提示词
+        show_thinking: 是否显示AI思考过程
     """
     try:
         analyzer = MultiAgentAnalyzer()
@@ -169,7 +214,7 @@ async def generate_codeql_query(requirement: str = None, use_rag: bool = True, d
             print(text, end='', flush=True)
         
         # 通过Compose工具执行生成+验证
-        compose_output = await codeql_tool._arun(prompt)
+        compose_output = await codeql_tool._arun(prompt, show_thinking=show_thinking)
         print("\n" + "=" * 50)
         print("Compose 输出:")
         print(compose_output)
@@ -199,7 +244,7 @@ async def generate_codeql_query(requirement: str = None, use_rag: bool = True, d
         print(f"生成过程中出现错误: {e}")
 
 async def main() -> None:
-    """主函数，支持命令行参数控制RAG功能。"""
+    """主函数，支持命令行参数控制RAG功能和AI思考过程显示。"""
     import argparse
     
     parser = argparse.ArgumentParser(description="生成并验证CodeQL查询（使用CodeQLComposeTool）")
@@ -208,13 +253,15 @@ async def main() -> None:
     parser.add_argument("--no-rag", action="store_true", 
                        help="禁用RAG增强功能")
     parser.add_argument("--db", type=str, help="CodeQL数据库路径，用于Compose验证执行")
+    parser.add_argument("--stream", action="store_true", 
+                       help="启用AI思考过程显示模式")
     
     args = parser.parse_args()
     
     requirement = args.requirement
     use_rag = not args.no_rag
     
-    await generate_codeql_query(requirement, use_rag, args.db)
+    await generate_codeql_query(requirement, use_rag, args.db, args.stream)
 
 
 if __name__ == "__main__":

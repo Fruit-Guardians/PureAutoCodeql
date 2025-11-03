@@ -172,7 +172,7 @@ class CSourceAnalysisAgent:
 - 请确保输出为合法可解析的 JSON，并与查询结果一致。
 """
 
-    async def generate_source_codeql_query(self, cve_analysis: str):
+    async def generate_source_codeql_query(self, cve_analysis: str, show_thinking: bool = True):
         """生成针对C/C++源码发现的CodeQL查询，返回(ql, exec_output)。"""
         try:
             requirement = f"""
@@ -188,7 +188,7 @@ class CSourceAnalysisAgent:
 
             The query should target user-controlled data entry and output relevant function locations.
             """
-            compose_output = await self.codeql_composer._arun(requirement)
+            compose_output = await self.codeql_composer._arun(requirement, show_thinking=show_thinking)
             ql_code = None
             block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
             if block:
@@ -212,7 +212,7 @@ class CSourceAnalysisAgent:
             logger.error("Failed to execute C/C++ CodeQL query: %s", exc)
             return f"Error executing CodeQL query: {str(exc)}"
 
-    async def analyze_c_sources(self, cve_analysis: str) -> "AgentResult":
+    async def analyze_c_sources(self, cve_analysis: str, show_thinking: bool = True) -> "AgentResult":
         """Orchestrate C/C++ source analysis using CodeQL generation and execution."""
         try:
             directory = Path(self.source_root)
@@ -228,7 +228,7 @@ class CSourceAnalysisAgent:
 
                 return AgentResult(content=json.dumps({"candidates": []}), success=True)
 
-            codeql_query, compose_exec_output = await self.generate_source_codeql_query(cve_analysis)
+            codeql_query, compose_exec_output = await self.generate_source_codeql_query(cve_analysis, show_thinking=show_thinking)
             if isinstance(codeql_query, str) and codeql_query.startswith("Error"):
                 from dataclasses import dataclass
 
@@ -252,7 +252,7 @@ class CSourceAnalysisAgent:
                 codeql_query,
                 query_results
             )
-            return await self.analyzer.run_agent(prompt)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
         except Exception as exc:
             logger.exception("Unexpected error in C/C++ source analysis")
             from dataclasses import dataclass

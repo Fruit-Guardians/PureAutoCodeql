@@ -37,10 +37,7 @@ module VulnConfig implements DataFlow::ConfigSig {
   }
 
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    // 可选: 定义额外的数据流步骤
-  }
-  predicate isSanitizer(DataFlow::Node node) {
-    // 可选: 定义净化节点
+    // 可选: 定义额外的数据流步骤，如若不使用则默认为none()
   }
 }
 

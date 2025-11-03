@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+import argparse
 from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
@@ -73,8 +74,8 @@ class MultiAgentAnalyzer:
 
         self.tools = await self.mcp_client.get_tools()
 
-    async def run_agent(self, prompt: str) -> AgentResult:
-        """使用给定的提示词运行单个Agent。"""
+    async def run_agent(self, prompt: str, show_thinking: bool = True) -> AgentResult:
+        """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             if not self.llm or not self.tools:
                 await self.initialize()
@@ -83,7 +84,42 @@ class MultiAgentAnalyzer:
             content_parts = []
 
             async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}):
-                if event.get("event") == "on_chat_model_stream":
+                event_name = event.get("event")
+                
+                # 显示AI的思考过程
+                if show_thinking:
+                    if event_name == "on_agent_action":
+                        # AI决定使用工具
+                        action = event.get("data", {}).get("action")
+                        if action and hasattr(action, "tool"):
+                            print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
+                            if hasattr(action, "tool_input") and action.tool_input:
+                                print(f"   工具输入: {action.tool_input}")
+                    
+                    elif event_name == "on_tool_start":
+                        # 工具开始执行
+                        tool_name = event.get("name", "")
+                        print(f"🔧 工具执行: {tool_name}")
+                    
+                    elif event_name == "on_tool_end":
+                        # 工具执行完成
+                        tool_name = event.get("name", "")
+                        output = event.get("data", {}).get("output", "")
+                        if output:
+                            # 截断过长的输出
+                            output_preview = str(output)[:200] + ("..." if len(str(output)) > 200 else "")
+                            print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
+                        else:
+                            print(f"✅ 工具完成: {tool_name}")
+                    
+                    elif event_name == "on_agent_step":
+                        # AI完成一步思考
+                        step_output = event.get("data", {}).get("output", "")
+                        if step_output and hasattr(step_output, "intermediate_steps"):
+                            print("💭 AI完成一步推理")
+                
+                # 捕获最终的模型输出
+                if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
                         try:
@@ -96,10 +132,19 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
+                            # 实时显示AI的最终回答
+                            if show_thinking:
+                                print(text, end="", flush=True)
 
-            return AgentResult(content="".join(content_parts), success=True)
+            final_content = "".join(content_parts)
+            if show_thinking:
+                print("\n🎯 AI推理完成")
+            
+            return AgentResult(content=final_content, success=True)
 
         except Exception as e:
+            if show_thinking:
+                print(f"❌ 推理出错: {e}")
             return AgentResult(content="", success=False, error=str(e))
 
 
@@ -168,6 +213,7 @@ async def run_python_multi_agent_analysis(
     diff_path: str,
     source_root: str,
     database_path: str,
+    stream: bool = False,
 ) -> None:
     """在给定项目上运行Python CVE、Sink和Source分析。"""
     try:
@@ -183,12 +229,16 @@ async def run_python_multi_agent_analysis(
             database_path=database_path,
         )
 
+        # 启用AI思考过程显示模式
+        if stream:
+            print("🔍 启用AI思考过程显示模式")
+
         # Ensure CodeQL database
         if not ensure_python_codeql_db(source_root, database_path):
             print("Warning: Python CodeQL database unavailable. Source analysis may fail.")
 
         print("=== CVE Analysis (Python project) ===")
-        cve_result = await cve_agent.analyze_cve(Path(json_path))
+        cve_result = await cve_agent.analyze_cve(Path(json_path), show_thinking=stream)
         if not cve_result.success:
             print(f"CVE analysis failed: {cve_result.error}")
         else:
@@ -196,7 +246,7 @@ async def run_python_multi_agent_analysis(
         print()
 
         print("=== Python Sink Path Analysis ===")
-        sink_result = await sink_agent.analyze_python_paths(cve_result.content if cve_result.success else "", diff_path)
+        sink_result = await sink_agent.analyze_python_paths(cve_result.content if cve_result.success else "", diff_path, show_thinking=stream)
         if not sink_result.success:
             print(f"Python sink analysis failed: {sink_result.error}")
         else:
@@ -204,7 +254,7 @@ async def run_python_multi_agent_analysis(
         print()
 
         print("=== Python Source Analysis (via CodeQL) ===")
-        source_result = await source_agent.analyze_python_sources(cve_result.content if cve_result.success else "")
+        source_result = await source_agent.analyze_python_sources(cve_result.content if cve_result.success else "", show_thinking=stream)
         if not source_result.success:
             print(f"Python source analysis failed: {source_result.error}")
         else:
@@ -216,15 +266,57 @@ async def run_python_multi_agent_analysis(
         print(f"Multi-agent Python analysis error: {e}")
 
 
-async def main() -> None:
-    # Paths provided by user
-    source_root = "Shakal-NG-1.3.2"
-    json_path = "CVE-2024-8412.json"  # CVE JSON 文件路径
-    diff_path = "CVE-2024-8412.diff"  # Diff 文件路径
-    # 使用已存在的 Python CodeQL 数据库路径（根据你的 workspace）
-    database_path = "python-db\\db-python"  # CodeQL 数据库路径（Python）
+def parse_arguments() -> argparse.Namespace:
+    """解析命令行参数。"""
+    parser = argparse.ArgumentParser(description="Python多Agent漏洞分析工具")
+    
+    parser.add_argument(
+        "--json",
+        type=str,
+        default="CVE-2024-8412.json",
+        help="CVE JSON文件路径 (默认: CVE-2024-8412.json)"
+    )
+    
+    parser.add_argument(
+        "--diff",
+        type=str,
+        default="CVE-2024-8412.diff",
+        help="Diff文件路径 (默认: CVE-2024-8412.diff)"
+    )
+    
+    parser.add_argument(
+        "--source-root",
+        type=str,
+        default="Shakal-NG-1.3.2",
+        help="源代码根目录 (默认: Shakal-NG-1.3.2)"
+    )
+    
+    parser.add_argument(
+        "--database",
+        type=str,
+        default="python-db\\db-python",
+        help="CodeQL数据库路径 (默认: python-db\\db-python)"
+    )
+    
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="显示AI的思考过程"
+    )
+    
+    return parser.parse_args()
 
-    await run_python_multi_agent_analysis(json_path, diff_path, source_root, database_path)
+
+async def main() -> None:
+    args = parse_arguments()
+    
+    await run_python_multi_agent_analysis(
+        json_path=args.json,
+        diff_path=args.diff,
+        source_root=args.source_root,
+        database_path=args.database,
+        stream=args.stream
+    )
 
 
 if __name__ == "__main__":

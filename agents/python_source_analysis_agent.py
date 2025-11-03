@@ -47,7 +47,7 @@ class PythonSourceAnalysisAgent:
                     py_files.append(str(py_file))
         return py_files
 
-    async def generate_source_codeql_query(self, cve_analysis: str):
+    async def generate_source_codeql_query(self, cve_analysis: str, show_thinking: bool = True):
         """生成用于源码分析的CodeQL查询（Python），并返回(ql, exec_output)。"""
         try:
             requirement = f"""
@@ -64,7 +64,7 @@ class PythonSourceAnalysisAgent:
 
             查询应识别可能作为不可信数据入口点的函数或方法。
             """
-            compose_output = await self.codeql_composer._arun(requirement)
+            compose_output = await self.codeql_composer._arun(requirement, show_thinking=show_thinking)
             ql_code = None
             block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
             if block:
@@ -86,7 +86,7 @@ class PythonSourceAnalysisAgent:
         except Exception as e:
             return f"Error executing CodeQL query: {str(e)}"
 
-    async def analyze_python_sources(self, cve_analysis: str) -> "AgentResult":
+    async def analyze_python_sources(self, cve_analysis: str, show_thinking: bool = True) -> "AgentResult":
         """分析Python源码并使用CodeQL工具识别可能的Source点。"""
         try:
             directory = Path(self.source_root)
@@ -100,7 +100,7 @@ class PythonSourceAnalysisAgent:
                     error: str = None
                 return AgentResult(content=json.dumps({"candidates": []}), success=True)
 
-            codeql_query, compose_exec_output = await self.generate_source_codeql_query(cve_analysis)
+            codeql_query, compose_exec_output = await self.generate_source_codeql_query(cve_analysis, show_thinking=show_thinking)
             if isinstance(codeql_query, str) and codeql_query.startswith("Error"):
                 from dataclasses import dataclass
                 @dataclass
@@ -113,7 +113,7 @@ class PythonSourceAnalysisAgent:
             query_results_text = compose_exec_output
 
             prompt = self.build_prompt_with_codeql_results(cve_analysis, py_paths, codeql_query, query_results_text)
-            return await self.analyzer.run_agent(prompt)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
         except Exception as e:
             from dataclasses import dataclass
             @dataclass

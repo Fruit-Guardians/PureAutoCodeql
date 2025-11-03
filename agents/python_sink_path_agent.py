@@ -106,7 +106,7 @@ def vulnerable():
 """
 
     async def analyze_python_paths(
-        self, cve_analysis: str, diff_path: str = ""
+        self, cve_analysis: str, diff_path: str = "", show_thinking: bool = True
     ) -> "AgentResult":
         """执行Python项目的Sink路径分析。"""
         try:
@@ -128,7 +128,7 @@ def vulnerable():
                 )
 
             prompt = self.build_prompt(cve_analysis, py_paths, diff_path)
-            return await self.analyzer.run_agent(prompt)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
 
         except Exception as exc:
             from dataclasses import dataclass

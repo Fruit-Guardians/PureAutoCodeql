@@ -83,7 +83,7 @@ class JavaPathAnalysisAgent:
 """
 
     async def analyze_java_paths(
-        self, cve_analysis: str, diff_path: str = ""
+        self, cve_analysis: str, diff_path: str = "", show_thinking: bool = True
     ) -> "AgentResult":
         """分析Java文件路径并提供全面的分析。"""
         try:
@@ -96,7 +96,9 @@ class JavaPathAnalysisAgent:
             except Exception:
                 source_rel = str(directory)
 
+            #print("diff_path:", diff_path)
             abs_diff_path = Path(diff_path).resolve() if diff_path else None
+            #print("abs_diff_path:", abs_diff_path)
             if abs_diff_path is not None:
                 try:
                     diff_rel = os.path.relpath(abs_diff_path, start=server_root)
@@ -107,11 +109,11 @@ class JavaPathAnalysisAgent:
 
             if diff_rel == "":
                 diff_rel = "注意，diff文件并未给出，请根据CVE分析结果综合判断sink的类型"
+           
+            print("diff_rel:", "/projects/" + diff_rel)
 
-            print("diff_rel:", server_root / diff_rel)
-
-            prompt = self.build_prompt(cve_analysis, source_rel, diff_rel)
-            return await self.analyzer.run_agent(prompt)
+            prompt = self.build_prompt(cve_analysis, source_rel, abs_diff_path)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
 
         except Exception as e:
             from dataclasses import dataclass

@@ -73,13 +73,13 @@ class JavaSourceAnalysisAgent:
 * 如果分析后无法明确找到Source点，请在报告的“分析与理由”部分清楚地说明，并解释可能的原因（例如，漏洞逻辑复杂，关键代码不在提供的文件范围内等）。
 """
 
-    async def analyze_java_sources(self, sink_analysis: str) -> "AgentResult":
+    async def analyze_java_sources(self, sink_analysis: str, show_thinking: bool = True) -> "AgentResult":
         """分析Java源码并识别可能的Source点。"""
         try:
             directory = Path(self.source_root)
 
             prompt = self.build_prompt(sink_analysis, directory)
-            return await self.analyzer.run_agent(prompt)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
 
         except Exception as e:
             from dataclasses import dataclass

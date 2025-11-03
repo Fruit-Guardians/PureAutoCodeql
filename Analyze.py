@@ -76,8 +76,8 @@ class MultiAgentAnalyzer:
 
         self.tools = await self.mcp_client.get_tools()
 
-    async def run_agent(self, prompt: str) -> AgentResult:
-        """使用给定的提示词运行单个Agent。"""
+    async def run_agent(self, prompt: str, show_thinking: bool = True) -> AgentResult:
+        """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             if not self.llm or not self.tools:
                 await self.initialize()
@@ -88,7 +88,42 @@ class MultiAgentAnalyzer:
             async for event in agent.astream_events(
                 {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
             ):
-                if event.get("event") == "on_chat_model_stream":
+                event_name = event.get("event")
+                
+                # 显示AI的思考过程
+                if show_thinking:
+                    if event_name == "on_agent_action":
+                        # AI决定使用工具
+                        action = event.get("data", {}).get("action")
+                        if action and hasattr(action, "tool"):
+                            print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
+                            if hasattr(action, "tool_input") and action.tool_input:
+                                print(f"   工具输入: {action.tool_input}")
+                    
+                    elif event_name == "on_tool_start":
+                        # 工具开始执行
+                        tool_name = event.get("name", "")
+                        print(f"🔧 工具执行: {tool_name}")
+                    
+                    elif event_name == "on_tool_end":
+                        # 工具执行完成
+                        tool_name = event.get("name", "")
+                        output = event.get("data", {}).get("output", "")
+                        if output:
+                            # 截断过长的输出
+                            output_preview = str(output)[:200] + ("..." if len(str(output)) > 200 else "")
+                            print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
+                        else:
+                            print(f"✅ 工具完成: {tool_name}")
+                    
+                    elif event_name == "on_agent_step":
+                        # AI完成一步思考
+                        step_output = event.get("data", {}).get("output", "")
+                        if step_output and hasattr(step_output, "intermediate_steps"):
+                            print("💭 AI完成一步推理")
+                
+                # 捕获最终的模型输出
+                if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
                         try:
@@ -107,10 +142,19 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
+                            # 实时显示AI的最终回答
+                            if show_thinking:
+                                print(text, end="", flush=True)
 
-            return AgentResult(content="".join(content_parts), success=True)
+            final_content = "".join(content_parts)
+            if show_thinking:
+                print("\n🎯 AI推理完成")
+            
+            return AgentResult(content=final_content, success=True)
 
         except Exception as e:
+            if show_thinking:
+                print(f"❌ 推理出错: {e}")
             return AgentResult(content="", success=False, error=str(e))
 
 
@@ -120,6 +164,7 @@ async def run_multi_agent_analysis(
     source_root: str = "",
     db_path: str = "",
     intel_bundle: Optional[IntelBundle] = None,
+    stream: bool = False,
 ) -> None:
     """运行完整的多Agent分析工作流，包括CVE、Sink、Source和CodeQL生成器Agent。
 
@@ -129,6 +174,7 @@ async def run_multi_agent_analysis(
         source_root: Java源文件的根目录
         db_path: CodeQL数据库路径
         intel_bundle: 可选的智能包用于增强分析
+        stream: 是否显示AI思考过程
     """
     import time
 
@@ -151,7 +197,7 @@ async def run_multi_agent_analysis(
         # 将IntelBundle转换为intel_prompt字符串
         intel_prompt = intel_bundle.prompt_block() if intel_bundle else None
         cve_result = await cve_agent.analyze_cve(
-            Path(json_path), intel_prompt=intel_prompt
+            Path(json_path), intel_prompt=intel_prompt, show_thinking=stream
         )
         if not cve_result.success:
             print(f"CVE analysis failed: {cve_result.error}")
@@ -161,7 +207,7 @@ async def run_multi_agent_analysis(
 
         print("=== Java Sink Path Analysis ===")
         sink_result = await sink_agent.analyze_java_paths(
-            cve_result.content if cve_result.success else "", diff_path
+            cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
         )
         if not sink_result.success:
             print(f"Java sink analysis failed: {sink_result.error}")
@@ -171,7 +217,7 @@ async def run_multi_agent_analysis(
 
         print("=== Java Source Analysis ===")
         source_result = await source_agent.analyze_java_sources(
-            sink_result.content if sink_result.success else ""
+            sink_result.content if sink_result.success else "", show_thinking=stream
         )
         if not source_result.success:
             print(f"Java source analysis failed: {source_result.error}")
@@ -206,7 +252,7 @@ async def run_multi_agent_analysis(
             language="java",
         )
         
-        compose_output = await codeql_tool._arun(codeql_requirement)
+        compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=stream)
         # Wrap compose output in AgentResult-like object
         codeql_result = AgentResult(
             content=compose_output,
@@ -268,12 +314,13 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument("--refresh-intel", action="store_true", help="强制刷新情报数据")
+    parser.add_argument("--stream", action="store_true", help="显示AI的思考过程")
 
     return parser.parse_args()
 
 
 async def run_case_analysis(
-    case_id: str, cve_id: Optional[str] = None, refresh_intel: bool = False
+    case_id: str, cve_id: Optional[str] = None, refresh_intel: bool = False, stream: bool = False
 ) -> None:
     """运行基于案例的分析工作流。"""
     try:
@@ -281,6 +328,8 @@ async def run_case_analysis(
         case_paths = resolve_case(case_id)
         print(f"正在分析案例: {case_id}")
         print(f"案例根目录: {case_paths.root}")
+        if stream:
+            print("🔍 启用AI思考过程显示模式")
 
         # 发现CVE资产
         cve_assets = discover_cve_assets(case_paths, preferred_cve=cve_id)
@@ -306,12 +355,12 @@ async def run_case_analysis(
 
         # 根据语言选择分析器
         if language == "java":
-            await run_java_analysis(case_paths, cve_assets, intel_bundle)
+            await run_java_analysis(case_paths, cve_assets, intel_bundle, stream)
         elif language == "python":
-            await run_python_analysis(case_paths, cve_assets, intel_bundle)
+            await run_python_analysis(case_paths, cve_assets, intel_bundle, stream)
         else:
             print(f"警告: 不支持的语言 '{language}'，使用默认分析器")
-            await run_default_analysis(case_paths, cve_assets, intel_bundle)
+            await run_default_analysis(case_paths, cve_assets, intel_bundle, stream)
 
     except Exception as e:
         print(f"案例分析错误: {e}")
@@ -341,7 +390,7 @@ def detect_language(case_paths: CasePaths) -> str:
 
 
 async def run_java_analysis(
-    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle
+    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行Java分析工作流。"""
     print("使用Java分析器...")
@@ -353,12 +402,12 @@ async def run_java_analysis(
     db_path = str(case_paths.db)
 
     await run_multi_agent_analysis(
-        json_path, diff_path, source_root, db_path, intel_bundle
+        json_path, diff_path, source_root, db_path, intel_bundle, stream
     )
 
 
 async def run_python_analysis(
-    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle
+    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行Python分析工作流。"""
     print("使用Python分析器...")
@@ -380,7 +429,7 @@ async def run_python_analysis(
         # 将IntelBundle转换为intel_prompt字符串
         intel_prompt = intel_bundle.prompt_block() if intel_bundle else None
         cve_result = await cve_agent.analyze_cve(
-            cve_assets.json_path, intel_prompt=intel_prompt
+            cve_assets.json_path, intel_prompt=intel_prompt, show_thinking=stream
         )
         if not cve_result.success:
             print(f"CVE analysis failed: {cve_result.error}")
@@ -390,7 +439,7 @@ async def run_python_analysis(
 
         print("=== Python Sink Path Analysis ===")
         sink_result = await sink_agent.analyze_python_paths(
-            cve_result.content if cve_result.success else ""
+            cve_result.content if cve_result.success else "", show_thinking=stream
         )
         if not sink_result.success:
             print(f"Python sink analysis failed: {sink_result.error}")
@@ -400,7 +449,7 @@ async def run_python_analysis(
 
         print("=== Python Source Analysis ===")
         source_result = await source_agent.analyze_python_sources(
-            cve_result.content if cve_result.success else ""
+            cve_result.content if cve_result.success else "", show_thinking=stream
         )
         if not source_result.success:
             print(f"Python source analysis failed: {source_result.error}")
@@ -418,7 +467,7 @@ async def run_python_analysis(
 
 
 async def run_default_analysis(
-    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle
+    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行默认分析工作流。"""
     print("使用默认分析器...")
@@ -427,7 +476,7 @@ async def run_default_analysis(
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
     source_root = str(case_paths.source_code)
 
-    await run_multi_agent_analysis(json_path, diff_path, source_root, intel_bundle)
+    await run_multi_agent_analysis(json_path, diff_path, source_root, "", intel_bundle, stream)
 
 
 async def main() -> None:
@@ -437,12 +486,12 @@ async def main() -> None:
     if not args.case:
         print("错误: 必须提供 --case 参数指定要分析的案例ID")
         print(
-            "用法: python Analyze.py --case <CASE_ID> [--cve <CVE_ID>] [--refresh-intel]"
+            "用法: python Analyze.py --case <CASE_ID> [--cve <CVE_ID>] [--refresh-intel] [--stream]"
         )
         return
 
     # 使用案例模式
-    await run_case_analysis(args.case, args.cve, args.refresh_intel)
+    await run_case_analysis(args.case, args.cve, args.refresh_intel, args.stream)
 
 
 if __name__ == "__main__":
