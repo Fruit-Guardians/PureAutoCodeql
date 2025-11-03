@@ -273,7 +273,7 @@ class CodeQLComposeTool(BaseTool):
         from pathlib import Path
         try:
             l = (lang or "").lower()
-            prompts_dir = Path(__file__).parent.parent / "agents" / "prompts"
+            prompts_dir = Path(__file__).parent.parent / "prompts"
             java_path = prompts_dir / "java_temple_ql.md"
             py_path = prompts_dir / "python_template_ql.md"
             c_path = prompts_dir / "c_template_ql.md"
@@ -292,7 +292,7 @@ class CodeQLComposeTool(BaseTool):
         except Exception:
             try:
                 from pathlib import Path as _P
-                java_path = _P(__file__).parent.parent / "agents" / "prompts" / "java_temple_ql.md"
+                java_path = _P(__file__).parent.parent / "prompts" / "java_temple_ql.md"
                 return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
             except Exception:
                 return ""
