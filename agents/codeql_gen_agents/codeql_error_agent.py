@@ -17,14 +17,14 @@ if TYPE_CHECKING:
 class CodeQLErrorAgent:
     """Diagnose and propose fixes for CodeQL compilation/runtime errors using a dynamic prompt.
 
-    This agent reads the prompt from agents/prompts/codeql_erroranalyze.md and injects
+    This agent reads the prompt from prompts/codeql_erroranalyze.md and injects
     iterative placeholders (error logs, current/previous QL) to produce actionable fixes.
     """
 
     def __init__(self, analyzer: "MultiAgentAnalyzer", prompt_file: Optional[Path] = None):
         self.analyzer = analyzer
-        # Default prompt path: agents/prompts/codeql_erroranalyze.md
-        self.prompt_file = prompt_file or (Path(__file__).resolve().parent.parent / "prompts" / "codeql_erroranalyze.md")
+        # Default prompt path: prompts/codeql_erroranalyze.md
+        self.prompt_file = prompt_file or (Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_erroranalyze.md")
 
     def _load_prompt(self) -> str:
         """Load prompt template content from markdown file."""
