@@ -165,16 +165,18 @@ async def run_multi_agent_analysis(
     db_path: str = "",
     intel_bundle: Optional[IntelBundle] = None,
     stream: bool = False,
+    language: str = "java",
 ) -> None:
     """运行完整的多Agent分析工作流，包括CVE、Sink、Source和CodeQL生成器Agent。
 
     Args:
         json_path: CVE JSON文件的路径
         diff_path: diff文件的路径
-        source_root: Java源文件的根目录
+        source_root: 源文件的根目录
         db_path: CodeQL数据库路径
         intel_bundle: 可选的智能包用于增强分析
         stream: 是否显示AI思考过程
+        language: 编程语言 (java, python, cpp)
     """
     import time
 
@@ -185,12 +187,36 @@ async def run_multi_agent_analysis(
         await analyzer.initialize()
 
         cve_agent = CVEAnalysisAgent(analyzer)
-        sink_agent = JavaPathAnalysisAgent(analyzer, source_root)
-        source_agent = JavaSourceAnalysisAgent(analyzer, source_root)
+
+        # 根据语言选择相应的分析器
+        if language == "java":
+            from agents.java_sink_path_agent import JavaPathAnalysisAgent
+            from agents.java_source_analysis_agent import JavaSourceAnalysisAgent
+            sink_agent = JavaPathAnalysisAgent(analyzer, source_root)
+            source_agent = JavaSourceAnalysisAgent(analyzer, source_root)
+            sink_analysis_name = "Java Sink Path Analysis"
+            source_analysis_name = "Java Source Analysis"
+        elif language == "python":
+            from agents.python_sink_path_agent import PythonPathAnalysisAgent
+            from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
+            sink_agent = PythonPathAnalysisAgent(analyzer, source_root)
+            source_agent = PythonSourceAnalysisAgent(analyzer, source_root)
+            sink_analysis_name = "Python Sink Path Analysis"
+            source_analysis_name = "Python Source Analysis"
+        elif language == "cpp":
+            from agents.c_sink_path_agent import CSinkPathAnalysisAgent
+            from agents.c_source_analysis_agent import CSourceAnalysisAgent
+            sink_agent = CSinkPathAnalysisAgent(analyzer, source_root)
+            source_agent = CSourceAnalysisAgent(analyzer, source_root)
+            sink_analysis_name = "C Sink Path Analysis"
+            source_analysis_name = "C Source Analysis"
+        else:
+            raise ValueError(f"不支持的语言: {language}")
+
         codeql_tool = CodeQLComposeTool(
             analyzer=analyzer,
             database_path=db_path,
-            language="java",
+            language=language,
         )
 
         print("=== CVE Analysis ===")
@@ -205,22 +231,44 @@ async def run_multi_agent_analysis(
             print(cve_result.content)
         print()
 
-        print("=== Java Sink Path Analysis ===")
-        sink_result = await sink_agent.analyze_java_paths(
-            cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
-        )
+        print(f"=== {sink_analysis_name} ===")
+        # 根据语言调用相应的分析方法
+        if language == "java":
+            sink_result = await sink_agent.analyze_java_paths(
+                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
+            )
+        elif language == "python":
+            sink_result = await sink_agent.analyze_python_paths(
+                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
+            )
+        elif language == "cpp":
+            sink_result = await sink_agent.analyze_c_paths(
+                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
+            )
+
         if not sink_result.success:
-            print(f"Java sink analysis failed: {sink_result.error}")
+            print(f"{language.title()} sink analysis failed: {sink_result.error}")
         else:
             print(sink_result.content)
         print()
 
-        print("=== Java Source Analysis ===")
-        source_result = await source_agent.analyze_java_sources(
-            sink_result.content if sink_result.success else "", show_thinking=stream
-        )
+        print(f"=== {source_analysis_name} ===")
+        # 根据语言调用相应的分析方法
+        if language == "java":
+            source_result = await source_agent.analyze_java_sources(
+                sink_result.content if sink_result.success else "", show_thinking=stream
+            )
+        elif language == "python":
+            source_result = await source_agent.analyze_python_sources(
+                sink_result.content if sink_result.success else "", show_thinking=stream
+            )
+        elif language == "cpp":
+            source_result = await source_agent.analyze_c_sources(
+                sink_result.content if sink_result.success else "", show_thinking=stream
+            )
+
         if not source_result.success:
-            print(f"Java source analysis failed: {source_result.error}")
+            print(f"{language.title()} source analysis failed: {source_result.error}")
         else:
             print(source_result.content)
 
@@ -314,7 +362,13 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument("--refresh-intel", action="store_true", help="强制刷新情报数据")
-    parser.add_argument("--stream", action="store_true", help="显示AI的思考过程")
+    parser.add_argument(
+        "--no-stream",
+        dest="stream",
+        action="store_false",
+        help="禁用AI思考过程显示"
+    )
+    parser.set_defaults(stream=True)
 
     return parser.parse_args()
 
@@ -358,6 +412,8 @@ async def run_case_analysis(
             await run_java_analysis(case_paths, cve_assets, intel_bundle, stream)
         elif language == "python":
             await run_python_analysis(case_paths, cve_assets, intel_bundle, stream)
+        elif language == "cpp":
+            await run_c_analysis(case_paths, cve_assets, intel_bundle, stream)
         else:
             print(f"警告: 不支持的语言 '{language}'，使用默认分析器")
             await run_default_analysis(case_paths, cve_assets, intel_bundle, stream)
@@ -373,15 +429,24 @@ def detect_language(case_paths: CasePaths) -> str:
         return "java"
     elif (case_paths.db / "python").exists():
         return "python"
+    elif (case_paths.db / "cpp").exists():
+        return "cpp"
 
     # 检查源码目录中的文件类型
     java_files = list(case_paths.source_code.rglob("*.java"))
     python_files = list(case_paths.source_code.rglob("*.py"))
+    c_files = list(case_paths.source_code.rglob("*.c"))
+    cpp_files = list(case_paths.source_code.rglob("*.cpp"))
+    h_files = list(case_paths.source_code.rglob("*.h"))
 
     if java_files:
         return "java"
     elif python_files:
         return "python"
+    elif cpp_files:
+        return "cpp"
+    elif c_files or h_files:
+        return "cpp"
 
     # 无法检测到语言时抛出异常
     raise ValueError(
@@ -402,7 +467,7 @@ async def run_java_analysis(
     db_path = str(case_paths.db)
 
     await run_multi_agent_analysis(
-        json_path, diff_path, source_root, db_path, intel_bundle, stream
+        json_path, diff_path, source_root, db_path, intel_bundle, stream, "java"
     )
 
 
@@ -412,58 +477,32 @@ async def run_python_analysis(
     """运行Python分析工作流。"""
     print("使用Python分析器...")
 
-    # 导入Python分析器
-    from agents.python_sink_path_agent import PythonPathAnalysisAgent
-    from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
-    from Analyze_Python import write_python_analysis_output
+    # 使用案例中的路径
+    json_path = str(cve_assets.json_path)
+    diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
+    source_root = str(case_paths.source_code)
+    db_path = str(case_paths.db)
 
-    try:
-        analyzer = MultiAgentAnalyzer()
-        await analyzer.initialize()
+    await run_multi_agent_analysis(
+        json_path, diff_path, source_root, db_path, intel_bundle, stream, "python"
+    )
 
-        cve_agent = CVEAnalysisAgent(analyzer)
-        sink_agent = PythonPathAnalysisAgent(analyzer, str(case_paths.source_code))
-        source_agent = PythonSourceAnalysisAgent(analyzer, str(case_paths.source_code))
 
-        print("=== CVE Analysis ===")
-        # 将IntelBundle转换为intel_prompt字符串
-        intel_prompt = intel_bundle.prompt_block() if intel_bundle else None
-        cve_result = await cve_agent.analyze_cve(
-            cve_assets.json_path, intel_prompt=intel_prompt, show_thinking=stream
-        )
-        if not cve_result.success:
-            print(f"CVE analysis failed: {cve_result.error}")
-        else:
-            print(cve_result.content)
-        print()
+async def run_c_analysis(
+    case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
+) -> None:
+    """运行C语言分析工作流。"""
+    print("使用C语言分析器...")
 
-        print("=== Python Sink Path Analysis ===")
-        sink_result = await sink_agent.analyze_python_paths(
-            cve_result.content if cve_result.success else "", show_thinking=stream
-        )
-        if not sink_result.success:
-            print(f"Python sink analysis failed: {sink_result.error}")
-        else:
-            print(sink_result.content)
-        print()
+    # 使用案例中的路径
+    json_path = str(cve_assets.json_path)
+    diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
+    source_root = str(case_paths.source_code)
+    db_path = str(case_paths.db)
 
-        print("=== Python Source Analysis ===")
-        source_result = await source_agent.analyze_python_sources(
-            cve_result.content if cve_result.success else "", show_thinking=stream
-        )
-        if not source_result.success:
-            print(f"Python source analysis failed: {source_result.error}")
-        else:
-            print(source_result.content)
-
-        # 使用Python专用的输出函数
-        output_path = case_paths.root / "output_python.md"
-        write_python_analysis_output(
-            cve_result, sink_result, source_result, output_path
-        )
-
-    except Exception as e:
-        print(f"Python analysis error: {e}")
+    await run_multi_agent_analysis(
+        json_path, diff_path, source_root, db_path, intel_bundle, stream, "cpp"
+    )
 
 
 async def run_default_analysis(
@@ -486,7 +525,7 @@ async def main() -> None:
     if not args.case:
         print("错误: 必须提供 --case 参数指定要分析的案例ID")
         print(
-            "用法: python Analyze.py --case <CASE_ID> [--cve <CVE_ID>] [--refresh-intel] [--stream]"
+            "用法: python Analyze.py --case <CASE_ID> [--cve <CVE_ID>] [--refresh-intel] [--no-stream]"
         )
         return
 
