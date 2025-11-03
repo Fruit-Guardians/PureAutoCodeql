@@ -1,0 +1,1 @@
+Error during iteration 1: 'MultiAgentAnalyzer' object has no attribute 'run_agent'
