@@ -14,7 +14,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 
 # 导入集中化配置
-from config import get_chat_config, LLMConfig
+from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 
 # Import agents and utilities
 from agents.cve_analysis_agent import CVEAnalysisAgent
@@ -48,7 +48,8 @@ class MultiAgentAnalyzer:
 
     def __init__(self, config: LLMConfig = None):
         """初始化多Agent分析器。"""
-        self.config = config or get_chat_config()  # 默认使用对话模型
+        # 优先使用外部传入；否则采用具备自动切换的配置（网络不好时自动换服务商）
+        self.config = config or get_resilient_llm_config(LLMRole.CHAT)
         self.llm = None
         self.mcp_client = None
         self.tools = None

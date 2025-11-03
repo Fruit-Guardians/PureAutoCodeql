@@ -9,7 +9,7 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 # 导入集中化配置
-from config import get_think_config, LLMConfig
+from config import get_think_config, LLMConfig, get_resilient_llm_config, LLMRole
 
 from tools.codeql_compose import CodeQLComposeTool
 from rag_codeql_tool import create_codeql_rag_tool
@@ -31,7 +31,8 @@ class MultiAgentAnalyzer:
     """Multi-agent analyzer for CodeQL generation."""
     
     def __init__(self, config: LLMConfig = None):
-        self.config = config or get_think_config()  # 默认使用推理模型
+        # 默认使用具备自动切换的推理模型配置
+        self.config = config or get_resilient_llm_config(LLMRole.THINK)
         self.llm = None
         self.mcp_client = None
         self.tools = None
