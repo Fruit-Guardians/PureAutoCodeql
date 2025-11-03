@@ -9,6 +9,9 @@ from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 
+DEFAULT_CODEQL_PACK_VERSION = "^4.0.17"
+
+
 # 功能：
 def detect_language_from_query(query_content: str) -> str:
     """�򵥵�����ʽ�������Ӳ�ѯ�����м��CodeQL���ԡ�"""
@@ -57,14 +60,18 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
     lang = normalize_language(language or detect_language_from_query(query_content))
     dep_pack = language_to_pack(lang)
 
-    qlpack_content = textwrap.dedent(f"""\
-    name: temp-query-pack
-    version: 0.0.0
-    kind: query
-    language: {lang}
-    dependencies:
-      {dep_pack}: "*"
-    """)
+    qlpack_content = textwrap.dedent(
+        f"""\
+        name: temp-query-pack
+        version: 0.0.0
+        library: false
+        warnOnImplicitThis: false
+        kind: query
+        language: {lang}
+        dependencies:
+          {dep_pack}: "{DEFAULT_CODEQL_PACK_VERSION}"
+        """
+    )
 
     # д��qlpack.yml�ļ�
     (pack_dir / 'qlpack.yml').write_text(qlpack_content, encoding='utf-8')

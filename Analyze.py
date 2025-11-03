@@ -191,6 +191,33 @@ async def run_multi_agent_analysis(
         analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
 
+        resolved_db_path = db_path
+        try:
+            if db_path:
+                db_root = Path(db_path)
+                if not db_root.is_absolute():
+                    db_root = db_root.resolve()
+                if not db_root.exists():
+                    potential = (Path.cwd() / db_path).resolve()
+                    if potential.exists():
+                        db_root = potential
+                lang_key = (language or "").lower()
+                candidate_paths = []
+                if lang_key and db_root.name.lower() != lang_key:
+                    candidate_paths.append(db_root / lang_key)
+                    if lang_key == "cpp":
+                        candidate_paths.extend([db_root / "c", db_root / "cpp"])
+                for candidate in candidate_paths:
+                    if candidate.exists():
+                        resolved_db_path = str(candidate)
+                        break
+                else:
+                    if db_root.exists():
+                        resolved_db_path = str(db_root)
+        except Exception:
+            resolved_db_path = db_path
+        db_path = resolved_db_path
+
         cve_agent = CVEAnalysisAgent(analyzer)
 
         # 根据语言选择相应的分析器
@@ -205,7 +232,7 @@ async def run_multi_agent_analysis(
             from agents.python_sink_path_agent import PythonPathAnalysisAgent
             from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
             sink_agent = PythonPathAnalysisAgent(analyzer, source_root)
-            source_agent = PythonSourceAnalysisAgent(analyzer, source_root)
+            source_agent = PythonSourceAnalysisAgent(analyzer, source_root, db_path)
             sink_analysis_name = "Python Sink Path Analysis"
             source_analysis_name = "Python Source Analysis"
         elif language == "cpp":
@@ -469,7 +496,8 @@ async def run_java_analysis(
     json_path = str(cve_assets.json_path)
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
     source_root = str(case_paths.source_code)
-    db_path = str(case_paths.db)
+    db_candidate = default_language_db(case_paths, "java")
+    db_path = str(db_candidate or case_paths.db)
 
     await run_multi_agent_analysis(
         json_path, diff_path, source_root, db_path, intel_bundle, stream, "java"
@@ -486,7 +514,8 @@ async def run_python_analysis(
     json_path = str(cve_assets.json_path)
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
     source_root = str(case_paths.source_code)
-    db_path = str(case_paths.db)
+    db_candidate = default_language_db(case_paths, "python")
+    db_path = str(db_candidate or case_paths.db)
 
     await run_multi_agent_analysis(
         json_path, diff_path, source_root, db_path, intel_bundle, stream, "python"
@@ -503,7 +532,8 @@ async def run_c_analysis(
     json_path = str(cve_assets.json_path)
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
     source_root = str(case_paths.source_code)
-    db_path = str(case_paths.db)
+    db_candidate = default_language_db(case_paths, "cpp")
+    db_path = str(db_candidate or case_paths.db)
 
     await run_multi_agent_analysis(
         json_path, diff_path, source_root, db_path, intel_bundle, stream, "cpp"
@@ -520,7 +550,13 @@ async def run_default_analysis(
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
     source_root = str(case_paths.source_code)
 
-    await run_multi_agent_analysis(json_path, diff_path, source_root, "", intel_bundle, stream)
+    language = detect_language(case_paths)
+    db_candidate = default_language_db(case_paths, language)
+    db_path = str(db_candidate or case_paths.db)
+
+    await run_multi_agent_analysis(
+        json_path, diff_path, source_root, db_path, intel_bundle, stream, language
+    )
 
 
 async def main() -> None:
