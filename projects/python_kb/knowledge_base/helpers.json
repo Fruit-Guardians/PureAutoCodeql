@@ -1,56 +1,182 @@
 [
   {
-    "id": "helper:callee-is-name",
-    "name": "calleeIsName",
-    "signature": "predicate calleeIsName(DataFlow::CallCfgNode call, string nm)",
-    "description": "Returns true when a call's target is a global name equal to `nm`.",
-    "example": "calleeIsName(call, \"redirect\")",
-    "source": "CVE-2024-8412/CVE-2024-8412.ql",
-    "tags": ["call-matching", "name", "global"]
+    "id": "helper:callee-is-global-name",
+    "name": "calleeIsGlobalName",
+    "signature": "predicate calleeIsGlobalName(DataFlow::CallCfgNode call, string nm)",
+    "description": "Returns true when a call's target is a global name equal to `nm`. Most commonly used helper in all CVE cases.",
+    "implementation": "call.getFunction().asCfgNode().getNode() instanceof Name and call.getFunction().asCfgNode().getNode().(Name).getId() = nm",
+    "example": "calleeIsGlobalName(call, \"eval\") // matches eval(...)\ncalleeIsGlobalName(call, \"open\") // matches open(...)",
+    "source": "CVE-2024-8412, CVE-2025-54802, CVE-2022-22817, CVE-2025-47789, CVE-2025-46725",
+    "tags": ["call-matching", "name", "global", "essential"]
   },
   {
     "id": "helper:callee-is-attr",
     "name": "calleeIsAttr",
     "signature": "predicate calleeIsAttr(DataFlow::CallCfgNode call, string attr)",
-    "description": "Matches calls whose function expression is an attribute read with a given attribute name.",
-    "example": "calleeIsAttr(call, \"redirect\")",
-    "source": "CVE-2024-8412/CVE-2024-8412.ql",
-    "tags": ["call-matching", "attribute"]
+    "description": "Matches calls whose function expression is an attribute read with a given attribute name. Essential for method calls.",
+    "implementation": "call.getFunction() instanceof DataFlow::AttrRead and call.getFunction().(DataFlow::AttrRead).getAttributeName() = attr",
+    "example": "calleeIsAttr(call, \"redirect\") // matches obj.redirect(...)\ncalleeIsAttr(call, \"write\") // matches fp.write(...)",
+    "source": "CVE-2024-8412, CVE-2025-54802, CVE-2022-22817, CVE-2025-47789",
+    "tags": ["call-matching", "attribute", "method", "essential"]
   },
   {
-    "id": "helper:attr-receiver-django",
-    "name": "receiverLooksLikeDjangoShortcuts",
-    "signature": "predicate receiverLooksLikeDjangoShortcuts(DataFlow::CallCfgNode call)",
-    "description": "Heuristic ensuring the receiver of an attribute call refers to django.shortcuts (directly or via module alias).",
-    "example": "calleeAttrIs(call, \"redirect\") and receiverLooksLikeDjangoShortcuts(call)",
-    "source": "CVE-2024-8412/CVE-2024-8412.ql",
-    "tags": ["django", "redirect", "heuristic"]
+    "id": "helper:in-target-file",
+    "name": "inTargetFile",
+    "signature": "predicate inTargetFile(DataFlow::Node n, string filename)",
+    "description": "Restricts nodes to a specific file by basename. Critical for noise reduction.",
+    "implementation": "n.getLocation().getFile().getBaseName() = filename",
+    "example": "inTargetFile(source, \"cnl_blueprint.py\")",
+    "source": "CVE-2025-54802",
+    "tags": ["scoping", "file", "noise-reduction"]
   },
   {
-    "id": "helper:attr-receiver-eval",
-    "name": "attrReceiverIsLikelyEvalCarrier",
-    "signature": "predicate attrReceiverIsLikelyEvalCarrier(DataFlow::CallCfgNode call)",
-    "description": "Detects receivers such as pandas/pd/DataFrame/builtins/PIL and ImageMath that expose eval/exec methods.",
-    "example": "calleeIsAttr(call, \"eval\") and attrReceiverIsLikelyEvalCarrier(call)",
-    "source": "CVE-2025-46725/CVE-2025-46725.ql",
-    "tags": ["eval", "receiver", "heuristic"]
+    "id": "helper:in-path-pattern",
+    "name": "inPathPattern",
+    "signature": "predicate inPathPattern(DataFlow::Node n, string pattern)",
+    "description": "Restricts nodes to files matching a regex pattern on relative path.",
+    "implementation": "n.asCfgNode().getLocation().getFile().getRelativePath().regexpMatch(pattern)",
+    "example": "inPathPattern(n, \".*/PIL/ImageMath\\\\.py$\")",
+    "source": "CVE-2022-22817",
+    "tags": ["scoping", "file", "regex", "precise"]
+  },
+  {
+    "id": "helper:in-target-function",
+    "name": "inTargetFunction",
+    "signature": "predicate inTargetFunction(DataFlow::Node n, string funcName)",
+    "description": "Restricts nodes to a specific function by name. Essential for function-level scoping.",
+    "implementation": "n.getEnclosingCallable().getScope().getName() = funcName",
+    "example": "inTargetFunction(source, \"addcrypted\")",
+    "source": "CVE-2025-54802",
+    "tags": ["scoping", "function", "noise-reduction"]
+  },
+  {
+    "id": "helper:is-affected-function",
+    "name": "isAffectedFunction",
+    "signature": "predicate isAffectedFunction(Function f)",
+    "description": "Checks if a function is in a list of vulnerable functions (common CVE pattern).",
+    "implementation": "f.getName() in [\"func1\", \"func2\", \"func3\"]",
+    "example": "isAffectedFunction(f) where f.getName() in [\"get_knowledge_base_name\", \"from_status_to_status\"]",
+    "source": "CVE-2024-7099",
+    "tags": ["scoping", "function", "cve-pattern"]
+  },
+  {
+    "id": "helper:attr-receiver-module",
+    "name": "attrReceiverLooksLikeModule",
+    "signature": "predicate attrReceiverLooksLikeModule(DataFlow::CallCfgNode call, string modName)",
+    "description": "Checks if the receiver of an attribute call looks like a specific module (django/flask/pandas/builtins).",
+    "implementation": "exists(DataFlow::Node recv | recv = call.getFunction().(DataFlow::AttrRead).getObject() and (recv instanceof DataFlow::ModuleVariableNode or recv.asCfgNode().getNode() instanceof Name))",
+    "example": "attrReceiverLooksLikeModule(call, \"django.shortcuts\")\nattrReceiverLooksLikeModule(call, \"pandas\")",
+    "source": "CVE-2024-8412, CVE-2025-46725",
+    "tags": ["django", "flask", "pandas", "framework", "receiver"]
+  },
+  {
+    "id": "helper:receiver-is-builtins",
+    "name": "recvIsBuiltins",
+    "signature": "predicate recvIsBuiltins(DataFlow::Node recv)",
+    "description": "Checks if a receiver node is the 'builtins' module.",
+    "implementation": "recv.asCfgNode().getNode() instanceof Name and recv.asCfgNode().getNode().(Name).getId() = \"builtins\"",
+    "example": "recvIsBuiltins(recv) // matches builtins.eval(...)",
+    "source": "CVE-2022-22817",
+    "tags": ["builtins", "eval", "receiver"]
   },
   {
     "id": "helper:is-redirect-call",
     "name": "isRedirectCall",
     "signature": "predicate isRedirectCall(DataFlow::CallCfgNode call)",
-    "description": "Aggregates redirect-related call checks (HttpResponseRedirect, shortcut.redirect, etc.).",
+    "description": "Comprehensive check for Django redirect calls (HttpResponseRedirect, redirect, shortcuts.redirect).",
+    "implementation": "calleeIsGlobalName(call, \"HttpResponseRedirect\") or calleeIsGlobalName(call, \"redirect\") or calleeIsAttr(call, \"redirect\")",
     "example": "exists(DataFlow::CallCfgNode call | isRedirectCall(call) and sink = call.getArg(0))",
-    "source": "CVE-2024-8412/CVE-2024-8412.ql",
-    "tags": ["django", "redirect", "sink"]
+    "source": "CVE-2024-8412, CVE-2025-47789",
+    "tags": ["django", "redirect", "sink", "composite"]
   },
   {
-    "id": "helper:in-relevant-files",
-    "name": "inRelevantFiles",
-    "signature": "predicate inRelevantFiles(DataFlow::Node n)",
-    "description": "Restricts nodes to `image.py` files involved in ImagePromptTemplate bug.",
-    "example": "inRelevantFiles(sink) and sink = call.getArg(0)",
-    "source": "CVE-2024-10940/CVE-2024-10940.ql",
-    "tags": ["scoping", "file"]
+    "id": "helper:is-eval-call",
+    "name": "isEvalCall",
+    "signature": "predicate isEvalCall(DataFlow::CallCfgNode call)",
+    "description": "Comprehensive check for eval-like calls (eval, exec, pandas.eval, builtins.eval, PIL.ImageMath.eval).",
+    "implementation": "calleeIsGlobalName(call, \"eval\") or calleeIsGlobalName(call, \"exec\") or (calleeIsAttr(call, \"eval\") and attrReceiverIsLikelyEvalCarrier(call))",
+    "example": "exists(DataFlow::CallCfgNode call | isEvalCall(call) and sink = call.getArg(0))",
+    "source": "CVE-2025-46725, CVE-2022-22817",
+    "tags": ["eval", "exec", "sink", "composite"]
+  },
+  {
+    "id": "helper:is-file-open-call",
+    "name": "isFileOpenCall",
+    "signature": "predicate isFileOpenCall(DataFlow::CallCfgNode call)",
+    "description": "Checks if a call is to the built-in open() function.",
+    "implementation": "calleeIsGlobalName(call, \"open\")",
+    "example": "isFileOpenCall(call) and sink = call.getArg(0) // path argument",
+    "source": "CVE-2025-54802",
+    "tags": ["file", "path-traversal", "sink"]
+  },
+  {
+    "id": "helper:is-file-write-receiver",
+    "name": "isFileWriteReceiver",
+    "signature": "predicate isFileWriteReceiver(DataFlow::Node n)",
+    "description": "Checks if a node is the receiver of a .write() method call (file object).",
+    "implementation": "exists(DataFlow::CallCfgNode call | calleeIsAttr(call, \"write\") and n = call.getFunction().(DataFlow::AttrRead).getObject())",
+    "example": "isFileWriteReceiver(sink) // fp in fp.write(...)",
+    "source": "CVE-2025-54802",
+    "tags": ["file", "write", "sink"]
+  },
+  {
+    "id": "helper:is-sql-execution-call",
+    "name": "isSQLExecutionCall",
+    "signature": "predicate isSQLExecutionCall(DataFlow::CallCfgNode call)",
+    "description": "Checks if a call is a SQL execution method (execute, executemany, execute_query_).",
+    "implementation": "calleeIsAttr(call, \"execute\") or calleeIsAttr(call, \"executemany\") or calleeIsAttr(call, \"execute_query_\")",
+    "example": "isSQLExecutionCall(call) and sink = call.getArg(0)",
+    "source": "CVE-2024-7099",
+    "tags": ["sql", "injection", "sink"]
+  },
+  {
+    "id": "helper:is-django-url-validation",
+    "name": "isDjangoURLValidation",
+    "signature": "predicate isDjangoURLValidation(DataFlow::Node n)",
+    "description": "Checks if a node is validated by Django's URL validation functions (url_has_allowed_host_and_scheme, is_safe_url).",
+    "implementation": "exists(DataFlow::CallCfgNode call | (calleeIsGlobalName(call, \"url_has_allowed_host_and_scheme\") or calleeIsAttr(call, \"url_has_allowed_host_and_scheme\")) and n = call.getArg(0))",
+    "example": "isSanitizer(n) { isDjangoURLValidation(n) }",
+    "source": "CVE-2024-8412, CVE-2025-47789",
+    "tags": ["django", "sanitizer", "url", "validation"]
+  },
+  {
+    "id": "helper:is-reverse-result",
+    "name": "isReverseResult",
+    "signature": "predicate isReverseResult(DataFlow::Node n)",
+    "description": "Checks if a node is the result of Django's reverse() function (safe internal URL).",
+    "implementation": "exists(DataFlow::CallCfgNode call | n.asCfgNode().getNode() = call.getNode().getNode() and (calleeIsGlobalName(call, \"reverse\") or calleeIsAttr(call, \"reverse\")))",
+    "example": "isSanitizer(n) { isReverseResult(n) }",
+    "source": "CVE-2025-47789",
+    "tags": ["django", "sanitizer", "reverse", "safe-url"]
+  },
+  {
+    "id": "helper:is-leading-slash-const",
+    "name": "isLeadingSlashConst",
+    "signature": "predicate isLeadingSlashConst(DataFlow::Node n)",
+    "description": "Checks if a node is a string literal starting with '/' (safe relative path).",
+    "implementation": "exists(StringLiteral s | n.asCfgNode().getNode() = s and s.getText().regexpMatch(\"^[rRbBuUfF]*[\\\"']/\"))",
+    "example": "isSanitizer(n) { isLeadingSlashConst(n) } // \"/path\" is safe",
+    "source": "CVE-2025-47789",
+    "tags": ["sanitizer", "constant", "safe-path"]
+  },
+  {
+    "id": "helper:parameter-in-function",
+    "name": "isParameterInFunction",
+    "signature": "predicate isParameterInFunction(DataFlow::Node n, string funcPattern)",
+    "description": "Checks if a node is a parameter in a function matching the given pattern (qualified name regex).",
+    "implementation": "exists(DataFlow::ParameterNode p, string qn | p = n and n.getEnclosingCallable().getQualifiedName() = qn and qn.regexpMatch(funcPattern))",
+    "example": "isParameterInFunction(source, \"(^|.*\\\\.)eval$\") // parameter in any eval function",
+    "source": "CVE-2022-22817",
+    "tags": ["source", "parameter", "scoping"]
+  },
+  {
+    "id": "helper:open-to-write-flow",
+    "name": "openToWriteFlowStep",
+    "signature": "predicate openToWriteFlowStep(DataFlow::Node src, DataFlow::Node dst)",
+    "description": "Additional flow step: propagates taint from open() path argument to the returned file object.",
+    "implementation": "exists(DataFlow::CallCfgNode call | calleeIsGlobalName(call, \"open\") and src = call.getArg(0) and dst = call)",
+    "example": "isAdditionalFlowStep(src, dst) { openToWriteFlowStep(src, dst) }",
+    "source": "CVE-2025-54802",
+    "tags": ["additional-flow", "file", "taint-propagation"]
   }
 ]
