@@ -1,0 +1,56 @@
+[
+  {
+    "id": "helper:callee-is-name",
+    "name": "calleeIsName",
+    "signature": "predicate calleeIsName(DataFlow::CallCfgNode call, string nm)",
+    "description": "Returns true when a call's target is a global name equal to `nm`.",
+    "example": "calleeIsName(call, \"redirect\")",
+    "source": "CVE-2024-8412/CVE-2024-8412.ql",
+    "tags": ["call-matching", "name", "global"]
+  },
+  {
+    "id": "helper:callee-is-attr",
+    "name": "calleeIsAttr",
+    "signature": "predicate calleeIsAttr(DataFlow::CallCfgNode call, string attr)",
+    "description": "Matches calls whose function expression is an attribute read with a given attribute name.",
+    "example": "calleeIsAttr(call, \"redirect\")",
+    "source": "CVE-2024-8412/CVE-2024-8412.ql",
+    "tags": ["call-matching", "attribute"]
+  },
+  {
+    "id": "helper:attr-receiver-django",
+    "name": "receiverLooksLikeDjangoShortcuts",
+    "signature": "predicate receiverLooksLikeDjangoShortcuts(DataFlow::CallCfgNode call)",
+    "description": "Heuristic ensuring the receiver of an attribute call refers to django.shortcuts (directly or via module alias).",
+    "example": "calleeAttrIs(call, \"redirect\") and receiverLooksLikeDjangoShortcuts(call)",
+    "source": "CVE-2024-8412/CVE-2024-8412.ql",
+    "tags": ["django", "redirect", "heuristic"]
+  },
+  {
+    "id": "helper:attr-receiver-eval",
+    "name": "attrReceiverIsLikelyEvalCarrier",
+    "signature": "predicate attrReceiverIsLikelyEvalCarrier(DataFlow::CallCfgNode call)",
+    "description": "Detects receivers such as pandas/pd/DataFrame/builtins/PIL and ImageMath that expose eval/exec methods.",
+    "example": "calleeIsAttr(call, \"eval\") and attrReceiverIsLikelyEvalCarrier(call)",
+    "source": "CVE-2025-46725/CVE-2025-46725.ql",
+    "tags": ["eval", "receiver", "heuristic"]
+  },
+  {
+    "id": "helper:is-redirect-call",
+    "name": "isRedirectCall",
+    "signature": "predicate isRedirectCall(DataFlow::CallCfgNode call)",
+    "description": "Aggregates redirect-related call checks (HttpResponseRedirect, shortcut.redirect, etc.).",
+    "example": "exists(DataFlow::CallCfgNode call | isRedirectCall(call) and sink = call.getArg(0))",
+    "source": "CVE-2024-8412/CVE-2024-8412.ql",
+    "tags": ["django", "redirect", "sink"]
+  },
+  {
+    "id": "helper:in-relevant-files",
+    "name": "inRelevantFiles",
+    "signature": "predicate inRelevantFiles(DataFlow::Node n)",
+    "description": "Restricts nodes to `image.py` files involved in ImagePromptTemplate bug.",
+    "example": "inRelevantFiles(sink) and sink = call.getArg(0)",
+    "source": "CVE-2024-10940/CVE-2024-10940.ql",
+    "tags": ["scoping", "file"]
+  }
+]

@@ -1,0 +1,45 @@
+[
+  {
+    "id": "case:cve-2024-8412",
+    "path": "../CVE-2024-8412/CVE-2024-8412.ql",
+    "summary": "Unvalidated redirect target flows into Django redirect responses.",
+    "status": "success",
+    "helpers": [
+      "helper:callee-is-name",
+      "helper:callee-is-attr",
+      "helper:attr-receiver-django",
+      "helper:is-redirect-call"
+    ],
+    "tags": ["django", "redirect", "remote-source"]
+  },
+  {
+    "id": "case:cve-2025-46725",
+    "path": "../CVE-2025-46725/CVE-2025-46725.ql",
+    "summary": "Untrusted expressions reach eval/exec sinks including pandas, DataFrame, PIL.ImageMath.",
+    "status": "success",
+    "helpers": [
+      "helper:callee-is-name",
+      "helper:callee-is-attr"
+    ],
+    "tags": ["eval", "remote-source"]
+  },
+  {
+    "id": "case:cve-2025-54802",
+    "path": "../CVE-2025-54802/CVE-2025-54802.ql",
+    "summary": "HTTP parameters in pyLoad addcrypted flow into open/write causing path traversal.",
+    "status": "success",
+    "helpers": [],
+    "tags": ["file-write", "remote-source", "flowstep"]
+  },
+  {
+    "id": "case:cve-2024-10940",
+    "path": "../CVE-2024-10940/CVE-2024-10940.ql",
+    "summary": "Langchain ImagePromptTemplate path taints open(..., \"rb\") file reads.",
+    "status": "success",
+    "helpers": [
+      "helper:callee-is-name",
+      "helper:in-relevant-files"
+    ],
+    "tags": ["file-read", "taint"]
+  }
+]
