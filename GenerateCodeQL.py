@@ -96,9 +96,43 @@ class MultiAgentAnalyzer:
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
                         if output:
-                            # 截断过长的输出
-                            output_preview = str(output)[:200] + ("..." if len(str(output)) > 200 else "")
-                            print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
+                            # 优化输出显示：完整显示文件内容和目录列表
+                            output_str = str(output)
+                            
+                            # 检查是否是目录列表（JSON格式）
+                            if tool_name == "server-filesystem" and "list_directory" in event.get("name", ""):
+                                try:
+                                    # 尝试解析JSON格式的目录列表
+                                    import json
+                                    dir_data = json.loads(output_str)
+                                    print(f"✅ 工具完成: {tool_name}")
+                                    print("📁 目录列表:")
+                                    if isinstance(dir_data, list):
+                                        for item in dir_data:
+                                            if isinstance(item, dict):
+                                                name = item.get('name', '')
+                                                item_type = item.get('type', '')
+                                                if item_type == 'directory':
+                                                    print(f"   📂 {name}/")
+                                                else:
+                                                    print(f"   📄 {name}")
+                                    else:
+                                        print(f"   完整输出: {output_str}")
+                                except json.JSONDecodeError:
+                                    # 如果不是JSON，显示完整输出
+                                    print(f"✅ 工具完成: {tool_name} - 输出: {output_str}")
+                            
+                            # 检查是否是文件内容读取
+                            elif tool_name == "server-filesystem" and "read_file" in event.get("name", ""):
+                                print(f"✅ 工具完成: {tool_name}")
+                                print("📖 文件内容:")
+                                print("-" * 40)
+                                print(output_str)
+                                print("-" * 40)
+                            
+                            else:
+                                # 其他工具保持原有显示方式
+                                print(f"✅ 工具完成: {tool_name} - 输出: {output_str}")
                         else:
                             print(f"✅ 工具完成: {tool_name}")
                     

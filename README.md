@@ -9,8 +9,10 @@ PureAutoCodeql/
 ├── Analyze.py                    # 主分析器，多智能体协调器
 ├── agents/                       # 智能体模块
 │   ├── cve_analysis_agent.py    # CVE 漏洞分析智能体
-│   ├── java_sink_path_agent.py  # Java Sink 路径分析智能体
-│   └── java_source_analysis_agent.py # Java 源码分析智能体
+│   ├── unified_sink_path_agent.py # 统一Sink路径分析智能体（支持Java/Python/C++）
+│   ├── java_source_analysis_agent.py # Java 源码分析智能体
+│   ├── python_source_analysis_agent.py # Python 源码分析智能体
+│   └── c_source_analysis_agent.py # C/C++ 源码分析智能体
 ├── utils/                        # 工具模块
 │   ├── io.py                    # 输入输出工具
 │   └── java.py                  # Java 代码处理工具

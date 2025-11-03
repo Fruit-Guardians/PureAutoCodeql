@@ -18,8 +18,8 @@ from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 
 # Import agents and utilities
 from agents.cve_analysis_agent import CVEAnalysisAgent
-from agents.java_sink_path_agent import JavaPathAnalysisAgent
-from agents.java_source_analysis_agent import JavaSourceAnalysisAgent
+from agents.unified_sink_path_agent import UnifiedSinkPathAgent
+from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from tools.codeql_compose import CodeQLComposeTool
 from utils.case import (
     CasePaths,
@@ -221,30 +221,15 @@ async def run_multi_agent_analysis(
 
         cve_agent = CVEAnalysisAgent(analyzer)
 
-        # 根据语言选择相应的分析器
-        if language == "java":
-            from agents.java_sink_path_agent import JavaPathAnalysisAgent
-            from agents.java_source_analysis_agent import JavaSourceAnalysisAgent
-            sink_agent = JavaPathAnalysisAgent(analyzer, source_root)
-            source_agent = JavaSourceAnalysisAgent(analyzer, source_root)
-            sink_analysis_name = "Java Sink Path Analysis"
-            source_analysis_name = "Java Source Analysis"
-        elif language == "python":
-            from agents.python_sink_path_agent import PythonPathAnalysisAgent
-            from agents.python_source_analysis_agent import PythonSourceAnalysisAgent
-            sink_agent = PythonPathAnalysisAgent(analyzer, source_root)
-            source_agent = PythonSourceAnalysisAgent(analyzer, source_root, db_path)
-            sink_analysis_name = "Python Sink Path Analysis"
-            source_analysis_name = "Python Source Analysis"
-        elif language == "cpp":
-            from agents.c_sink_path_agent import CSinkPathAnalysisAgent
-            from agents.c_source_analysis_agent import CSourceAnalysisAgent
-            sink_agent = CSinkPathAnalysisAgent(analyzer, source_root)
-            source_agent = CSourceAnalysisAgent(analyzer, source_root)
-            sink_analysis_name = "C Sink Path Analysis"
-            source_analysis_name = "C Source Analysis"
-        else:
-            raise ValueError(f"不支持的语言: {language}")
+        # 使用统一的sink agent替代三个独立的agent
+        from agents.unified_sink_path_agent import UnifiedSinkPathAgent
+        sink_agent = UnifiedSinkPathAgent(analyzer, source_root)
+        sink_analysis_name = f"{language.title()} Sink Path Analysis"
+        
+        # 使用统一的source分析器替代三个独立的agent
+        from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+        source_agent = UnifiedSourceAnalysisAgent(analyzer, source_root, db_path)
+        source_analysis_name = f"{language.title()} Source Analysis"
 
         codeql_tool = CodeQLComposeTool(
             analyzer=analyzer,
@@ -265,19 +250,10 @@ async def run_multi_agent_analysis(
         print()
 
         print(f"=== {sink_analysis_name} ===")
-        # 根据语言调用相应的分析方法
-        if language == "java":
-            sink_result = await sink_agent.analyze_java_paths(
-                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
-            )
-        elif language == "python":
-            sink_result = await sink_agent.analyze_python_paths(
-                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
-            )
-        elif language == "cpp":
-            sink_result = await sink_agent.analyze_c_paths(
-                cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
-            )
+        # 使用统一的sink分析方法
+        sink_result = await sink_agent.analyze_paths(
+            language, cve_result.content if cve_result.success else "", diff_path, show_thinking=stream
+        )
 
         if not sink_result.success:
             print(f"{language.title()} sink analysis failed: {sink_result.error}")
@@ -286,19 +262,10 @@ async def run_multi_agent_analysis(
         print()
 
         print(f"=== {source_analysis_name} ===")
-        # 根据语言调用相应的分析方法
-        if language == "java":
-            source_result = await source_agent.analyze_java_sources(
-                sink_result.content if sink_result.success else "", show_thinking=stream
-            )
-        elif language == "python":
-            source_result = await source_agent.analyze_python_sources(
-                sink_result.content if sink_result.success else "", show_thinking=stream
-            )
-        elif language == "cpp":
-            source_result = await source_agent.analyze_c_sources(
-                sink_result.content if sink_result.success else "", show_thinking=stream
-            )
+        # 使用统一的source分析方法
+        source_result = await source_agent.analyze_sources(
+            language, sink_result.content if sink_result.success else "", show_thinking=stream
+        )
 
         if not source_result.success:
             print(f"{language.title()} source analysis failed: {source_result.error}")

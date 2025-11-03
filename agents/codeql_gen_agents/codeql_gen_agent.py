@@ -17,14 +17,14 @@ if TYPE_CHECKING:
 class CodeQLGenAgent:
     """Generate CodeQL queries using a dynamic prompt template with iterative context.
 
-    This agent reads the prompt from agents/prompts/codeql_generate.md and injects
+    This agent reads the prompt from prompts/codeql_generate.md and injects
     iterative placeholders before sending it to the shared MultiAgentAnalyzer.
     """
 
     def __init__(self, analyzer: "MultiAgentAnalyzer", prompt_file: Optional[Path] = None):
         self.analyzer = analyzer
-        # Default prompt path: agents/prompts/codeql_generate.md
-        self.prompt_file = prompt_file or (Path(__file__).resolve().parent.parent / "prompts" / "codeql_generate.md")
+        # Default prompt path: prompts/codeql_generate.md
+        self.prompt_file = prompt_file or (Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_generate.md")
 
     def _load_prompt(self) -> str:
         """Load prompt template content from markdown file."""

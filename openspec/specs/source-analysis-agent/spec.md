@@ -1,18 +1,20 @@
 # source-analysis-agent Specification
 
 ## Purpose
-TBD - created by archiving change add-source-analysis-agent. Update Purpose after archive.
+提供统一的多语言Source分析能力，支持Java、Python和C/C++源代码中的Source点（数据来源点）分析，与现有的Sink分析Agent形成完整的数据流分析能力。
+
 ## Requirements
-### Requirement: Java Source Analysis Agent
-系统 SHALL 提供一个新的 `JavaSourceAnalysisAgent` 类，专门用于分析Java源代码中的Source点（数据来源点），与现有的Sink分析Agent形成完整的数据流分析能力。
+### Requirement: 统一Source分析Agent
+系统 SHALL 提供一个 `UnifiedSourceAnalysisAgent` 类，统一支持Java、Python和C/C++源代码中的Source点分析。
 
 #### Scenario: 接收相同的输入数据
 - **WHEN** Source分析Agent被调用
-- **THEN** 接收与 `JavaPathAnalysisAgent`（Sink分析Agent）相同的输入：CVE分析结果和Java文件路径列表
+- **THEN** 接收与 `UnifiedSinkPathAgent`（Sink分析Agent）相同的输入：CVE分析结果、文件路径列表和编程语言类型
 
 #### Scenario: 分析Source点
-- **WHEN** Agent分析Java源代码
+- **WHEN** Agent分析源代码
 - **THEN** 识别并定位可能的数据来源点（Source），如用户输入、外部数据源、配置文件等
+- **AND** 支持Java、Python和C/C++三种编程语言
 
 #### Scenario: 使用相同的工具和配置
 - **WHEN** 初始化Source分析Agent
@@ -20,7 +22,15 @@ TBD - created by archiving change add-source-analysis-agent. Update Purpose afte
 
 #### Scenario: 构建专门的分析提示词
 - **WHEN** 构建分析提示词
-- **THEN** 针对Source点分析优化提示词，指导Agent识别数据流的起始点
+- **THEN** 通过 `SourcePromptManager` 动态选择针对不同语言的优化提示词
+
+### Requirement: 动态提示词管理
+系统 SHALL 提供一个 `SourcePromptManager` 类，支持动态语言切换的提示词管理。
+
+#### Scenario: 多语言支持
+- **WHEN** 请求构建提示词
+- **THEN** 根据指定的编程语言自动选择相应的提示词构建器
+- **AND** 支持Java、Python和C/C++三种编程语言
 
 ### Requirement: 分析结果输出功能
 系统 SHALL 提供一个 `write_analysis_output` 函数，将Source和Sink两个Agent的分析结果整合输出到统一文件。
