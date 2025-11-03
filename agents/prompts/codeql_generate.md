@@ -36,21 +36,21 @@
 2. **导入库 (Import Libraries):**
 
    * 根据 `[LANGUAGE]` 导入正确的标准CodeQL库 (e.g., `import java`, `import go`, `import python`)。
-   * **必须** 优先导入并使用数据流分析库 (e.g., `DataFlow::PathGraph` 或 `TaintTracking::PathGraph`)。
+   * **必须** 优先导入并使用数据流分析库 (e.g., `DataFlow::PathGraph` 或 `TaintTracking::PathGraph`).
 3. **编写QLDoc元数据 (Write QLDoc Metadata):**
 
    * **必须** 为查询添加完整的QLDoc元数据，这是CodeQL的最佳实践。至少包括：
      * `@name`: 查询的简明英文名称。
      * `@description`: 对查询功能的详细描述。
-     * `@kind path-problem`: 默认所有查询都是路径问题 (`path-problem`)，除非需求明确是简单查询 (`problem`)。
-     * `@problem.severity`: (e.g., `high`, `medium`, `low`)。
-     * `@tags`: (e.g., `security`, `external/cwe/cwe-089` (SQL注入), `external/cwe/cwe-078` (OS命令注入))。
+     * `@kind path-problem`: 默认所有查询都是路径问题 (`path-problem`)，除非需求明确是简单查询 (`problem`).
+     * `@problem.severity`: (e.g., `high`, `medium`, `low`).
+     * `@tags`: (e.g., `security`, `external/cwe/cwe-089` (SQL注入), `external/cwe/cwe-078` (OS命令注入)).
 
 ## CodeQL生成规则 (CRITICAL)
 
 1. **类型名称规范:**
 
-   - ✅ 使用 `MethodCall` (正确)
+   - ✅ 严格使用 `MethodCall` (正确)
    - ❌ 禁止使用 `MethodAccess` (已弃用)
    - ❌ 禁止使用 `MethodAccessExpr` (不存在)
 2. **接口实现规范:**
@@ -76,7 +76,7 @@
 
 ### 2. Select语句格式
 
-Path-problem查询的select语句必须恰好包含4个元素：
+Path-problem查询的select语句必须恰好包含4个元素，严格按照以下格式：
 
 ```ql
 select sink.getNode(), source, sink, "描述信息"
@@ -103,7 +103,7 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
 
 ### 4. 验证清单
 
-生成path-problem查询后，请检查：
+生成path-problem查询后，请仔细检查：
 
 - [ ] 使用了 @problem.severity 而不是 @severity
 - [ ] select语句只有4个参数
