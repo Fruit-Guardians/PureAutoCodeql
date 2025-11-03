@@ -18,7 +18,7 @@ relevant_tags=kb_context.get("relevant_tags"),            # ❌ 准备了
 
 ### 提示词层面
 ```markdown
-# agents/prompts/codeql_generate.md (修改前)
+# prompts/codeql_generate.md (修改前)
 
 [[QL_TEMPLATE]]  # ⬅️ 只有这一个占位符被使用
 ```
@@ -31,7 +31,7 @@ relevant_tags=kb_context.get("relevant_tags"),            # ❌ 准备了
 
 ### 提示词层面
 ```markdown
-# agents/prompts/codeql_generate.md (修改后)
+# prompts/codeql_generate.md (修改后)
 
 ## Python 专用：知识库智能推荐（仅 Python 语言时有效）
 

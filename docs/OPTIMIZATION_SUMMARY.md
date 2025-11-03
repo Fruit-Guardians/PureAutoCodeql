@@ -31,7 +31,7 @@
 
 ### 2. **创建了全新的模板**
 
-**文件**: `agents/prompts/python_template_ql.md` (474 行)
+**文件**: `prompts/python_template_ql.md` (474 行)
 
 **新增内容**:
 - ✅ 6 个核心 Helper 谓词模式（带完整实现）
@@ -51,7 +51,7 @@
 - ✅ 完整示例（Django Open Redirect）
 - ✅ 真实案例引用
 
-**旧文件已备份**: `agents/prompts/python_template_ql_old.md`
+**旧文件已备份**: `prompts/python_template_ql_old.md`
 
 ### 3. **优化了 KB helpers.json**
 
@@ -101,8 +101,8 @@
 ### 5. **更新了提示词以使用 KB**
 
 之前的优化（已完成）:
-- ✅ `agents/prompts/codeql_generate.md` - 添加了 KB 占位符引用
-- ✅ `agents/prompts/codeql_erroranalyze.md` - 添加了 KB 占位符引用
+- ✅ `prompts/codeql_generate.md` - 添加了 KB 占位符引用
+- ✅ `prompts/codeql_erroranalyze.md` - 添加了 KB 占位符引用
 
 现在 AI 可以看到：
 - `[[RELEVANT_TAGS]]` - 匹配的标签
@@ -273,7 +273,7 @@ predicate calleeIsGlobalName(DataFlow::CallCfgNode call, string nm) {
 
 ```
 优化相关:
-├── agents/prompts/
+├── prompts/
 │   ├── python_template_ql.md (替换为 474 行优化版)
 │   ├── python_template_ql_old.md (备份旧版 180 行)
 │   ├── python_template_ql_v2.md (优化版源文件)

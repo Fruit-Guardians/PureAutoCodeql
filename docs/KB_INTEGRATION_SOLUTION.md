@@ -12,8 +12,8 @@
 ### 核心改进
 
 **在两个提示词文件中集成 KB 占位符**：
-1. `agents/prompts/codeql_generate.md` - CodeQL 生成提示词
-2. `agents/prompts/codeql_erroranalyze.md` - 错误分析提示词
+1. `prompts/codeql_generate.md` - CodeQL 生成提示词
+2. `prompts/codeql_erroranalyze.md` - 错误分析提示词
 
 ### 工作流程
 
@@ -102,8 +102,8 @@
 ## 📝 实现细节
 
 ### 修改的文件
-1. `agents/prompts/codeql_generate.md` (+23 行)
-2. `agents/prompts/codeql_erroranalyze.md` (+24 行)
+1. `prompts/codeql_generate.md` (+23 行)
+2. `prompts/codeql_erroranalyze.md` (+24 行)
 
 ### 不需要修改
 - `tools/codeql_compose.py` - KB 计算逻辑完美无需改动

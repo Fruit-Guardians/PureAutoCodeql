@@ -320,7 +320,7 @@ select sink.getNode(), src, sink, "message", src, "source", sink, "sink"
 ## 📁 修改的文件清单
 
 ```
-✅ agents/prompts/python_template_ql.md (替换为优化版)
+✅ prompts/python_template_ql.md (替换为优化版)
 ✅ agents/prompts/python_template_ql_old.md (备份旧版)
 ✅ agents/prompts/python_template_ql_v2.md (优化版源文件)
 ✅ QLdatabase/Python/knowledge_base/helpers.json (19 个 helpers)

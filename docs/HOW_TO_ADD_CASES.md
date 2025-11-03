@@ -348,7 +348,7 @@ echo "4. If new helpers, update helpers.json"
 - **现有案例**: `QLdatabase/Python/py/`
 - **案例索引**: `QLdatabase/Python/knowledge_base/cases.json`
 - **Helper 库**: `QLdatabase/Python/knowledge_base/helpers.json`
-- **模板**: `agents/prompts/python_template_ql.md`
+- **模板**: `prompts/python_template_ql.md`
 
 ---
 

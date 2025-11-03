@@ -248,7 +248,7 @@ select sink.getNode(), src, sink, "msg"
 
 ## 🔗 详细文档
 
-- **完整模板**: `agents/prompts/python_template_ql.md` (474 行)
+- **完整模板**: `prompts/python_template_ql.md` (474 行)
 - **Helpers 库**: `QLdatabase/Python/knowledge_base/helpers.json` (19 个)
 - **成功案例**: `QLdatabase/Python/knowledge_base/cases.json` (8 个)
 - **优化详解**: `docs/TEMPLATE_KB_OPTIMIZATION.md`
@@ -274,5 +274,5 @@ select sink.getNode(), src, sink, "msg"
 
 ---
 
-**快速开始**: 查看 `agents/prompts/python_template_ql.md` 第 68-180 行的实战 helper 模式！
+**快速开始**: 查看 `prompts/python_template_ql.md` 第 68-180 行的实战 helper 模式！
 
