@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
+from .cve_fetcher import fetch_cve_from_nvd, save_cve_data
+
 CVE_FILE_PATTERN = re.compile(r"(CVE-\d{4}-\d+)", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -59,40 +63,81 @@ def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePath
     )
 
 
-def discover_cve_assets(
-    case_paths: CasePaths, *, preferred_cve: Optional[str] = None
-) -> CveAssets:
+def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
     """
-    在案例输入目录中定位CVE JSON/diff对。
+    在案例输入目录中定位CVE JSON/diff对，支持文件缺失时的回退机制。
 
-    如果提供了preferred_cve，它必须存在；否则函数选择
-    唯一存在的CVE或在有歧义时抛出异常。
+    自动选择第一个可用的CVE进行，如果JSON文件缺失则从NVD API获取。
     """
 
     json_files = sorted(case_paths.inputs.glob("CVE-*.json"))
-    if not json_files:
-        raise FileNotFoundError(
-            f"No CVE JSON files found in {case_paths.inputs}"
-        )
-
     json_map: Dict[str, Path] = {}
-    for path in json_files:
-        cve_id = extract_cve_id(path.name)
-        if not cve_id:
-            continue
-        json_map[cve_id.upper()] = path
+    cve_id: str
+    json_path: Path
 
+    # 处理本地JSON文件
+    if json_files:
+        for path in json_files:
+            cve_id_extracted = extract_cve_id(path.name)
+            if not cve_id_extracted:
+                continue
+            json_map[cve_id_extracted.upper()] = path
+
+        if json_map:
+            # 使用本地找到的JSON文件
+            cve_id = sorted(json_map.keys())[0]
+            json_path = json_map[cve_id]
+            logger.info(f"📁 [本地文件] 找到CVE JSON文件: {json_path}")
+        else:
+            # 本地有JSON文件但格式都无效，尝试从diff文件推断CVE ID
+            diff_files = sorted(case_paths.inputs.glob("CVE-*.diff"))
+            if diff_files:
+                cve_id = extract_cve_id(diff_files[0].name)
+                if cve_id:
+                    logger.info(f"📝 [推断ID] 从diff文件推断CVE ID: {cve_id}")
+                else:
+                    raise ValueError(
+                        f"Inputs directory {case_paths.inputs} contains files but no valid CVE IDs could be extracted"
+                    )
+            else:
+                raise ValueError(
+                    f"Inputs directory {case_paths.inputs} contains JSON files but no valid CVE IDs could be extracted"
+                )
+    else:
+        # 没有本地JSON文件，尝试从diff文件推断CVE ID
+        diff_files = sorted(case_paths.inputs.glob("CVE-*.diff"))
+        if diff_files:
+            cve_id = extract_cve_id(diff_files[0].name)
+            if not cve_id:
+                raise ValueError(
+                    f"Inputs directory {case_paths.inputs} contains diff files but no valid CVE IDs could be extracted"
+                )
+            logger.info(f"📝 [推断ID] 未找到JSON文件，从diff文件推断CVE ID: {cve_id}")
+        else:
+            raise FileNotFoundError(
+                f"No CVE JSON or diff files found in {case_paths.inputs}"
+            )
+
+    # 如果没有有效的本地JSON文件，从NVD API获取
     if not json_map:
-        raise ValueError(
-            f"Inputs directory {case_paths.inputs} does not contain valid CVE JSON filenames"
-        )
+        try:
+            logger.info(f"🌐 [网络获取] 正在从NVD API获取CVE数据: {cve_id}")
+            cve_data = fetch_cve_from_nvd(cve_id)
+            json_path = save_cve_data(cve_id, cve_data, case_paths.inputs)
+            logger.info(f"✅ [获取成功] CVE数据已保存到: {json_path}")
+        except Exception as e:
+            logger.error(f"❌ [获取失败] 无法获取CVE数据 {cve_id}: {e}")
+            raise RuntimeError(f"Failed to fetch CVE data for {cve_id}: {e}")
 
-    cve_id = _select_cve_id(json_map.keys(), preferred_cve)
-    json_path = json_map[cve_id]
-
+    # 处理diff文件（可选，缺失时不抛出异常）
     diff_candidates = sorted(case_paths.inputs.glob("CVE-*.diff"))
     diff_map = {extract_cve_id(path.name): path for path in diff_candidates}
-    diff_path = diff_map.get(cve_id)
+    diff_path = diff_map.get(cve_id.upper())
+
+    if diff_path:
+        logger.info(f"📄 [本地文件] 找到diff文件: {diff_path}")
+    else:
+        logger.info(f"⚠️  [文件缺失] 未找到 {cve_id} 的diff文件，将继续进行分析（无diff模式）")
 
     return CveAssets(cve_id=cve_id, json_path=json_path, diff_path=diff_path)
 
@@ -106,25 +151,7 @@ def extract_cve_id(filename: str) -> Optional[str]:
     return None
 
 
-def _select_cve_id(cve_ids: Iterable[str], preferred: Optional[str]) -> str:
-    """解析要使用哪个CVE标识符。"""
 
-    cve_list = sorted({cve.upper() for cve in cve_ids})
-    if preferred:
-        preferred_upper = preferred.upper()
-        if preferred_upper not in cve_list:
-            raise ValueError(
-                f"CVE {preferred} not found in inputs. Available: {', '.join(cve_list)}"
-            )
-        return preferred_upper
-
-    if len(cve_list) == 1:
-        return cve_list[0]
-
-    raise ValueError(
-        "Multiple CVE JSON files found. Specify one with --cve. "
-        f"Available: {', '.join(cve_list)}"
-    )
 
 
 def default_language_db(case_paths: CasePaths, language: str) -> Optional[Path]:

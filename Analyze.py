@@ -380,11 +380,16 @@ async def run_case_analysis(
             print("🔍 启用AI思考过程显示模式")
 
         # 发现CVE资产
-        cve_assets = discover_cve_assets(case_paths, preferred_cve=cve_id)
-        print(f"分析CVE: {cve_assets.cve_id}")
-        print(f"JSON文件: {cve_assets.json_path}")
+        cve_assets = discover_cve_assets(case_paths)
+        print(f"🎯 分析CVE: {cve_assets.cve_id}")
+        if cve_assets.json_path.exists():
+            print(f"📁 JSON文件: {cve_assets.json_path} (本地)")
+        else:
+            print(f"🌐 JSON文件: {cve_assets.json_path} (网络获取)")
         if cve_assets.diff_path:
-            print(f"Diff文件: {cve_assets.diff_path}")
+            print(f"📄 Diff文件: {cve_assets.diff_path} (本地)")
+        else:
+            print(f"⚠️  Diff文件: 无 (将以无diff模式分析)")
 
         # 收集情报数据
         print("正在收集漏洞情报...")
@@ -452,7 +457,7 @@ async def run_java_analysis(
     case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行Java分析工作流。"""
-    print("使用Java分析器...")
+    print("☕ 使用Java分析器...")
 
     # 使用案例中的路径
     json_path = str(cve_assets.json_path)
@@ -470,7 +475,7 @@ async def run_python_analysis(
     case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行Python分析工作流。"""
-    print("使用Python分析器...")
+    print("🐍 使用Python分析器...")
 
     # 使用案例中的路径
     json_path = str(cve_assets.json_path)
@@ -488,7 +493,7 @@ async def run_c_analysis(
     case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行C语言分析工作流。"""
-    print("使用C语言分析器...")
+    print("⚙️ 使用C语言分析器...")
 
     # 使用案例中的路径
     json_path = str(cve_assets.json_path)
@@ -506,7 +511,7 @@ async def run_default_analysis(
     case_paths: CasePaths, cve_assets: CveAssets, intel_bundle: IntelBundle, stream: bool = False
 ) -> None:
     """运行默认分析工作流。"""
-    print("使用默认分析器...")
+    print("🔧 使用默认分析器...")
 
     json_path = str(cve_assets.json_path)
     diff_path = str(cve_assets.diff_path) if cve_assets.diff_path else ""
