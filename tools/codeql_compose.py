@@ -165,7 +165,6 @@ class PythonKnowledgeBase:
                 tag_suffix = f" [tags: {tag_list}]" if tag_list else ""
                 summary = summary.strip()
                 lines.append(f"- {item_id}: {summary}{tag_suffix}")
-
         return "\n".join(lines)
 
     def build_context(self, requirement: str) -> Dict[str, str]:
@@ -355,6 +354,7 @@ class CodeQLComposeTool(BaseTool):
         self,
         requirement: str,
         run_manager: Optional[Any] = None,
+        exec_mode: str = 'analyze',
         show_thinking: bool = False
     ) -> str:
         """
@@ -413,6 +413,7 @@ class CodeQLComposeTool(BaseTool):
             utils_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(utils_module)
             execute_codeql_query = utils_module.execute_codeql_query
+            run_query_and_decode_to_text = getattr(utils_module, 'run_query_and_decode_to_text', None)
             
             gen_agent = CodeQLGenAgent(self.analyzer)
             error_agent = CodeQLErrorAgent(self.analyzer)
@@ -460,46 +461,69 @@ class CodeQLComposeTool(BaseTool):
                     if not current_ql:
                         return f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
                     
-                    # Execute CodeQL query
-                    exec_result = execute_codeql_query(
-                        query_content=current_ql,
-                        database_path=database_path,
-                        language=target_language
-                    )
+                    mode = (exec_mode or 'analyze').lower()
+                    if mode == 'run' and run_query_and_decode_to_text:
+                        exec_result = run_query_and_decode_to_text(
+                            query_content=current_ql,
+                            database_path=database_path,
+                            language=target_language,
+                            output_dir='./temp/search_temp',
+                        )
+                    else:
+                        exec_result = execute_codeql_query(
+                            query_content=current_ql,
+                            database_path=database_path,
+                            language=target_language
+                        )
                     
                     # Check execution result
                     if exec_result.get('success', False):
-                        print("codeql query:", current_ql)
-                        sarif_path = exec_result.get('sarif_path')
-                        json_path: Optional[str] = None
-                        paths_count: Optional[int] = None
+                        mode_now = (exec_mode or 'analyze').lower()
+                        if mode_now == 'run' and run_query_and_decode_to_text:
+                            result_file = exec_result.get('result_file')
+                            full_text = exec_result.get('output', '') or ''
+                            lines = (full_text.splitlines() if isinstance(full_text, str) else [])
+                            preview = "\n".join(lines[:40])
+                            if len(lines) > 40:
+                                preview += "\n..."
+                            result = (
+                                f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n"
+                                f"```ql\n{current_ql}\n```\n\n"
+                                f"Text results saved to: {result_file or '(unknown)'}\n"
+                            )
+                            if preview.strip():
+                                result += "Preview:\n\n```\n" + preview + "\n```"
+                            return result
+                        else:
+                            print("codeql query:", current_ql)
+                            sarif_path = exec_result.get('sarif_path')
+                            json_path: Optional[str] = None
+                            paths_count: Optional[int] = None
 
-                        if sarif_path:
-                            try:
-                                # 成功执行后自动导出同名 JSON，方便后续可视化.
-                                config = get_sarif2json_config()
-                                sarif_file = Path(sarif_path)
-                                json_file = sarif_file.with_suffix('.json')
-                                paths_count = write_paths_json(
-                                    sarif_path,
-                                    str(json_file),
-                                    max_results=config.max_results,
-                                    threadflow_index=config.threadflow_index,
-                                    rule_filter=config.rule_filter,
-                                    relative_to=None,
-                                )
-                                json_path = str(json_file)
-                            except Exception as convert_error:
-                                print(f"SARIF->JSON 转换失败: {convert_error}")
+                            if sarif_path:
+                                try:
+                                    config = get_sarif2json_config()
+                                    sarif_file = Path(sarif_path)
+                                    json_file = sarif_file.with_suffix('.json')
+                                    paths_count = write_paths_json(
+                                        sarif_path,
+                                        str(json_file),
+                                        max_results=config.max_results,
+                                        threadflow_index=config.threadflow_index,
+                                        rule_filter=config.rule_filter,
+                                        relative_to=None,
+                                    )
+                                    json_path = str(json_file)
+                                except Exception as convert_error:
+                                    print(f"SARIF->JSON 转换失败: {convert_error}")
 
-                        # Success! Return the final query
-                        return self._format_success_result(
-                            query=current_ql,
-                            round_index=round_index,
-                            sarif_path=sarif_path,
-                            paths_json_path=json_path,
-                            paths_count=paths_count,
-                        )
+                            return self._format_success_result(
+                                query=current_ql,
+                                round_index=round_index,
+                                sarif_path=sarif_path,
+                                paths_json_path=json_path,
+                                paths_count=paths_count,
+                            )
                     else:
                         if round_index >= max_iterations:
                             error_info = self._format_error_info(exec_result.get('output', 'Unknown error'), round_index)

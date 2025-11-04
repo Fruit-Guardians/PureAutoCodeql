@@ -249,6 +249,105 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
                 pass
 
 
+def run_query_and_decode_to_text(
+    query_content: str,
+    database_path: str,
+    language: Optional[str] = None,
+    output_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    query_file = None
+    pack_dir = None
+    try:
+        query_file = create_temporary_qlpack(query_content, language=language)
+        pack_dir = query_file.parent
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        bqrs_path = pack_dir / f"result_{timestamp}.bqrs"
+
+        result = subprocess.run(
+            [
+                'codeql', 'query', 'run',
+                str(query_file),
+                '--database', database_path,
+                f'--output={str(bqrs_path)}',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+
+        if result.returncode != 0:
+            parts: List[str] = []
+            if result.stderr:
+                parts.append(result.stderr.strip())
+            if result.stdout:
+                parts.append(result.stdout.strip())
+            return {
+                'success': False,
+                'output': '\n'.join(filter(None, parts)) or 'Unknown CodeQL run error',
+                'result_file': None,
+            }
+
+        decode = subprocess.run(
+            [
+                'codeql', 'bqrs', 'decode',
+                '--format=table',
+                str(bqrs_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if decode.returncode != 0:
+            parts: List[str] = []
+            if decode.stderr:
+                parts.append(decode.stderr.strip())
+            if decode.stdout:
+                parts.append(decode.stdout.strip())
+            return {
+                'success': False,
+                'output': '\n'.join(filter(None, parts)) or 'Unknown BQRS decode error',
+                'result_file': None,
+            }
+
+        content = decode.stdout or ''
+        out_dir = Path(output_dir) if output_dir else Path('./temp/search_temp')
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            out_dir = Path.cwd() / 'temp' / 'search_temp'
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+        result_file = out_dir / f"query_{timestamp}.txt"
+        text_to_write = content if content.strip() else 'No results.'
+        result_file.write_text(text_to_write, encoding='utf-8')
+
+        return {
+            'success': True,
+            'output': content,
+            'result_file': str(result_file),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'output': 'CodeQL run/decode timed out.',
+            'result_file': None,
+        }
+    except FileNotFoundError:
+        return {
+            'success': False,
+            'output': 'CodeQL CLI not found in PATH. Please ensure CodeQL is properly installed and accessible.',
+            'result_file': None,
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'output': f'Unexpected error: {str(e)}',
+            'result_file': None,
+        }
+
+
 def parse_codeql_results(result_output: str) -> List[Dict[str, Any]]:
     """
     将CodeQL查询输出解析为结构化数据。
