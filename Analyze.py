@@ -95,7 +95,7 @@ class MultiAgentAnalyzer:
                 {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
             ):
                 event_name = event.get("event")
-                
+
                 # 显示AI的思考过程
                 if show_thinking:
                     if event_name == "on_agent_action":
@@ -105,12 +105,12 @@ class MultiAgentAnalyzer:
                             print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
                             if hasattr(action, "tool_input") and action.tool_input:
                                 print(f"   工具输入: {action.tool_input}")
-                    
+
                     elif event_name == "on_tool_start":
                         # 工具开始执行
                         tool_name = event.get("name", "")
                         print(f"🔧 工具执行: {tool_name}")
-                    
+
                     elif event_name == "on_tool_end":
                         # 工具执行完成
                         tool_name = event.get("name", "")
@@ -121,13 +121,13 @@ class MultiAgentAnalyzer:
                             print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
                         else:
                             print(f"✅ 工具完成: {tool_name}")
-                    
+
                     elif event_name == "on_agent_step":
                         # AI完成一步思考
                         step_output = event.get("data", {}).get("output", "")
                         if step_output and hasattr(step_output, "intermediate_steps"):
                             print("💭 AI完成一步推理")
-                
+
                 # 捕获最终的模型输出
                 if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -155,7 +155,7 @@ class MultiAgentAnalyzer:
             final_content = "".join(content_parts)
             if show_thinking:
                 print("\n🎯 AI推理完成")
-            
+
             return AgentResult(content=final_content, success=True)
 
         except Exception as e:
@@ -225,7 +225,7 @@ async def run_multi_agent_analysis(
         from agents.unified_sink_path_agent import UnifiedSinkPathAgent
         sink_agent = UnifiedSinkPathAgent(analyzer, source_root)
         sink_analysis_name = f"{language.title()} Sink Path Analysis"
-        
+
         # 使用统一的source分析器替代三个独立的agent
         from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
         source_agent = UnifiedSourceAnalysisAgent(analyzer, source_root, db_path)
@@ -292,14 +292,14 @@ async def run_multi_agent_analysis(
         from config import get_think_config
         codeql_analyzer = MultiAgentAnalyzer(get_think_config())
         await codeql_analyzer.initialize()
-        
+
         # 这里直接调用CodeQLComposeTool的run方法
         codeql_tool = CodeQLComposeTool(
             analyzer=codeql_analyzer,
             database_path=db_path,
             language=language,
         )
-        
+
         compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=stream)
         # Wrap compose output in AgentResult-like object
         codeql_result = AgentResult(
@@ -354,12 +354,6 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     # 可选参数组
-    parser.add_argument(
-        "--cve",
-        type=str,
-        help="指定要分析的CVE ID (当案例中有多个CVE时使用)",
-        metavar="CVE_ID",
-    )
 
     parser.add_argument("--refresh-intel", action="store_true", help="强制刷新情报数据")
     parser.add_argument(
@@ -534,12 +528,10 @@ async def main() -> None:
     if not args.case:
         print("错误: 必须提供 --case 参数指定要分析的案例ID")
         print(
-            "用法: python Analyze.py --case <CASE_ID> [--cve <CVE_ID>] [--refresh-intel] [--no-stream]"
+            "用法: python Analyze.py --case <CASE_ID> [--refresh-intel] [--no-stream]"
         )
         return
-
-    # 使用案例模式
-    await run_case_analysis(args.case, args.cve, args.refresh_intel, args.stream)
+    await run_case_analysis(args.case, None, args.refresh_intel, args.stream)
 
 
 if __name__ == "__main__":
