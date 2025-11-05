@@ -9,12 +9,8 @@ from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 
-DEFAULT_CODEQL_PACK_VERSION = "^4.0.17"
-
-
 # 功能：
 def detect_language_from_query(query_content: str) -> str:
-    """�򵥵�����ʽ�������Ӳ�ѯ�����м��CodeQL���ԡ�"""
     content = (query_content or '').lower()
     if 'import java' in content:
         return 'java'
@@ -38,18 +34,6 @@ def normalize_language(language: Optional[str]) -> str:
         return lang
     return 'java'
 
-
-def language_to_pack(language: str) -> str:
-    """������ӳ�䵽��Ӧ��CodeQL��������"""
-    lang = normalize_language(language)
-    mapping = {
-        'java': 'codeql/java-all',
-        'python': 'codeql/python-all',
-        'cpp': 'codeql/cpp-all',
-    }
-    return mapping.get(lang, 'codeql/java-all')
-
-
 def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     temp_base_dir = Path('./temp/codeql_temp')
@@ -58,25 +42,31 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
     pack_dir.mkdir(parents=True, exist_ok=True)
 
     lang = normalize_language(language or detect_language_from_query(query_content))
-    dep_pack = language_to_pack(lang)
+    if lang == 'cpp':
+        version = "^6.0.0"
+        dep_pack = 'codeql/cpp-all'
+    elif lang == 'python':
+        version = "^4.0.17"
+        dep_pack = 'codeql/python-all'
+    else:
+        version = "^7.7.1"
+        dep_pack = 'codeql/java-all'
 
     qlpack_content = textwrap.dedent(
-        f"""\
-        name: temp-query-pack
-        version: 0.0.0
-        library: false
-        warnOnImplicitThis: false
-        kind: query
-        language: {lang}
-        dependencies:
-          {dep_pack}: "{DEFAULT_CODEQL_PACK_VERSION}"
-        """
+        f"""---
+library: false
+warnOnImplicitThis: false
+name: getting-started/codeql-extra-queries-{lang}
+version: 1.0.0
+dependencies:
+  {dep_pack}: "{version}"
+"""
     )
 
-    # д��qlpack.yml�ļ�
+
     (pack_dir / 'qlpack.yml').write_text(qlpack_content, encoding='utf-8')
 
-    # ��װ�����Դ�����ȷ�����ļ�
+
     try:
         result = subprocess.run(
             ['codeql', 'pack', 'install'],
@@ -90,12 +80,11 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
     except Exception as e:
         print(f"Warning: Failed to run codeql pack install: {str(e)}")
 
-    # д���ѯ�ļ�
     sanitized = query_content
-    # �Ƴ�UTF-8 BOM
+
     if sanitized.startswith('\ufeff'):
         sanitized = sanitized.lstrip('\ufeff')
-    # �Ƴ�ǰ���հ��кͿո��Ա�Ԫ����ע��λ�ڶ���
+
     sanitized = sanitized.lstrip()
 
     query_file = pack_dir / f'query_{timestamp}.ql'

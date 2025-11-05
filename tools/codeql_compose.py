@@ -3,14 +3,93 @@
 import json
 import re
 import shutil
+import subprocess
+import time
+import requests
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Type
-
+from utils.codeql import create_temporary_qlpack
+import importlib.util
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from config import get_sarif2json_config
 from utils.sarif_utils import write_paths_json
+
+
+class LSPCodeQLService:
+    """CodeQL LSP HTTP服务管理类"""
+    
+    def __init__(self, pack_root: str, port: int = 8766):
+        self.pack_root = pack_root
+        self.port = port
+        self.process = None
+        self.base_url = f"http://127.0.0.1:{port}"
+    
+    def start_server(self, pack_root: str) -> bool:
+        """启动LSP HTTP服务器"""
+        try:
+            # 启动LSP服务器
+            lsp_script_path = Path(__file__).parent / "lsp_codeql.py"
+            if not lsp_script_path.exists():
+                return False
+                
+            self.process = subprocess.Popen([
+                "python", str(lsp_script_path),
+                "--pack-root", pack_root,
+                "--port", str(self.port),
+                "--quiet-logs"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # 等待服务器启动
+            for _ in range(30):  # 最多等待30秒
+                time.sleep(1)
+                try:
+                    response = requests.get(f"{self.base_url}/health", timeout=2)
+                    if response.status_code == 200:
+                        return True
+                except:
+                    continue
+            
+            return False
+        except Exception as e:
+            print(f"LSP服务器启动失败: {e}")
+            return False
+    
+    def check_codeql_syntax(self, codeql_text: str) -> Dict[str, Any]:
+        """检查CodeQL语法"""
+        try:
+            response = requests.post(
+                f"{self.base_url}/check",
+                json={"code": codeql_text},
+                timeout=30
+            )
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return {"error": f"HTTP {response.status_code}: {response.text}"}
+        except Exception as e:
+            return {"error": f"请求失败: {e}"}
+    
+    def stop_server(self):
+        """停止LSP服务器"""
+        if self.process:
+            try:
+                # 发送关闭请求
+                requests.post(f"{self.base_url}/shutdown", timeout=5)
+            except:
+                pass
+            
+            # 终止进程
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5)
+            except:
+                try:
+                    self.process.kill()
+                except:
+                    pass
+            self.process = None
 
 
 class PythonKnowledgeBase:
@@ -235,13 +314,28 @@ class CodeQLComposeTool(BaseTool):
             return {}
     
     def _extract_codeql_from_response(self, content: str) -> Optional[str]:
-        match = re.search(r'```ql\s*\n(.*?)\n```', content, re.DOTALL)
+        # 匹配 ```ql ... ``` 格式
+        match = re.search(r'```ql\s*(.*?)```', content, re.DOTALL)
         if match:
-            return match.group(1).strip()
+            code = match.group(1).strip()
+            # 去除可能的开头换行符
+            if code.startswith('\n'):
+                code = code[1:]
+            return code
         
+        # 匹配 <codeql>...</codeql> 格式
         match = re.search(r'<codeql>(.*?)</codeql>', content, re.DOTALL)
         if match:
             return match.group(1).strip()
+        
+        # 匹配 ``` ... ``` 格式（没有ql标记）
+        match = re.search(r'```\s*(.*?)```', content, re.DOTALL)
+        if match:
+            code = match.group(1).strip()
+            # 去除可能的开头换行符
+            if code.startswith('\n'):
+                code = code[1:]
+            return code
         
         return None
     
@@ -376,13 +470,10 @@ class CodeQLComposeTool(BaseTool):
         
         # Use internal configuration
         target_language = self.default_language
-        database_path = self.default_database_path
         max_iterations = self.default_max_rounds
         
         try:
-            # 开始进行ql生成循环
             import sys
-            import os
             
             project_root = Path(__file__).parent.parent
             sys.path.insert(0, str(project_root))
@@ -390,8 +481,6 @@ class CodeQLComposeTool(BaseTool):
             agents_path = project_root / "agents"
             sys.path.insert(0, str(agents_path))
             
-            # 直接导入模块，这里最后改成直接import CodeQLGenAgent，为了测试方便先这么写吧
-            import importlib.util
             
             # 导入 CodeQLGenAgent
             gen_agent_path = project_root / "agents" / "codeql_gen_agents" / "codeql_gen_agent.py"
@@ -428,6 +517,28 @@ class CodeQLComposeTool(BaseTool):
             round_index = 1
             prev_original_ql = None
             prev_fix_suggestions = None
+
+            query_file = create_temporary_qlpack("", language=target_language)
+            query_dir = query_file.parent
+            print(f"📁 [CodeQLComposeTool] 临时目录: {query_dir}")
+                    
+            # 启动LSP服务
+            print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
+            print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
+            lsp_service = LSPCodeQLService(query_dir)
+            
+            # 添加详细的进度指示
+            import time
+            start_time = time.time()
+            print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
+            
+            # 调用start_server方法，它内部已经有30秒的重试机制
+            if lsp_service.start_server(str(query_dir)):
+                elapsed_time = time.time() - start_time
+                print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+            else:
+                print("❌ [CodeQLComposeTool] LSP服务启动失败")
+                return f"Error: Failed to start LSP service for syntax checking"
             
             while round_index <= max_iterations:
                 try:
@@ -461,20 +572,85 @@ class CodeQLComposeTool(BaseTool):
                     if not current_ql:
                         return f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
                     
-                    mode = (exec_mode or 'analyze').lower()
-                    if mode == 'run' and run_query_and_decode_to_text:
-                        exec_result = run_query_and_decode_to_text(
-                            query_content=current_ql,
-                            database_path=database_path,
-                            language=target_language,
-                            output_dir='./temp/search_temp',
-                        )
-                    else:
-                        exec_result = execute_codeql_query(
-                            query_content=current_ql,
-                            database_path=database_path,
-                            language=target_language
-                        )
+                    # 使用LSP服务进行语法检查而不是实际执行
+                    # 复用原本执行检查方案的逻辑创建临时目录结构
+                    print(f"🔍 [CodeQLComposeTool] 第{round_index}轮 - 创建临时QL包进行语法检查...")
+                    
+                    try:
+                        # 使用LSP服务检查语法
+                        print(f"🔍 [CodeQLComposeTool] 进行CodeQL语法检查...")
+                        syntax_result = lsp_service.check_codeql_syntax(current_ql)
+                        
+                        # 模拟执行结果结构
+                        if "error" in syntax_result:
+                            print(f"❌ [CodeQLComposeTool] LSP语法检查失败: {syntax_result['error']}")
+                            exec_result = {"success": False, "output": syntax_result["error"]}
+                        else:
+                            # 检查诊断结果并详细输出所有信息
+                            diagnostics = syntax_result.get("diagnostics", [])
+                            
+                            # 按严重程度分类诊断信息
+                            errors = [d for d in diagnostics if d.get("severity", 1) == 1]  # 错误
+                            warnings = [d for d in diagnostics if d.get("severity", 2) == 2]  # 警告
+                            infos = [d for d in diagnostics if d.get("severity", 3) == 3]  # 信息
+                            hints = [d for d in diagnostics if d.get("severity", 4) == 4]  # 提示
+                            
+                            # 输出诊断摘要
+                            print(f"📊 [CodeQLComposeTool] 语法检查诊断摘要:")
+                            print(f"   - 错误: {len(errors)} 个")
+                            print(f"   - 警告: {len(warnings)} 个")
+                            print(f"   - 信息: {len(infos)} 个")
+                            print(f"   - 提示: {len(hints)} 个")
+                            
+                            # 详细输出所有诊断信息
+                            if diagnostics:
+                                print(f"\n📋 [CodeQLComposeTool] 详细诊断信息:")
+                                for i, diag in enumerate(diagnostics, 1):
+                                    severity = diag.get("severity", 1)
+                                    severity_label = {1: "错误", 2: "警告", 3: "信息", 4: "提示"}.get(severity, "未知")
+                                    message = diag.get("message", "Unknown message")
+                                    range_info = diag.get("range", {})
+                                    start = range_info.get("start", {})
+                                    line = start.get("line", 0) + 1
+                                    character = start.get("character", 0) + 1
+                                    
+                                    print(f"   {i}. [{severity_label}] 第{line}行第{character}列: {message}")
+                            else:
+                                print(f"✅ [CodeQLComposeTool] 未发现任何诊断问题")
+                            
+                            if errors:
+                                error_messages = []
+                                for error in errors:
+                                    message = error.get("message", "Unknown error")
+                                    range_info = error.get("range", {})
+                                    start = range_info.get("start", {})
+                                    line = start.get("line", 0) + 1
+                                    character = start.get("character", 0) + 1
+                                    error_messages.append(f"Line {line}, Column {character}: {message}")
+                                
+                                print(f"❌ [CodeQLComposeTool] 发现 {len(errors)} 个语法错误")
+                                exec_result = {
+                                    "success": False, 
+                                    "output": "\n".join(error_messages)
+                                }
+                            else:
+                                # 语法检查通过，实际执行CodeQL查询
+                                print(f"✅ [CodeQLComposeTool] 语法检查通过")
+                                print(f"🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
+                                
+                                # 实际执行CodeQL查询
+                                try:
+                                    exec_result = execute_codeql_query(
+                                        current_ql,
+                                        self.default_database_path,
+                                        target_language
+                                    )
+                                    print(f"✅ [CodeQLComposeTool] CodeQL查询执行完成")
+                                except Exception as e:
+                                    print(f"❌ [CodeQLComposeTool] CodeQL查询执行失败: {e}")
+                                    exec_result = {"success": False, "output": f"Execution failed: {str(e)}"}
+                    finally:
+                        lsp_service.stop_server()
                     
                     # Check execution result
                     if exec_result.get('success', False):
