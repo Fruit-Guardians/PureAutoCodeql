@@ -469,5 +469,5 @@ select sink.getNode(), src, sink,
 - **CVE-2025-47789**: Django redirect（sanitizer 降噪）
 - **CVE-2025-46725**: 通用 eval/exec 检测
 
-更多案例参见 `QLdatabase/Python/py/` 目录。
+更多案例参见 `resources/codeql/python/py/` 目录。
 
