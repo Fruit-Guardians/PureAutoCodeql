@@ -1,35 +1,19 @@
-"""LangChain 工具：根据自然语言需求生成并验证 CodeQL 查询。"""
+"""LangChain工具，用于通过迭代生成和执行来组合CodeQL查询。"""
 
-from __future__ import annotations
-
-import re
 import json
-import time
+import re
 import shutil
 import subprocess
-from pathlib import Path
-from typing import Any, Dict, Optional, Type, Callable, List, Set
-
+import time
 import requests
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Type
+from utils.codeql import create_temporary_qlpack
+import importlib.util
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
-from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
 from config import get_sarif2json_config
-from services import (
-    PythonKnowledgeBase,
-    build_placeholder_map,
-    apply_placeholders,
-    CodeQLSyntaxSession,
-    CodeQLExecutionService,
-    CodeQLExecutionResult,
-)
-from utils.codeql import (
-    create_temporary_qlpack,
-    execute_codeql_query,
-    run_query_and_decode_to_text,
-)
 from utils.sarif_utils import write_paths_json
 
 
@@ -293,76 +277,50 @@ class PythonKnowledgeBase:
 
 
 class CodeQLComposeInput(BaseModel):
-    """Tool 参数：自然语言描述 CodeQL 需求。"""
+    """Input schema for CodeQL Compose Tool."""
 
     requirement: str = Field(
         description=(
-            "CodeQL 查询需求的自然语言描述，例如：'查找所有用户输入源'。"
+            "Natural language description of the CodeQL query requirement. "
+            "For example: 'Find all user input sources' or 'Find paths from user input to SQL execution'"
         )
     )
 
 
 class CodeQLComposeTool(BaseTool):
-    """生成、校验并执行 CodeQL 查询的 LangChain 工具。"""
+    """Tool for composing CodeQL queries with iterative generation, execution, and error fixing."""
 
     name: str = "codeql_compose"
     description: str = (
-        "根据自然语言需求自动生成 CodeQL 查询，并通过语法校验与执行结果迭代修复直至成功。"
+        "Generates and validates CodeQL queries from natural language requirements. "
+        "Simply provide a description of what you want to find in the code, "
+        "and the tool will automatically generate, test, and refine the query until it works correctly."
     )
     args_schema: Type[BaseModel] = CodeQLComposeInput
 
-    analyzer: Optional[Any] = None
+    # The analyzer will be injected during initialization
+    analyzer: Optional[object] = None
+    # Internal configuration - not exposed to agents
     default_language: str = "java"
     default_database_path: str = ""
     default_max_rounds: int = 5
 
-    def __init__(
-        self,
-        analyzer: Optional[Any] = None,
-        database_path: str = "",
-        language: str = "java",
-        max_rounds: int = 5,
-        *,
-        gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
-        error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
-        syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
-        execution_service_factory: Optional[
-            Callable[[str, str], CodeQLExecutionService]
-        ] = None,
-        execute_fn: Callable[[str, str, Optional[str]], Dict[str, Any]] = execute_codeql_query,
-        decode_fn: Optional[
-            Callable[[str, str, Optional[str]], Dict[str, Any]]
-        ] = run_query_and_decode_to_text,
-        **kwargs,
-    ) -> None:
+    def __init__(self, analyzer=None, database_path: str = "", language: str = "java", max_rounds: int = 5, **kwargs):
+        """
+        Initialize the tool with a MultiAgentAnalyzer instance and internal configuration.
+
+        Args:
+            analyzer: Instance of MultiAgentAnalyzer that provides LLM capabilities
+            database_path: Default CodeQL database path for execution
+            language: Default target programming language ('java', 'python', 'cpp')
+            max_rounds: Default maximum number of iterative rounds
+        """
         super().__init__(**kwargs)
         self.analyzer = analyzer
         self.default_database_path = database_path
         self.default_language = language
         self.default_max_rounds = max_rounds
-
-        self._gen_agent_cls = gen_agent_cls
-        self._error_agent_cls = error_agent_cls
-        self._syntax_session_cls = syntax_session_cls
-        self._execution_service_factory = (
-            execution_service_factory or self._default_execution_service_factory
-        )
-        self._execute_fn = execute_fn
-        self._decode_fn = decode_fn
-
         self._python_kb: Optional[PythonKnowledgeBase] = None
-
-    def _default_execution_service_factory(
-        self,
-        database_path: str,
-        language: str,
-    ) -> CodeQLExecutionService:
-        return CodeQLExecutionService(
-            database_path=database_path,
-            language=language,
-            execute_fn=self._execute_fn,
-            decode_fn=self._decode_fn,
-        )
 
     def _get_python_kb_context(self, requirement: str, project_root: Path) -> Dict[str, str]:
         if self._python_kb is None or self._python_kb.repo_root != project_root:
@@ -371,137 +329,236 @@ class CodeQLComposeTool(BaseTool):
             return self._python_kb.build_context(requirement)
         except Exception:
             return {}
-
-    @staticmethod
-    def _extract_codeql_from_response(content: str) -> Optional[str]:
-        match = re.search(r"```ql\s*(.*?)```", content, re.DOTALL)
+    
+    def _extract_codeql_from_response(self, content: str) -> Optional[str]:
+        # 匹配 ```ql ... ``` 格式
+        match = re.search(r'```ql\s*(.*?)```', content, re.DOTALL)
         if match:
             code = match.group(1).strip()
-            if code.startswith("\n"):
+            # 去除可能的开头换行符
+            if code.startswith('\n'):
                 code = code[1:]
             return code
-
-        match = re.search(r"<codeql>(.*?)</codeql>", content, re.DOTALL)
+        
+        # 匹配 <codeql>...</codeql> 格式
+        match = re.search(r'<codeql>(.*?)</codeql>', content, re.DOTALL)
         if match:
             return match.group(1).strip()
-
-        match = re.search(r"```\s*(.*?)```", content, re.DOTALL)
+        
+        # 匹配 ``` ... ``` 格式（没有ql标记）
+        match = re.search(r'```\s*(.*?)```', content, re.DOTALL)
         if match:
             code = match.group(1).strip()
-            if code.startswith("\n"):
+            # 去除可能的开头换行符
+            if code.startswith('\n'):
                 code = code[1:]
             return code
-
+        
         return None
-
-    @staticmethod
-    def _format_error_info(error_output: str, round_index: int) -> str:
+    
+    def _format_error_info(self, error_output: str, round_index: int) -> str:
+        """Format error information for better readability."""
         return f"Round {round_index} Error:\n{error_output}"
-
-    @staticmethod
+    
     def _format_success_result(
+        self,
         query: str,
         round_index: int,
-        execution: CodeQLExecutionResult,
+        sarif_path: Optional[str] = None,
+        paths_json_path: Optional[str] = None,
+        paths_count: Optional[int] = None,
     ) -> str:
-        result = (
-            f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n"
-            f"```ql\n{query}\n```"
-        )
-
-        if execution.sarif_path:
-            result += f"\n\nSARIF output saved to: {execution.sarif_path}"
-        if execution.json_path:
-            result += f"\n路径 JSON 输出: {execution.json_path}"
-            if execution.paths_count is not None:
-                result += f"，共 {execution.paths_count} 条路径"
-        if execution.result_file:
-            result += f"\nText results saved to: {execution.result_file}"
-        if execution.preview:
-            result += f"\nPreview:\n\n```\n{execution.preview}\n```"
+        """Format successful result with query and execution info."""
+        result = f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n```ql\n{query}\n```"
+        if sarif_path:
+            result += f"\n\nSARIF output saved to: {sarif_path}"
+        if paths_json_path:
+            result += f"\n路径 JSON 输出: {paths_json_path}"
+            if paths_count is not None:
+                result += f"（包含 {paths_count} 条路径）"
         return result
 
     def _load_ql_template(self, lang: str) -> str:
+        """Load corresponding QL template based on different languages"""
+        from pathlib import Path
         try:
-            target = (lang or "").lower()
+            l = (lang or "").lower()
             prompts_dir = Path(__file__).parent.parent / "prompts"
             java_path = prompts_dir / "java_temple_ql.md"
             py_path = prompts_dir / "python_template_ql.md"
             c_path = prompts_dir / "c_template_ql.md"
 
-            if target == "python" and py_path.exists():
-                return py_path.read_text(encoding="utf-8")
-            if target in {"c", "cpp"} and c_path.exists():
-                return c_path.read_text(encoding="utf-8")
+            if l == "java":
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            if l == "python":
+                if py_path.exists():
+                    return py_path.read_text(encoding="utf-8")
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
+            if l == "c":
+                if c_path.exists():
+                    return c_path.read_text(encoding="utf-8")
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
             return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
         except Exception:
             try:
-                fallback = Path(__file__).parent.parent / "prompts" / "java_temple_ql.md"
-                return fallback.read_text(encoding="utf-8") if fallback.exists() else ""
+                from pathlib import Path as _P
+                java_path = _P(__file__).parent.parent / "prompts" / "java_temple_ql.md"
+                return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
             except Exception:
                 return ""
 
-    def _run(self, *args, **kwargs) -> str:  # pragma: no cover - sync 用不到
-        return "Synchronous execution not supported. Please use async version (arun)."
+    @staticmethod
+    def _build_placeholder_map(
+        language: str,
+        requirement: Optional[str],
+        round_index: int,
+        prev_original_ql: Optional[str],
+        prev_fix_suggestions: Optional[str],
+        ql_template: str,
+        error_log: Optional[str] = None,
+        curr_ql_content: Optional[str] = None,
+        kb_directory_index: Optional[str] = None,
+        kb_suggestions: Optional[str] = None,
+        relevant_tags: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Centralize placeholder values for both generation and error-analysis prompts."""
+        return {
+            "ROUND_INDEX": str(round_index or 1),
+            "LANGUAGE": (language or "java"),
+            "REQUIREMENT": (requirement or ""),
+            "PREV_ORIGINAL_QL": (prev_original_ql or ""),
+            "PREV_FIX_SUGGESTIONS": (prev_fix_suggestions or ""),
+            "QL_TEMPLATE": (ql_template or ""),
+            "ERROR_LOG": (error_log or ""),
+            "CURR_QL_CONTENT": (curr_ql_content or ""),
+            "KB_DIRECTORY_INDEX": (kb_directory_index or ""),
+            "KB_SUGGESTED_ITEMS": (kb_suggestions or ""),
+            "RELEVANT_TAGS": (relevant_tags or ""),
+        }
 
+    @staticmethod
+    def _apply_placeholders(content: str, values: Dict[str, str]) -> str:
+        """Apply [[KEY]] placeholder replacements using a unified function."""
+        result = content
+        for k, v in (values or {}).items():
+            result = result.replace(f"[[{k}]]", v or "")
+        return result
+    
+    def _run(
+        self,
+        requirement: str,
+        run_manager: Optional[Any] = None
+    ) -> str:
+        """
+        Synchronous execution (not supported for async-only agent).
+        
+        Args:
+            requirement: Natural language requirement for CodeQL query
+            run_manager: Callback manager for tool execution
+            
+        Returns:
+            Error message indicating sync execution is not supported
+        """
+        return "Synchronous execution not supported. Please use async version (arun)."
+    
     async def _arun(
         self,
         requirement: str,
         run_manager: Optional[Any] = None,
-        exec_mode: str = "analyze",
-        show_thinking: bool = False,
+        exec_mode: str = 'analyze',
+        show_thinking: bool = False
     ) -> str:
+        """
+        Asynchronously compose CodeQL query with iterative generation and execution.
+        
+        Args:
+            requirement: Natural language requirement for CodeQL query
+            run_manager: Async callback manager for tool execution
+            show_thinking: 是否显示AI思考过程
+            
+        Returns:
+            Final CodeQL query if successful, or error message with details
+        """
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
-
+        
         if not self.default_database_path:
             return "Error: No database path configured. Tool needs to be initialized with a valid database_path."
-
+        
+        # Use internal configuration
         target_language = self.default_language
         max_iterations = self.default_max_rounds
-
-        project_root = Path(__file__).parent.parent
-        kb_context: Dict[str, str] = {}
-        if (target_language or "").lower() == "python":
-            kb_context = self._get_python_kb_context(requirement, project_root)
-
-        gen_agent = self._gen_agent_cls(self.analyzer)
-        error_agent = self._error_agent_cls(self.analyzer)
-        execution_service = self._execution_service_factory(
-            self.default_database_path,
-            target_language,
-        )
-
-        ql_template = self._load_ql_template(target_language)
-        round_index = 1
-        prev_original_ql = None
-        prev_fix_suggestions = None
-
-        query_file = create_temporary_qlpack("", language=target_language)
-        pack_root = query_file.parent
-
-        # 启动LSP服务
-        print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
-        print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
-        print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
-        lsp_service = LSPCodeQLService(pack_root)
         
-        # 添加详细的进度指示
-        import time
-        start_time = time.time()
-        print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
-        
-        # 调用start_server方法，它内部已经有30秒的重试机制
-        if lsp_service.start_server(str(pack_root)):
-            elapsed_time = time.time() - start_time
-            print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
-        else:
-            print("❌ [CodeQLComposeTool] LSP服务启动失败")
-            return f"Error: Failed to start LSP service for syntax checking"
-
         try:
-            with self._syntax_session_cls(pack_root) as syntax_session:
-                while round_index <= max_iterations:
+            import sys
+            
+            project_root = Path(__file__).parent.parent
+            sys.path.insert(0, str(project_root))
+            
+            agents_path = project_root / "agents"
+            sys.path.insert(0, str(agents_path))
+            
+            
+            # 导入 CodeQLGenAgent
+            gen_agent_path = project_root / "agents" / "codeql_gen_agents" / "codeql_gen_agent.py"
+            spec = importlib.util.spec_from_file_location("codeql_gen_agent", gen_agent_path)
+            gen_agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(gen_agent_module)
+            CodeQLGenAgent = gen_agent_module.CodeQLGenAgent
+            
+            # 导入 CodeQLErrorAgent
+            error_agent_path = project_root / "agents" / "codeql_gen_agents" / "codeql_error_agent.py"
+            spec = importlib.util.spec_from_file_location("codeql_error_agent", error_agent_path)
+            error_agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(error_agent_module)
+            CodeQLErrorAgent = error_agent_module.CodeQLErrorAgent
+            
+            # 导入 execute_codeql_query
+            utils_path = project_root / "utils" / "codeql.py"
+            spec = importlib.util.spec_from_file_location("codeql_utils", utils_path)
+            utils_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(utils_module)
+            execute_codeql_query = utils_module.execute_codeql_query
+            run_query_and_decode_to_text = getattr(utils_module, 'run_query_and_decode_to_text', None)
+            
+            gen_agent = CodeQLGenAgent(self.analyzer)
+            error_agent = CodeQLErrorAgent(self.analyzer)
+            
+            ql_template = self._load_ql_template(target_language)
+            # print("ql_template:", ql_template)
+
+            kb_context: Dict[str, str] = {}
+            if (target_language or "").lower() == "python":
+                kb_context = self._get_python_kb_context(requirement, project_root)
+            
+            round_index = 1
+            prev_original_ql = None
+            prev_fix_suggestions = None
+
+            query_file = create_temporary_qlpack("", language=target_language)
+            query_dir = query_file.parent
+            print(f"📁 [CodeQLComposeTool] 临时目录: {query_dir}")
+                    
+            # 启动LSP服务
+            print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
+            print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
+            lsp_service = LSPCodeQLService(query_dir)
+            
+            # 添加详细的进度指示
+            import time
+            start_time = time.time()
+            print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
+            
+            # 调用start_server方法，它内部已经有30秒的重试机制
+            if lsp_service.start_server(str(query_dir)):
+                elapsed_time = time.time() - start_time
+                print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+            else:
+                print("❌ [CodeQLComposeTool] LSP服务启动失败")
+                return f"Error: Failed to start LSP service for syntax checking"
+            
+            while round_index <= max_iterations:
+                try:
                     gen_prompt_base = gen_agent.build_prompt(
                         language=target_language,
                         requirement=requirement,
@@ -509,7 +566,8 @@ class CodeQLComposeTool(BaseTool):
                         prev_original_ql=prev_original_ql,
                         prev_fix_suggestions=prev_fix_suggestions,
                     )
-                    gen_values = build_placeholder_map(
+                    # Centralized placeholder map and application
+                    gen_values = self._build_placeholder_map(
                         language=target_language,
                         requirement=requirement,
                         round_index=round_index,
@@ -520,12 +578,13 @@ class CodeQLComposeTool(BaseTool):
                         kb_suggestions=kb_context.get("kb_suggestions"),
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
-                    gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
+                    gen_prompt = self._apply_placeholders(gen_prompt_base, gen_values)
                     gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking)
-
+                    
                     if not gen_result.success:
                         return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
-
+                    
+                    # Extract CodeQL code from response
                     current_ql = self._extract_codeql_from_response(gen_result.content)
                     if not current_ql:
                         return f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
@@ -635,77 +694,76 @@ class CodeQLComposeTool(BaseTool):
                             sarif_path = exec_result.get('sarif_path')
                             json_path: Optional[str] = None
                             paths_count: Optional[int] = None
-                            
-                            # 如果已经成功执行了CodeQL查询，将字典转换为CodeQLExecutionResult对象
-                            from services.codeql_execution import CodeQLExecutionResult
-                            execution_result = CodeQLExecutionResult(
-                                success=exec_result.get('success', False),
-                                output=exec_result.get('output', ''),
-                                sarif_path=exec_result.get('sarif_path'),
-                                json_path=exec_result.get('json_path'),
-                                paths_count=exec_result.get('paths_count'),
-                                result_file=exec_result.get('result_file'),
-                                preview=exec_result.get('preview')
-                            )
+
+                            if sarif_path:
+                                try:
+                                    config = get_sarif2json_config()
+                                    sarif_file = Path(sarif_path)
+                                    json_file = sarif_file.with_suffix('.json')
+                                    paths_count = write_paths_json(
+                                        sarif_path,
+                                        str(json_file),
+                                        max_results=config.max_results,
+                                        threadflow_index=config.threadflow_index,
+                                        rule_filter=config.rule_filter,
+                                        relative_to=None,
+                                    )
+                                    json_path = str(json_file)
+                                except Exception as convert_error:
+                                    print(f"SARIF->JSON 转换失败: {convert_error}")
+
                             return self._format_success_result(
                                 query=current_ql,
                                 round_index=round_index,
-                                execution=execution_result,
+                                sarif_path=sarif_path,
+                                paths_json_path=json_path,
+                                paths_count=paths_count,
                             )
-
-                    if exec_result.success:
-                        return self._format_success_result(
-                            query=current_ql,
+                    else:
+                        if round_index >= max_iterations:
+                            error_info = self._format_error_info(exec_result.get('output', 'Unknown error'), round_index)
+                            return f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\nFinal error:\n{error_info}\n\nLast attempted query:\n```ql\n{current_ql}\n```"
+                        
+                        error_output = exec_result.get('output', 'Unknown execution error')
+                        
+                        err_prompt_base = error_agent.build_prompt(
+                            error_log=error_output,
+                            curr_ql_content=current_ql,
                             round_index=round_index,
-                            execution=exec_result,
+                            prev_original_ql=prev_original_ql,
                         )
-
-                    if round_index >= max_iterations:
-                        error_info = self._format_error_info(exec_result.output, round_index)
-                        return (
-                            f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
-                            f"Final error:\n{error_info}\n\n"
-                            f"Last attempted query:\n```ql\n{current_ql}\n```"
+                        err_values = self._build_placeholder_map(
+                            language=target_language,
+                            requirement=requirement,
+                            round_index=round_index,
+                            prev_original_ql=prev_original_ql,
+                            prev_fix_suggestions=prev_fix_suggestions,
+                            ql_template=ql_template,
+                            error_log=error_output,
+                            curr_ql_content=current_ql,
+                            kb_directory_index=kb_context.get("kb_directory_index"),
+                            kb_suggestions=kb_context.get("kb_suggestions"),
+                            relevant_tags=kb_context.get("relevant_tags"),
                         )
-                    error_prompt_base = error_agent.build_prompt(
-                        error_log=exec_result.output,
-                        curr_ql_content=current_ql,
-                        round_index=round_index,
-                        prev_original_ql=prev_original_ql,
-                    )
-                    error_values = build_placeholder_map(
-                        language=target_language,
-                        requirement=requirement,
-                        round_index=round_index,
-                        prev_original_ql=prev_original_ql,
-                        prev_fix_suggestions=prev_fix_suggestions,
-                        ql_template=ql_template,
-                        error_log=exec_result.output,
-                        curr_ql_content=current_ql,
-                        kb_directory_index=kb_context.get("kb_directory_index"),
-                        kb_suggestions=kb_context.get("kb_suggestions"),
-                        relevant_tags=kb_context.get("relevant_tags"),
-                    )
-                    error_prompt = apply_placeholders(error_prompt_base, error_values)
-                    error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking)
-
-                    if not error_analysis.success:
-                        return (
-                            f"Error in error analysis (Round {round_index}): "
-                            f"{error_analysis.error or 'Unknown error'}"
-                        )
-
-                    prev_original_ql = current_ql
-                    prev_fix_suggestions = error_analysis.content
-                    round_index += 1
-
-        except RuntimeError as runtime_error:
-            return f"Error: {runtime_error}"
-        except Exception as exc:
-            return f"Error during CodeQL composition: {exc}"
+                        err_prompt = self._apply_placeholders(err_prompt_base, err_values)
+                        error_analysis_result = await self.analyzer.run_agent(err_prompt, show_thinking=show_thinking)
+                        
+                        if not error_analysis_result.success:
+                            return f"Error in error analysis (Round {round_index}): {error_analysis_result.error or 'Unknown error'}"
+                        
+                        prev_original_ql = current_ql
+                        prev_fix_suggestions = error_analysis_result.content
+                        round_index += 1
+                
+                except Exception as e:
+                    return f"Error during iteration {round_index}: {str(e)}"
+            
+            return f"Unexpected end of iteration loop after {max_iterations} rounds"
+        
+        except Exception as e:
+            return f"Error during CodeQL composition: {str(e)}"
+        
         finally:
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
             lsp_service.stop_server()
-
-        return f"Unexpected end of iteration loop after {max_iterations} rounds"
