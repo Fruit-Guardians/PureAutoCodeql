@@ -62,6 +62,9 @@ class AnalysisResult:
     success: bool = True
     error_message: Optional[str] = None
     execution_time: Optional[float] = None
+    
+    # 输出目录信息
+    output_directory: Optional[str] = None
 
     def is_complete(self) -> bool:
         """检查分析是否完整完成。"""
@@ -84,6 +87,8 @@ class AnalysisResult:
 """
         if self.error_message:
             summary += f"- 错误信息: {self.error_message}\n"
+        if self.output_directory:
+            summary += f"- 输出目录: {self.output_directory}\n"
 
         return summary
 

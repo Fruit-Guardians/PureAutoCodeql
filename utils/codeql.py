@@ -4,6 +4,7 @@ import tempfile
 import os
 import shutil
 import textwrap
+import time
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
@@ -128,32 +129,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         sarif_path = output_dir / f'result_{timestamp}.sarif'
 
-        # 显示进度条
+        # 显示开始执行信息
         print("🚀 开始执行CodeQL查询...")
-        print("⏳ 查询执行中，请稍候...")
-        
-        # 创建简单的进度指示器
-        import time
-        import threading
-        
-        progress_active = True
-        
-        def show_progress():
-            progress_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-            start_time = time.time()
-            i = 0
-            while progress_active:
-                elapsed = time.time() - start_time
-                progress = min(int((elapsed / 60) * 100), 99)  # 假设最大60秒
-                char = progress_chars[i % len(progress_chars)]
-                print(f"\r{char} CodeQL查询执行中... [{progress}%] 已用时: {int(elapsed)}秒", end="", flush=True)
-                i += 1
-                time.sleep(0.5)
-        
-        # 启动进度线程
-        progress_thread = threading.Thread(target=show_progress)
-        progress_thread.daemon = True
-        progress_thread.start()
+        start_time = time.time()
         
         # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出
         result = subprocess.run(
@@ -170,12 +148,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             timeout=600
         )
         
-        # 停止进度指示器
-        progress_active = False
-        time.sleep(0.6)  # 等待进度线程完成最后一次更新
-        
-        # 显示完成状态
-        print(f"\r✅ CodeQL查询执行完成!")
+        # 计算并显示实际执行时间
+        execution_time = time.time() - start_time
+        print(f"✅ CodeQL查询执行完成! 用时: {execution_time:.2f}秒")
         print("📊 正在处理查询结果...")
 
         if result.returncode == 0:

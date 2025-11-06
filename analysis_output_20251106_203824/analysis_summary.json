@@ -1,0 +1,12 @@
+{
+  "case_id": "CVE-2025-54802",
+  "language": "python",
+  "execution_time": 246.82766842842102,
+  "success": true,
+  "error_message": null,
+  "timestamp": "20251106_203824",
+  "cve_analysis": "cve_analysis.md",
+  "sink_analysis": "sink_analysis.md",
+  "source_analysis": "source_analysis.md",
+  "sarif_results": "query_results.sarif"
+}

@@ -653,11 +653,13 @@ class CodeQLComposeTool(BaseTool):
                                 execution=execution_result,
                             )
 
-                    if exec_result.get('success', False):
-                        return self._format_success_result(
-                            query=current_ql,
-                            round_index=round_index,
-                            execution=exec_result,
+                    # 如果语法检查通过但执行失败，继续纠错循环
+                    if round_index >= max_iterations:
+                        error_info = self._format_error_info(exec_result.get('output', ''), round_index)
+                        return (
+                            f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
+                            f"Final error:\n{error_info}\n\n"
+                            f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
 
                     if round_index >= max_iterations:
