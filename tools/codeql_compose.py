@@ -653,7 +653,7 @@ class CodeQLComposeTool(BaseTool):
                                 execution=execution_result,
                             )
 
-                    if exec_result.success:
+                    if exec_result.get('success', False):
                         return self._format_success_result(
                             query=current_ql,
                             round_index=round_index,
@@ -661,14 +661,14 @@ class CodeQLComposeTool(BaseTool):
                         )
 
                     if round_index >= max_iterations:
-                        error_info = self._format_error_info(exec_result.output, round_index)
+                        error_info = self._format_error_info(exec_result.get('output', ''), round_index)
                         return (
                             f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
                             f"Final error:\n{error_info}\n\n"
                             f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
                     error_prompt_base = error_agent.build_prompt(
-                        error_log=exec_result.output,
+                        error_log=exec_result.get('output', ''),
                         curr_ql_content=current_ql,
                         round_index=round_index,
                         prev_original_ql=prev_original_ql,
@@ -680,7 +680,7 @@ class CodeQLComposeTool(BaseTool):
                         prev_original_ql=prev_original_ql,
                         prev_fix_suggestions=prev_fix_suggestions,
                         ql_template=ql_template,
-                        error_log=exec_result.output,
+                        error_log=exec_result.get('output', ''),
                         curr_ql_content=current_ql,
                         kb_directory_index=kb_context.get("kb_directory_index"),
                         kb_suggestions=kb_context.get("kb_suggestions"),
