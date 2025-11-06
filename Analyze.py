@@ -66,70 +66,6 @@ async def run_case_analysis(
         print(f"\n❌ 分析失败: {result.error_message}")
 
 
-async def run_batch_analysis(
-    case_ids: list,
-    refresh_intel: bool = False,
-    stream: bool = False,
-    max_concurrent: int = 3
-) -> None:
-    """
-    批量运行案例分析
-
-    Args:
-        case_ids: 案例ID列表
-        refresh_intel: 是否强制刷新情报数据
-        stream: 是否显示AI思考过程
-        max_concurrent: 最大并发数
-    """
-    config = AnalysisConfig(
-        show_thinking=stream,
-        refresh_intel=refresh_intel
-    )
-
-    orchestrator = AnalysisOrchestrator(config)
-
-    print(f"🚀 开始批量分析 {len(case_ids)} 个案例...")
-    print(f"🔧 最大并发数: {max_concurrent}")
-
-    # 使用信号量控制并发数
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def analyze_single_case(case_id: str) -> tuple[str, bool, str]:
-        async with semaphore:
-            print(f"\n🔍 开始分析: {case_id}")
-            try:
-                result = await orchestrator.analyze_case(case_id)
-                if result.success:
-                    print(f"✅ {case_id} 分析成功")
-                    return case_id, True, ""
-                else:
-                    print(f"❌ {case_id} 分析失败: {result.error_message}")
-                    return case_id, False, result.error_message or "未知错误"
-            except Exception as e:
-                print(f"💥 {case_id} 执行异常: {e}")
-                return case_id, False, str(e)
-
-    # 并发执行分析
-    tasks = [analyze_single_case(case_id) for case_id in case_ids]
-    results = await asyncio.gather(*tasks)
-
-    # 统计结果
-    successful = sum(1 for _, success, _ in results if success)
-    failed = len(results) - successful
-
-    print(f"\n📊 批量分析完成:")
-    print(f"✅ 成功: {successful} 个")
-    print(f"❌ 失败: {failed} 个")
-    print(f"📈 成功率: {successful/len(results)*100:.1f}%")
-
-    # 显示失败的案例
-    if failed > 0:
-        print(f"\n❌ 失败的案例:")
-        for case_id, success, error in results:
-            if not success:
-                print(f"  - {case_id}: {error}")
-
-
 def list_available_cases() -> None:
     """列出所有可用的案例"""
     projects_dir = Path("projects")
@@ -191,7 +127,6 @@ def parse_arguments() -> argparse.Namespace:
 使用示例:
   %(prog)s --case CVE-2021-21985                    # 分析单个案例
   %(prog)s --case CVE-2021-21985 --stream          # 显示AI思考过程
-  %(prog)s --cases CVE-2021-21985,CVE-2021-44228  # 批量分析多个案例
   %(prog)s --list                                  # 列出所有可用案例
   %(prog)s --validate CVE-2021-21985               # 验证案例有效性
         """
@@ -203,11 +138,6 @@ def parse_arguments() -> argparse.Namespace:
         "--case",
         type=str,
         help="分析单个案例 (例如: CVE-2021-21985)"
-    )
-    group.add_argument(
-        "--cases",
-        type=str,
-        help="批量分析多个案例，用逗号分隔 (例如: CVE-2021-21985,CVE-2021-44228)"
     )
     group.add_argument(
         "--list",
@@ -239,13 +169,6 @@ def parse_arguments() -> argparse.Namespace:
         metavar="FILE",
         help="指定输出文件名 (默认: output.md)"
     )
-    parser.add_argument(
-        "--max-concurrent",
-        type=int,
-        default=3,
-        metavar="N",
-        help="批量分析时的最大并发数 (默认: 3)"
-    )
 
     parser.set_defaults(stream=True)
 
@@ -276,20 +199,6 @@ async def main() -> None:
                 refresh_intel=args.refresh_intel,
                 stream=args.stream,
                 output_file=args.output
-            )
-
-        elif args.cases:
-            case_ids = [case_id.strip() for case_id in args.cases.split(",")]
-            print(f"🚀 PureAutoCodeQL 批量分析启动")
-            print(f"📋 案例列表: {', '.join(case_ids)}")
-            print(f"🔧 最大并发数: {args.max_concurrent}")
-            print("-" * 50)
-
-            await run_batch_analysis(
-                case_ids=case_ids,
-                refresh_intel=args.refresh_intel,
-                stream=args.stream,
-                max_concurrent=args.max_concurrent
             )
 
     except KeyboardInterrupt:
