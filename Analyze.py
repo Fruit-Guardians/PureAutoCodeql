@@ -2,24 +2,12 @@ import argparse
 import asyncio
 from pathlib import Path
 from typing import Optional
-
-# 核心架构导入
 from core.orchestrator import AnalysisOrchestrator
 from core.context import AnalysisConfig
-
-# 服务导入（供高级用户使用）
-from services.lsp_service import CodeQLLSPService
-from services.llm_service import MultiAgentAnalyzer, AgentResult
 from services.language_detector import LanguageDetector
-
-# 实用工具导入
 from utils.case import resolve_case, discover_cve_assets
-from utils.intel import collect_intel
 
 
-# ============================================================================
-# 主要API接口
-# ============================================================================
 
 async def run_case_analysis(
     case_id: str,
@@ -73,7 +61,13 @@ def list_available_cases() -> None:
         print("❌ projects目录不存在")
         return
 
-    case_dirs = [d for d in projects_dir.iterdir() if d.is_dir()]
+    # 排除特殊文件夹：模板目录和镜像目录
+    excluded_dirs = {"case-template", "python_kb"}
+    case_dirs = [
+        d for d in projects_dir.iterdir() 
+        if d.is_dir() and d.name not in excluded_dirs
+    ]
+    
     if not case_dirs:
         print("❌ 没有找到任何案例")
         return
@@ -114,9 +108,6 @@ async def validate_case(case_id: str) -> bool:
         return False
 
 
-# ============================================================================
-# 命令行接口
-# ============================================================================
 
 def parse_arguments() -> argparse.Namespace:
     """解析命令行参数"""
@@ -210,8 +201,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # 设置事件循环策略（Windows兼容性）
-    if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
     asyncio.run(main())
