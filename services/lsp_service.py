@@ -101,6 +101,27 @@ class CodeQLLSPService:
             try:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self.process.terminate()
+                # 如果进程没有正常结束，强制终止
+                try:
+                    self.process.terminate()
+                    self.process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=1)
 
+            # 确保进程被清理
+            if self.process.poll() is None:
+                self.process.kill()
+            
             self.process = None
+            
+            # 强制清理可能的端口占用
+            import socket
+            try:
+                # 尝试绑定端口来释放可能的TIME_WAIT状态
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(('127.0.0.1', self.port))
+                s.close()
+            except:
+                pass

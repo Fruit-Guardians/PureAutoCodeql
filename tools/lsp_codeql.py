@@ -294,7 +294,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if self.path == "/shutdown":
             self._send_json({"ok": True})
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            # 立即关闭连接并停止服务器
+            self.server.shutdown()
             return
 
         return self._send_json({"error":"not found"}, 404)
