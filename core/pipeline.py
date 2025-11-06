@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from core.context import AnalysisContext, AnalysisResult
-from services.llm_service import MultiAgentAnalyzer
+from services.llm_service import AgentResult, MultiAgentAnalyzer
 
 # 导入现有的Agent和工具
 from agents.cve_analysis_agent import CVEAnalysisAgent
@@ -159,7 +159,23 @@ class CodeQLGenerationStep(AnalysisStep):
         compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=context.show_thinking)
         print(compose_output)
 
-        return compose_output
+        # Normalize output into AgentResult for downstream consumers
+        if isinstance(compose_output, AgentResult):
+            return compose_output
+
+        if isinstance(compose_output, str):
+            normalized = compose_output.strip().lower()
+            if normalized.startswith("error") or normalized.startswith("failed"):
+                return AgentResult(content="", success=False, error=compose_output)
+
+            return AgentResult(content=compose_output, success=True)
+
+        # Fallback: treat unexpected payload as failure with repr for debugging
+        return AgentResult(
+            content="",
+            success=False,
+            error=f"Unexpected CodeQL generation output type: {type(compose_output).__name__}"
+        )
 
 
 class AnalysisPipeline:

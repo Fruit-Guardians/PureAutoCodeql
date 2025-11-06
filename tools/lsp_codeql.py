@@ -270,6 +270,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(code, str):
                     return self._send_json({"error":"bad payload: 'code' must be string"}, 400)
                 res = self.engine.check_code(code)
+                # 如果LSP进程退出，尝试重启服务
+                if "error" in res and ("LSP进程退出" in res["error"] or "LSP检查异常" in res["error"]):
+                    print(f"[LSP] 检测到LSP进程异常: {res['error']}")
+                    try:
+                        print("[LSP] 尝试重启LSP引擎...")
+                        self.engine.shutdown()
+                        time.sleep(2)
+                        self.engine.start()
+                        print("[LSP] LSP引擎重启成功，重新检查代码...")
+                        res = self.engine.check_code(code)
+                        if "error" not in res:
+                            return self._send_json(res, 200)
+                        else:
+                            return self._send_json({"error": f"LSP重启后仍然失败: {res['error']}"}, 500)
+
+                            
+                    except Exception as restart_error:
+                        return self._send_json({"error": f"LSP重启失败: {restart_error}"}, 500)
                 return self._send_json(res, 200)
             except Exception as e:
                 return self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)

@@ -1,15 +1,3 @@
-"""
-PureAutoCodeQL - 自动化漏洞分析工具
-
-基于多智能体架构的CodeQL漏洞分析系统，使用AI技术进行Java、Python、C/C++代码安全分析。
-
-主要特性：
-- 🎯 统一的分析编排器
-- 🔧 模块化的服务架构
-- 🚀 异步并发处理
-- 📊 详细的分析报告
-"""
-
 import argparse
 import asyncio
 from pathlib import Path

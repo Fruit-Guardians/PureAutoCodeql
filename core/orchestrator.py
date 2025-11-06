@@ -42,7 +42,7 @@ class AnalysisOrchestrator:
             if cve_assets.diff_path:
                 print(f"[DIFF] Diff文件: {cve_assets.diff_path} (本地)")
             else:
-                print(f"[INFO] Diff文件: 无 (将以无diff模式分析)")
+                print(f"[INFO] Diff文件: 无")
 
             # 收集情报数据
             print("正在收集漏洞情报...")
