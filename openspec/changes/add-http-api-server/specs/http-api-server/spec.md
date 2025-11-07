@@ -50,7 +50,7 @@
 - **WHEN** 客户端GET请求到 `/api/projects`
 - **THEN** 返回200状态码
 - **AND** 返回JSON格式的项目列表
-- **AND** 每个项目包含case_id、路径、描述等基本信息
+- **AND** 项目路径下的projects目录的每个项目包含case_id、路径、描述等基本信息
 
 #### Scenario: 获取项目详情
 
@@ -91,7 +91,7 @@
 - **AND** task_id有效
 - **THEN** 返回200状态码
 - **AND** 返回任务状态（pending/running/completed/failed）
-- **AND** 返回任务进度信息
+- **AND** 返回任务进度信息（不包括进度条，只有运行到那个模块或者功能的信息）
 
 #### Scenario: 获取分析结果
 

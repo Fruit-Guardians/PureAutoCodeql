@@ -43,9 +43,9 @@ class AnalysisOrchestrator:
                 print(f"[DIFF] Diff文件: {cve_assets.diff_path} (本地)")
             else:
                 print(f"[INFO] Diff文件: 无")
-
+                                                
             # 收集情报数据
-            print("正在收集漏洞情报...")
+            print("正在收集漏洞情报...")                                                                                                  
             intel_bundle = collect_intel(
                 case_paths, cve_assets, use_cache=not self.config.refresh_intel
             )

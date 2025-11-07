@@ -64,10 +64,10 @@ def list_available_cases() -> None:
     # 排除特殊文件夹：模板目录和镜像目录
     excluded_dirs = {"case-template", "python_kb"}
     case_dirs = [
-        d for d in projects_dir.iterdir() 
+        d for d in projects_dir.iterdir()
         if d.is_dir() and d.name not in excluded_dirs
     ]
-    
+
     if not case_dirs:
         print("❌ 没有找到任何案例")
         return

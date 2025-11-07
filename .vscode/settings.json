@@ -3,5 +3,6 @@
     "workbench.editorAssociations": {
         "*.md": "default",
         "*.markdown": "default"
-    }
+    },
+    "maven.view": "hierarchical"
 }
