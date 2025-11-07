@@ -29,43 +29,53 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
 
     text = str(output).strip()
     if not text:
-        return ""
+        return "完成"
 
     if tool_name == "list_allowed_directories":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if lines and lines[0].lower().startswith("allowed"):
             lines = lines[1:]
-        preview = ", ".join(lines[:3])
-        if len(lines) > 3:
-            preview += f" ... (+{len(lines) - 3} more)"
-        return f"Allowed: {preview or '无'}"
+        count = len(lines)
+        return f"找到 {count} 个目录"
 
     if tool_name == "directory_tree":
         try:
             data = json.loads(text)
             if isinstance(data, list):
-                names = [str(item.get("name", "?")) for item in data[:5]]
-                preview = ", ".join(names)
-                if len(data) > 5:
-                    preview += f" ... (+{len(data) - 5} more)"
-                return f"Top-level: {preview}" if preview else "Top-level: (empty)"
+                count = len(data)
+                return f"读取目录结构 ({count} 个条目)"
         except Exception:
             pass
+        return "读取目录结构"
 
     if tool_name == "search_files":
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        preview = " | ".join(lines[:3])
-        if len(lines) > 3:
-            preview += f" ... (+{len(lines) - 3} more)"
-        return preview
+        # 清理输出，移除可能的tool_call_id等元数据
+        cleaned_text = text.split("' name=")[0] if "' name=" in text else text
+        cleaned_text = cleaned_text.strip().strip("'\"")
+        
+        lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
+        count = len(lines)
+        if count == 0:
+            return "未找到文件"
+        elif count == 1:
+            # 提取文件名
+            try:
+                filename = Path(lines[0]).name if lines[0] else "文件"
+            except Exception:
+                filename = "文件"
+            return f"找到文件: {filename}"
+        else:
+            return f"找到 {count} 个文件"
 
     if tool_name == "read_text_file":
-        snippet = text.replace("\r", " ").replace("\n", " ")
-        return snippet[:200] + ("..." if len(snippet) > 200 else "")
+        lines = text.splitlines()
+        line_count = len(lines)
+        return f"读取文件 ({line_count} 行)"
 
-    if len(text) > 200:
-        return text[:200] + "..."
-    return text
+    # 其他工具简化输出
+    if len(text) > 100:
+        return "完成"
+    return text[:100]
 
 
 class MultiAgentAnalyzer:
@@ -115,6 +125,12 @@ class MultiAgentAnalyzer:
 
             agent = create_agent(self.llm, self.tools)
             content_parts = []
+            
+            # 跟踪工具执行状态
+            current_tool = None
+            tool_start_time = {}
+            output_started = False
+            ai_streaming = False  # 跟踪AI是否正在流式输出
 
             async for event in agent.astream_events(
                 {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
@@ -133,34 +149,23 @@ class MultiAgentAnalyzer:
 
                 # 显示AI的思考过程
                 if show_thinking:
-                    if event_name == "on_agent_action":
-                        # AI决定使用工具
-                        action = event.get("data", {}).get("action")
-                        if action and hasattr(action, "tool"):
-                            print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
-                            if hasattr(action, "tool_input") and action.tool_input:
-                                print(f"   工具输入: {action.tool_input}")
-
-                    elif event_name == "on_tool_start":
+                    if event_name == "on_tool_start":
                         # 工具开始执行
                         tool_name = event.get("name", "")
-                        print(f"🔧 工具执行: {tool_name}")
+                        current_tool = tool_name
+                        # 如果AI正在流式输出，先换行
+                        if ai_streaming:
+                            print()
+                            ai_streaming = False
+                        print(f"🔧 {tool_name} → ", end="", flush=True)
 
                     elif event_name == "on_tool_end":
-                        # 工具执行完成
+                        # 工具执行完成，在同一行显示结果
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
-                        output_preview = _format_tool_output(tool_name, output) if output else ""
-                        if output_preview:
-                            print(f"✅ 工具完成: {tool_name} - {output_preview}")
-                        else:
-                            print(f"✅ 工具完成: {tool_name}")
-
-                    elif event_name == "on_agent_step":
-                        # AI完成一步思考
-                        step_output = event.get("data", {}).get("output", "")
-                        if step_output and hasattr(step_output, "intermediate_steps"):
-                            print("💭 AI完成一步推理")
+                        output_preview = _format_tool_output(tool_name, output)
+                        print(f"✅ {output_preview}")
+                        current_tool = None
 
                 # 捕获最终的模型输出
                 if event_name == "on_chat_model_stream":
@@ -184,15 +189,21 @@ class MultiAgentAnalyzer:
                             content_parts.append(text)
                             # 实时显示AI的最终回答
                             if show_thinking:
+                                # 第一次输出时添加分隔符
+                                if not output_started:
+                                    print("\n" + "="*50)
+                                    output_started = True
                                 print(text, end="", flush=True)
+                                ai_streaming = True  # 标记AI正在流式输出
 
             final_content = "".join(content_parts)
-            if show_thinking:
-                print("\n🎯 AI推理完成")
+            if show_thinking and output_started:
+                print("\n" + "="*50)
+                print("🎯 AI推理完成\n")
 
             return AgentResult(content=final_content, success=True)
 
         except Exception as e:
             if show_thinking:
-                print(f"❌ 推理出错: {e}")
+                print(f"\n❌ 推理出错: {e}")
             return AgentResult(content="", success=False, error=str(e))
