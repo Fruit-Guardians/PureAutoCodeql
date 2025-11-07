@@ -49,16 +49,18 @@ class MultiAgentAnalyzer:
             max_retries=self.config.max_retries,
         )
 
+        # 配置 MCP 客户端用于访问知识库
         self.mcp_client = MultiServerMCPClient(
             {
-                "sequential-thinking": {
+                "filesystem": {
                     "command": "npx",
                     "args": [
                         "-y",
-                        "@modelcontextprotocol/server-sequential-thinking",
+                        "@modelcontextprotocol/server-filesystem",
+                        str(Path.cwd() / "projects"),
                     ],
                     "transport": "stdio",
-                },
+                }
             }
         )
         

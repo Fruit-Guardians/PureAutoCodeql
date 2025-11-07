@@ -42,7 +42,6 @@ def build_python_sink_prompt(cve_analysis: str, source_path: str, diff_path: str
 - 文件路径：`[精确文件路径]`
 - 函数/方法：`[涉及 Sink 的函数或方法]`
 - 相关敏感 API：`[os.system/subprocess/eval/exec/pickle/yaml/sql 等]`
-- 行号：`[关键调用发生的行号]`
 - 触发条件（若已知）：`[输入来源或前置条件]`
 
 #### 3. 代码片段（必要时）
