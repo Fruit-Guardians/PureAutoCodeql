@@ -244,52 +244,57 @@ class AnalysisPipeline:
     async def _consolidate_output_files(self, context: AnalysisContext, result: AnalysisResult) -> None:
         """整合所有输出文件到统一的文件夹结构。"""
         try:
-            # 创建统一的输出文件夹
+            # 创建统一的输出文件夹（位于output目录下）
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_dir = Path(f'./analysis_output_{timestamp}')
+            output_dir = Path(f'./output/analysis_output_{timestamp}')
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # 保存分析结果摘要
-            summary = {
-                'case_id': context.case_id,
-                'language': context.language,
-                'execution_time': result.execution_time,
-                'success': result.success,
-                'error_message': result.error_message,
-                'timestamp': timestamp
-            }
+            # 生成output.md文件
+            from utils.io import write_analysis_output
+            write_analysis_output(
+                result.cve_result,
+                result.sink_result,
+                result.source_result,
+                output_path=output_dir / 'output.md',
+                codeql_result=result.codeql_result,
+                codeql_execution_result=result.codeql_execution_result,
+            )
             
-            # 保存各步骤的结果
-            if result.cve_result and hasattr(result.cve_result, 'content'):
-                with open(output_dir / 'cve_analysis.md', 'w', encoding='utf-8') as f:
-                    f.write(result.cve_result.content)
-                summary['cve_analysis'] = 'cve_analysis.md'
-            
-            if result.sink_result and hasattr(result.sink_result, 'content'):
-                with open(output_dir / 'sink_analysis.md', 'w', encoding='utf-8') as f:
-                    f.write(result.sink_result.content)
-                summary['sink_analysis'] = 'sink_analysis.md'
-            
-            if result.source_result and hasattr(result.source_result, 'content'):
-                with open(output_dir / 'source_analysis.md', 'w', encoding='utf-8') as f:
-                    f.write(result.source_result.content)
-                summary['source_analysis'] = 'source_analysis.md'
-            
-            if result.codeql_result and hasattr(result.codeql_result, 'content'):
-                with open(output_dir / 'generated_query.ql', 'w', encoding='utf-8') as f:
-                    f.write(result.codeql_result.content)
-                summary['codeql_query'] = 'generated_query.ql'
-            
-            # 查找并复制SARIF文件
+            # 查找最新的SARIF文件
             sarif_files = list(Path('.').glob('output/result_*.sarif'))
             if sarif_files:
                 latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
-                shutil.copy2(latest_sarif, output_dir / 'query_results.sarif')
-                summary['sarif_results'] = 'query_results.sarif'
-            
-            # 保存摘要文件
-            with open(output_dir / 'analysis_summary.json', 'w', encoding='utf-8') as f:
-                json.dump(summary, f, indent=2, ensure_ascii=False)
+                # 复制SARIF文件到输出目录
+                sarif_filename = latest_sarif.name
+                shutil.copy2(latest_sarif, output_dir / sarif_filename)
+
+                #复制后删除保持在一个文件中统一输出
+                import os
+                os.remove(latest_sarif)
+                
+                # 使用sarif2json.py转换SARIF文件为JSON
+                try:
+                    from utils.sarif_utils import sarif_to_all_paths
+                    import json
+                    
+                    # 读取SARIF文件
+                    with open(output_dir / sarif_filename, 'r', encoding='utf-8') as f:
+                        sarif_data = json.load(f)
+                    
+                    # 转换为JSON格式
+                    json_data = sarif_to_all_paths(sarif_data)
+                    
+                    # 生成JSON文件名（与SARIF文件同名，扩展名为.json）
+                    json_filename = latest_sarif.stem + '.json'
+                    
+                    # 保存JSON文件
+                    with open(output_dir / json_filename, 'w', encoding='utf-8') as f:
+                        json.dump(json_data, f, ensure_ascii=False, indent=2)
+                    
+                    print(f"✅ SARIF文件已转换为JSON: {json_filename}")
+                    
+                except Exception as e:
+                    print(f"⚠️ SARIF转JSON失败: {e}")
             
             # 输出文件信息
             print(f"\n📁 分析结果已整合到文件夹: {output_dir}")

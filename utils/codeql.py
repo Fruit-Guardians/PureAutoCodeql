@@ -35,7 +35,113 @@ def normalize_language(language: Optional[str]) -> str:
         return lang
     return 'java'
 
+def gen_codeql_lock_yml(lang: str) -> str:
+    python_yml = '''---
+lockVersion: 1.0.0
+dependencies:
+  codeql/concepts:
+    version: 0.0.7
+  codeql/controlflow:
+    version: 2.0.17
+  codeql/dataflow:
+    version: 2.0.17
+  codeql/mad:
+    version: 1.0.33
+  codeql/python-all:
+    version: 4.0.17
+  codeql/regex:
+    version: 1.0.33
+  codeql/ssa:
+    version: 2.0.9
+  codeql/threat-models:
+    version: 1.0.33
+  codeql/tutorial:
+    version: 1.0.33
+  codeql/typetracking:
+    version: 2.0.17
+  codeql/util:
+    version: 2.0.20
+  codeql/xml:
+    version: 1.0.33
+  codeql/yaml:
+    version: 1.0.33
+compiled: false
+'''
+
+    java_yml = '''---
+lockVersion: 1.0.0
+dependencies:
+  codeql/controlflow:
+    version: 2.0.17
+  codeql/dataflow:
+    version: 2.0.17
+  codeql/java-all:
+    version: 7.7.2
+  codeql/mad:
+    version: 1.0.33
+  codeql/quantum:
+    version: 0.0.11
+  codeql/rangeanalysis:
+    version: 1.0.33
+  codeql/regex:
+    version: 1.0.33
+  codeql/ssa:
+    version: 2.0.9
+  codeql/threat-models:
+    version: 1.0.33
+  codeql/tutorial:
+    version: 1.0.33
+  codeql/typeflow:
+    version: 1.0.33
+  codeql/typetracking:
+    version: 2.0.17
+  codeql/util:
+    version: 2.0.20
+  codeql/xml:
+    version: 1.0.33
+compiled: false
+'''
+
+    cpp_yml = '''---
+lockVersion: 1.0.0
+dependencies:
+  codeql/concepts:
+    version: 0.0.7
+  codeql/controlflow:
+    version: 2.0.17
+  codeql/dataflow:
+    version: 2.0.17
+  codeql/mad:
+    version: 1.0.33
+  codeql/python-all:
+    version: 4.0.17
+  codeql/regex:
+    version: 1.0.33
+  codeql/ssa:
+    version: 2.0.9
+  codeql/threat-models:
+    version: 1.0.33
+  codeql/tutorial:
+    version: 1.0.33
+  codeql/typetracking:
+    version: 2.0.17
+  codeql/util:
+    version: 2.0.20
+  codeql/xml:
+    version: 1.0.33
+  codeql/yaml:
+    version: 1.0.33
+compiled: false
+'''
+    if lang == 'cpp':
+        return cpp_yml
+    elif lang == 'python':
+        return python_yml
+    else:
+        return java_yml
+
 def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
+    print("创建被调用")
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     temp_base_dir = Path('./temp/codeql_temp')
     temp_base_dir.mkdir(parents=True, exist_ok=True)
@@ -69,17 +175,9 @@ dependencies:
 
 
     try:
-        result = subprocess.run(
-            ['codeql', 'pack', 'install'],
-            cwd=pack_dir,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        if result.returncode != 0:
-            print(f"Warning: Failed to install pack dependencies: {result.stderr}")
+        open(pack_dir / 'codeql-pack.lock.yml','w').write(gen_codeql_lock_yml(lang))
     except Exception as e:
-        print(f"Warning: Failed to run codeql pack install: {str(e)}")
+        print(f"Warning: Failed to write codeql-pack.lock.yml: {str(e)}")
 
     sanitized = query_content
 
@@ -94,7 +192,7 @@ dependencies:
     return query_file
 
 
-def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None , query_file: Optional[Path] = None) -> Dict[str, Any]:
     """
     对指定的数据库执行CodeQL查询。
     
@@ -110,13 +208,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         - results (List): 如果成功则包含解析结果，否则为空列表
         - sarif_path (str): SARIF输出文件的路径
     """
-    query_file = None
-    pack_dir = None
     sarif_path: Optional[Path] = None
     try:
-        query_file = create_temporary_qlpack(query_content, language=language)
-        pack_dir = query_file.parent
-
+        open(query_file,'w').write(query_content)
         # 准备标准化的SARIF输出路径
         output_dir = Path('./output')
         try:
@@ -129,8 +223,6 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         sarif_path = output_dir / f'result_{timestamp}.sarif'
 
-        # 显示开始执行信息
-        print("🚀 开始执行CodeQL查询...")
         start_time = time.time()
         
         # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出

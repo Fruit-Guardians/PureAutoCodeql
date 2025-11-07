@@ -602,7 +602,8 @@ class CodeQLComposeTool(BaseTool):
                                     exec_result = execute_codeql_query(
                                         current_ql,
                                         self.default_database_path,
-                                        target_language
+                                        target_language,
+                                        query_file
                                     )
                                     print(f"✅ [CodeQLComposeTool] CodeQL查询执行完成")
                                 except Exception as e:
