@@ -129,7 +129,8 @@ class ErrorResponse(BaseModel):
     detail: Optional[Any] = Field(None, description="详细信息")
     timestamp: datetime = Field(default_factory=datetime.now, description="错误时间")
 
-class CodeQLComposeRequest(BaseModel):d
+
+class CodeQLComposeRequest(BaseModel):
     """CodeQL生成工具请求"""
     
     requirement: str = Field(..., description="CodeQL查询需求描述")
