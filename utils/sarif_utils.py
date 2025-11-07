@@ -219,6 +219,20 @@ def sarif_to_paths(
         data_flow_paths.append({"threadFlows": [{"steps": candidate["steps"]}]})
     return {"dataFlowPath": data_flow_paths}
 
+def sarif_to_all_paths(
+    sarif: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Convert SARIF content to the legacy simplified JSON format."""
+
+    candidates = collect_path_candidates(
+        sarif
+    )
+    trimmed = candidates
+
+    data_flow_paths: List[Dict[str, Any]] = []
+    for candidate in trimmed:
+        data_flow_paths.append({"threadFlows": [{"steps": candidate["steps"]}]})
+    return {"dataFlowPath": data_flow_paths}
 
 def write_paths_json(
     sarif_path: str,
