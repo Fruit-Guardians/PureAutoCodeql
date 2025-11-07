@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -40,28 +39,76 @@ class UnifiedSinkPathAgent:
         try:
             directory = Path(self.source_root).resolve()
 
-            # 将路径规范化为相对于 MCP 文件系统根目录（projects）的相对路径
+            # MCP 根目录（server-filesystem允许的根）
             server_root = (Path.cwd() / "projects").resolve()
-            try:
-                source_rel = os.path.relpath(directory, start=server_root)
-            except Exception:
-                source_rel = str(directory)
+
+            def format_for_prompt(path: Optional[Path]) -> str:
+                if path is None:
+                    return ""
+                try:
+                    relative = path.resolve().relative_to(server_root)
+                except ValueError:
+                    return ""
+                return f"projects/{relative.as_posix()}"
+
+            def extract_diff_relative_paths(diff_file: Optional[Path]) -> list:
+                paths = []
+                if not diff_file or not diff_file.is_file():
+                    return paths
+                try:
+                    with diff_file.open("r", encoding="utf-8", errors="ignore") as fh:
+                        for line in fh:
+                            if line.startswith("diff --git "):
+                                parts = line.strip().split()
+                                if len(parts) >= 4:
+                                    a_path = parts[2]
+                                    b_path = parts[3]
+                                    if a_path.startswith("a/"):
+                                        paths.append(Path(a_path[2:]))
+                                    if b_path.startswith("b/"):
+                                        paths.append(Path(b_path[2:]))
+                            if len(paths) >= 10:
+                                break
+                except Exception:
+                    pass
+                return paths
+
+            def infer_source_root(base_dir: Path, relative_paths: list) -> Path:
+                for rel_path in relative_paths:
+                    rel_parts = rel_path.parts
+                    try:
+                        for candidate in base_dir.rglob(rel_path.name):
+                            if not candidate.exists():
+                                continue
+                            try:
+                                candidate_rel = candidate.relative_to(base_dir)
+                            except ValueError:
+                                continue
+                            cand_parts = candidate_rel.parts
+                            if len(cand_parts) >= len(rel_parts) and cand_parts[-len(rel_parts):] == rel_parts:
+                                prefix_parts = cand_parts[:-len(rel_parts)]
+                                if prefix_parts:
+                                    return base_dir.joinpath(*prefix_parts)
+                                return base_dir
+                    except Exception:
+                        continue
+                return base_dir
 
             abs_diff_path = Path(diff_path).resolve() if diff_path else None
-            if abs_diff_path is not None:
-                try:
-                    diff_rel = os.path.relpath(abs_diff_path, start=server_root)
-                except Exception:
-                    diff_rel = str(abs_diff_path)
-            else:
-                diff_rel = ""
+            diff_relative_paths = extract_diff_relative_paths(abs_diff_path)
 
-            if diff_rel == "":
-                diff_rel = "注意，diff文件并未给出，请根据CVE分析结果综合判断sink的类型"
-           
-            print("diff_rel:", "/projects/" + diff_rel)
+            source_root_for_prompt = infer_source_root(directory, diff_relative_paths)
 
-            prompt = self.build_prompt(language, cve_analysis, source_rel, abs_diff_path)
+            source_prompt_path = format_for_prompt(source_root_for_prompt) or str(source_root_for_prompt)
+
+            diff_prompt_path = format_for_prompt(abs_diff_path)
+
+            if not diff_prompt_path:
+                diff_prompt_path = "注意，diff文件并未给出，请根据CVE分析结果综合判断sink的类型"
+
+            print("diff_path_for_prompt:", diff_prompt_path)
+
+            prompt = self.build_prompt(language, cve_analysis, source_prompt_path, diff_prompt_path)
             return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
 
         except Exception as exc:

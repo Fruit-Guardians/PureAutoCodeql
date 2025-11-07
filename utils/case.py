@@ -47,10 +47,22 @@ def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePath
         "intel": root / "intel",
     }
 
-    missing = [name for name, path in mapping.items() if not path.exists()]
+    missing = []
+    not_dirs = []
+    for name, path in mapping.items():
+        if not path.exists():
+            missing.append(name)
+        elif not path.is_dir():
+            not_dirs.append(f"{name} (路径存在但不是目录: {path})")
+    
     if missing:
         raise FileNotFoundError(
             f"Case '{case_id}' is missing required directories: {', '.join(missing)}"
+        )
+    
+    if not_dirs:
+        raise ValueError(
+            f"Case '{case_id}' has invalid paths (expected directories): {', '.join(not_dirs)}"
         )
 
     return CasePaths(

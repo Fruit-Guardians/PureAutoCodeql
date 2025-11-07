@@ -29,6 +29,8 @@ from utils.codeql import (
     create_temporary_qlpack,
     execute_codeql_query,
     run_query_and_decode_to_text,
+    validate_codeql_database,
+    is_database_error,
 )
 from utils.sarif_utils import write_paths_json
 
@@ -148,23 +150,8 @@ class PythonKnowledgeBase:
 
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
-        self.source_dir = repo_root / "QLdatabase" / "Python"
-        self.mirror_dir = repo_root / "projects" / "python_kb"
+        self.source_dir = repo_root / "projects" / "python_kb"
         self._sections: Optional[Dict[str, List[Dict[str, Any]]]] = None
-
-    def ensure_mirror(self) -> bool:
-        """Mirror the Python KB into the projects directory for MCP filesystem access."""
-        if not self.source_dir.is_dir():
-            return False
-
-        try:
-            self.mirror_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(self.source_dir, self.mirror_dir, dirs_exist_ok=True)
-        except Exception:
-            # If mirroring fails we still try to proceed with the source directory.
-            pass
-
-        return self.mirror_dir.is_dir()
 
     def _load_section(self, name: str) -> List[Dict[str, Any]]:
         kb_root = self.source_dir / "knowledge_base"
@@ -189,7 +176,7 @@ class PythonKnowledgeBase:
 
     def build_directory_index(self) -> str:
         """返回相对于MCP根目录（projects/）的简洁目录索引。"""
-        if not (self.mirror_dir.is_dir() or self.ensure_mirror()):
+        if not self.source_dir.is_dir():
             return ""
 
         entries = []
@@ -280,7 +267,7 @@ class PythonKnowledgeBase:
         return "\n".join(lines)
 
     def build_context(self, requirement: str) -> Dict[str, str]:
-        if not self.ensure_mirror():
+        if not self.source_dir.is_dir():
             return {}
         matched_tags = self.derive_tags(requirement)
         directory_index = self.build_directory_index()
@@ -457,6 +444,21 @@ class CodeQLComposeTool(BaseTool):
         if not self.default_database_path:
             return "Error: No database path configured. Tool needs to be initialized with a valid database_path."
 
+        # 在执行前验证数据库
+        print(f"🔍 [CodeQLComposeTool] 验证数据库: {self.default_database_path}")
+        is_valid, validation_error = validate_codeql_database(self.default_database_path)
+        if not is_valid:
+            error_msg = (
+                f"❌ [CodeQLComposeTool] 数据库验证失败\n\n"
+                f"{validation_error}\n\n"
+                f"请在继续之前修复数据库问题。"
+            )
+            print(error_msg)
+            return error_msg
+        
+        if validation_error:  # 有警告但数据库有效
+            print(f"⚠️  [CodeQLComposeTool] {validation_error}")
+
         target_language = self.default_language
         max_iterations = self.default_max_rounds
 
@@ -605,10 +607,29 @@ class CodeQLComposeTool(BaseTool):
                                         target_language,
                                         query_file
                                     )
+                                    
+                                    # 如果执行失败，检查是否为数据库错误
+                                    if not exec_result.get('success', False):
+                                        error_output = exec_result.get('output', '')
+                                        if is_database_error(error_output):
+                                            print(f"❌ [CodeQLComposeTool] 检测到数据库错误")
+                                            # 错误信息已经在 execute_codeql_query 中增强，直接返回
+                                    
                                     print(f"✅ [CodeQLComposeTool] CodeQL查询执行完成")
                                 except Exception as e:
-                                    print(f"❌ [CodeQLComposeTool] CodeQL查询执行失败: {e}")
-                                    exec_result = {"success": False, "output": f"Execution failed: {str(e)}"}
+                                    error_str = str(e)
+                                    if is_database_error(error_str):
+                                        enhanced_error = (
+                                            f"数据库错误: {error_str}\n\n"
+                                            f"建议:\n"
+                                            f"1. 检查数据库路径: {self.default_database_path}\n"
+                                            f"2. 使用 'codeql database info {self.default_database_path}' 验证数据库\n"
+                                            f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
+                                        )
+                                        exec_result = {"success": False, "output": enhanced_error}
+                                    else:
+                                        exec_result = {"success": False, "output": f"Execution failed: {error_str}"}
+                                    print(f"❌ [CodeQLComposeTool] CodeQL查询执行失败: {error_str}")
                     except Exception as e:
                         print(f"❌ [CodeQLComposeTool] 语法检查过程中发生异常: {e}")
                         exec_result = {"success": False, "output": f"Syntax check failed: {str(e)}"}

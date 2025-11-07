@@ -76,8 +76,33 @@ class UnifiedSourceAnalysisAgent:
 
     def find_source_files(self, language: str, directory: Path) -> List[str]:
         """返回源码目录的绝对路径，不收集具体文件。"""
-        if directory.exists():
+        if not directory.exists():
+            return []
+        
+        # 如果传入的是文件，返回其父目录
+        if directory.is_file():
+            logger.warning(
+                f"source_root 指向文件而非目录: {directory}，将使用父目录: {directory.parent}"
+            )
+            return [str(directory.parent.resolve())]
+        
+        # 如果是目录，返回目录本身
+        if directory.is_dir():
             return [str(directory.resolve())]
+        
+        # 其他情况（如符号链接等），尝试解析
+        try:
+            resolved = directory.resolve()
+            if resolved.is_dir():
+                return [str(resolved)]
+            elif resolved.is_file():
+                logger.warning(
+                    f"source_root 解析后指向文件: {resolved}，将使用父目录: {resolved.parent}"
+                )
+                return [str(resolved.parent.resolve())]
+        except Exception as e:
+            logger.error(f"无法解析 source_root 路径 {directory}: {e}")
+        
         return []
 
     def build_prompt(self, language: str, cve_analysis: str, sink_analysis: str, source_paths: List[str]) -> str:
@@ -169,6 +194,14 @@ class UnifiedSourceAnalysisAgent:
         """统一的多语言source分析方法，基于sink分析结果查找source点。"""
         try:
             directory = Path(self.source_root)
+            
+            # 如果 source_root 是文件，使用其父目录
+            if directory.exists() and directory.is_file():
+                logger.warning(
+                    f"source_root 是文件而非目录: {directory}，将使用父目录: {directory.parent}"
+                )
+                directory = directory.parent
+            
             source_paths = self.find_source_files(language, directory)
             
             if not source_paths:

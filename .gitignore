@@ -216,7 +216,7 @@ h5-vsan/
 build.bat
 output/
 temp/
-projects/
+# projects/
 # # /projects/CVE-2021-21985/db/db-java/default/cache/predicates
 # projects/CVE-2024-7099/
 # projects/CVE-2024-7099/db/
@@ -231,3 +231,7 @@ projects/
 # projects/CVE-2021-21985/queries/
 # projects/CVE-2021-21985/source_code/
 # projects/CVE-2025-54802
+projects/CVE-2021-21985/
+projects/CVE-2024-7099/
+projects/CVE-2025-54802/
+projects/CVE-2022-22817/

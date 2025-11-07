@@ -6,7 +6,7 @@ import shutil
 import textwrap
 import time
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime
 
 
@@ -34,6 +34,113 @@ def normalize_language(language: Optional[str]) -> str:
     if lang in {'python', 'java'}:
         return lang
     return 'java'
+
+
+def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
+    """
+    验证CodeQL数据库是否存在且有效。
+    
+    Args:
+        database_path: CodeQL数据库的路径
+        
+    Returns:
+        (is_valid, error_message) 元组：
+        - is_valid: 数据库是否有效
+        - error_message: 如果无效，包含详细的错误信息；如果有效，为空字符串
+    """
+    if not database_path:
+        return False, "数据库路径为空。请提供有效的CodeQL数据库路径。"
+    
+    db_path = Path(database_path)
+    
+    # 检查路径是否存在
+    if not db_path.exists():
+        return False, (
+            f"数据库路径不存在: {database_path}\n"
+            f"请检查路径是否正确，或使用 'codeql database create' 创建数据库。"
+        )
+    
+    # 检查是否为目录
+    if not db_path.is_dir():
+        return False, (
+            f"数据库路径不是目录: {database_path}\n"
+            f"CodeQL数据库必须是一个目录。"
+        )
+    
+    # 检查关键文件/目录是否存在（CodeQL数据库的典型结构）
+    # CodeQL数据库通常包含 codeql-database.yml 或 db-* 目录
+    has_database_yml = (db_path / "codeql-database.yml").exists()
+    has_db_subdirs = any(
+        subdir.name.startswith("db-") or subdir.name == "db"
+        for subdir in db_path.iterdir()
+        if subdir.is_dir()
+    )
+    
+    if not (has_database_yml or has_db_subdirs):
+        # 尝试使用 codeql database info 命令验证
+        try:
+            result = subprocess.run(
+                ['codeql', 'database', 'info', str(db_path)],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                if "not a recognized CodeQL database" in error_msg:
+                    return False, (
+                        f"无效的CodeQL数据库: {database_path}\n"
+                        f"错误详情: {error_msg}\n"
+                        f"请使用 'codeql database create' 创建有效的数据库，或检查数据库是否已损坏。"
+                    )
+                return False, (
+                    f"无法验证数据库: {database_path}\n"
+                    f"错误详情: {error_msg}"
+                )
+        except FileNotFoundError:
+            # CodeQL CLI 未找到，但至少路径存在，返回警告而不是错误
+            return True, "警告: 无法验证数据库（CodeQL CLI 未找到），但路径存在。"
+        except subprocess.TimeoutExpired:
+            return False, (
+                f"数据库验证超时: {database_path}\n"
+                f"数据库可能已损坏或无法访问。"
+            )
+        except Exception as e:
+            return False, (
+                f"数据库验证失败: {database_path}\n"
+                f"错误: {str(e)}"
+            )
+    
+    # 数据库看起来有效
+    return True, ""
+
+
+def is_database_error(error_output: str) -> bool:
+    """
+    检查错误输出是否与数据库相关。
+    
+    Args:
+        error_output: CodeQL命令的错误输出
+        
+    Returns:
+        如果是数据库相关错误，返回True；否则返回False
+    """
+    if not error_output:
+        return False
+    
+    error_lower = error_output.lower()
+    database_error_patterns = [
+        "not a recognized codeql database",
+        "is not a codeql database",
+        "database does not exist",
+        "database path",
+        "invalid database",
+        "database not found",
+        "无法识别",
+        "不是有效的",
+    ]
+    
+    return any(pattern in error_lower for pattern in database_error_patterns)
 
 def gen_codeql_lock_yml(lang: str) -> str:
     python_yml = '''---
@@ -208,6 +315,16 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         - results (List): 如果成功则包含解析结果，否则为空列表
         - sarif_path (str): SARIF输出文件的路径
     """
+    # 在执行前验证数据库
+    is_valid, validation_error = validate_codeql_database(database_path)
+    if not is_valid:
+        return {
+            'success': False,
+            'output': f"数据库验证失败:\n{validation_error}",
+            'results': [],
+            'sarif_path': None,
+        }
+    
     sarif_path: Optional[Path] = None
     try:
         open(query_file,'w').write(query_content)
@@ -262,6 +379,24 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             
             combined_error = '\n'.join(filter(None, error_output))
             
+            # 检查是否为数据库相关错误
+            if is_database_error(combined_error):
+                enhanced_error = (
+                    f"数据库错误:\n"
+                    f"{combined_error}\n\n"
+                    f"建议:\n"
+                    f"1. 检查数据库路径是否正确: {database_path}\n"
+                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
+                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
+                )
+                print(f"CodeQL execution failed with database error: \n {enhanced_error}")
+                return {
+                    'success': False,
+                    'output': enhanced_error,
+                    'results': [],
+                    'sarif_path': str(sarif_path) if sarif_path else None,
+                }
+            
             print(f"CodeQL execution failed with error: \n {combined_error}")
             return {
                 'success': False,
@@ -311,6 +446,15 @@ def run_query_and_decode_to_text(
     language: Optional[str] = None,
     output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # 在执行前验证数据库
+    is_valid, validation_error = validate_codeql_database(database_path)
+    if not is_valid:
+        return {
+            'success': False,
+            'output': f"数据库验证失败:\n{validation_error}",
+            'result_file': None,
+        }
+    
     query_file = None
     pack_dir = None
     try:
@@ -338,9 +482,28 @@ def run_query_and_decode_to_text(
                 parts.append(result.stderr.strip())
             if result.stdout:
                 parts.append(result.stdout.strip())
+            
+            combined_error = '\n'.join(filter(None, parts)) or 'Unknown CodeQL run error'
+            
+            # 检查是否为数据库相关错误
+            if is_database_error(combined_error):
+                enhanced_error = (
+                    f"数据库错误:\n"
+                    f"{combined_error}\n\n"
+                    f"建议:\n"
+                    f"1. 检查数据库路径是否正确: {database_path}\n"
+                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
+                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
+                )
+                return {
+                    'success': False,
+                    'output': enhanced_error,
+                    'result_file': None,
+                }
+            
             return {
                 'success': False,
-                'output': '\n'.join(filter(None, parts)) or 'Unknown CodeQL run error',
+                'output': combined_error,
                 'result_file': None,
             }
 

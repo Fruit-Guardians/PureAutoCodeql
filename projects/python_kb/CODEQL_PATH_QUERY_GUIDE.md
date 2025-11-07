@@ -57,9 +57,28 @@ select sink.getNode(), src, sink,
   call.getFunction().(DataFlow::AttrRead).getAttributeName() = "redirect"
   ```
 - 远程用户输入写法固定为 `src instanceof RemoteFlowSource`。若需要自定义来源，需额外继承 `RemoteFlowSource::Range`（在单独 helper 文件内实现）。
-- 判断文件或函数时使用 `node.getLocation().getFile().getBaseName()`、`node.getEnclosingCallable().getScope().getName()` 等方法，不得直接对 AST 类型做 instance 判断。
+- 判断文件或函数时使用 `node.getLocation().getFile().getBaseName()`、`node.getScope().getName()` 等方法，不得直接对 AST 类型做 instance 判断。
 - 区分位置/关键字参数：`call.getArg(0)`、`call.getKwarg("param")`。
 - 禁止引用旧库（例如 `semmle.python.security.TaintTracking`）以及任何 `internal/` 模块。
+
+- 若 Source 来自函数参数，必须通过 `DataFlow::ParameterNode` 建模：
+  ```ql
+  exists(Function f |
+    /* 你的函数过滤条件 */ and
+    source instanceof DataFlow::ParameterNode and
+    source.getScope() = f
+  )
+  ```
+  禁止实例化 `Function::Parameter` 或调用其 `getFunction()`、`getCfgNode()`、`getAParameter()` 等旧 API。
+- 判断调用所在函数时使用 `call.getScope()`：
+  ```ql
+  exists(DataFlow::CallCfgNode call, Function f |
+    call.getScope() = f and
+    f.getName() = "target"
+  )
+  ```
+  不要将 `call.getEnclosingCallable()` 直接与 `Function` 比较。
+- `isSanitizer` 仅在需要时声明，并写成 `additional predicate isSanitizer(...) { ... }`；若无净化逻辑可以直接删除该谓词。
 
 ## 3. 常用类型与成员速查
 
@@ -77,6 +96,9 @@ select sink.getNode(), src, sink,
   - `node.asCfgNode().getNode()` 获取 AST
   - `node.getLocation().getFile().getRelativePath()` / `.getBaseName()`
   - `node.getEnclosingCallable().getScope().getName()`
+- `DataFlow::ParameterNode`
+  - `node instanceof DataFlow::ParameterNode`
+  - `node.getScope()` 返回其定义的 `Function`
 - `Flow::PathNode`
   - `Flow::flowPath(src, sink)`
   - `src.getNode()`、`sink.getNode()`
@@ -93,6 +115,8 @@ Don’t：
 - 不得调整 `select` 参数顺序或省略任意 path node。
 - 不得直接对 `DataFlow::Node` 做 AST 类断言，必须先 `asCfgNode().getNode()`。
 - 避免硬编码 import 缺失、类型不匹配、旧 API。
+- 不得实例化 `Function::Parameter`、调用 `getFunction()` / `getCfgNode()` / `getAParameter()`。
+- 不要声明普通的 `predicate isSanitizer(...)`；如无净化逻辑请删除，或使用 `additional predicate`。
 
 ## 5. 自检流程
 

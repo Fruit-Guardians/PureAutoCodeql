@@ -3,6 +3,7 @@
 提供大语言模型的服务封装，包括Agent管理和执行。
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,50 @@ class AgentResult:
     content: str
     success: bool
     error: Optional[str] = None
+
+
+def _format_tool_output(tool_name: str, output: Any) -> str:
+    """简化常用工具的输出，便于终端阅读。"""
+
+    text = str(output).strip()
+    if not text:
+        return ""
+
+    if tool_name == "list_allowed_directories":
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if lines and lines[0].lower().startswith("allowed"):
+            lines = lines[1:]
+        preview = ", ".join(lines[:3])
+        if len(lines) > 3:
+            preview += f" ... (+{len(lines) - 3} more)"
+        return f"Allowed: {preview or '无'}"
+
+    if tool_name == "directory_tree":
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                names = [str(item.get("name", "?")) for item in data[:5]]
+                preview = ", ".join(names)
+                if len(data) > 5:
+                    preview += f" ... (+{len(data) - 5} more)"
+                return f"Top-level: {preview}" if preview else "Top-level: (empty)"
+        except Exception:
+            pass
+
+    if tool_name == "search_files":
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        preview = " | ".join(lines[:3])
+        if len(lines) > 3:
+            preview += f" ... (+{len(lines) - 3} more)"
+        return preview
+
+    if tool_name == "read_text_file":
+        snippet = text.replace("\r", " ").replace("\n", " ")
+        return snippet[:200] + ("..." if len(snippet) > 200 else "")
+
+    if len(text) > 200:
+        return text[:200] + "..."
+    return text
 
 
 class MultiAgentAnalyzer:
@@ -95,10 +140,9 @@ class MultiAgentAnalyzer:
                         # 工具执行完成
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
-                        if output:
-                            # 截断过长的输出
-                            output_preview = str(output)[:200] + ("..." if len(str(output)) > 200 else "")
-                            print(f"✅ 工具完成: {tool_name} - 输出: {output_preview}")
+                        output_preview = _format_tool_output(tool_name, output) if output else ""
+                        if output_preview:
+                            print(f"✅ 工具完成: {tool_name} - {output_preview}")
                         else:
                             print(f"✅ 工具完成: {tool_name}")
 

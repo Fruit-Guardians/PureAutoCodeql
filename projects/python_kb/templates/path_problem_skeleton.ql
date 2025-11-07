@@ -26,15 +26,15 @@
      /* 定义 sink */
    }
  
-   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-     /* 可选：额外流步 */
-     none()  // 如果不需要，使用 none()
-   }
- 
-   predicate isSanitizer(DataFlow::Node node) {
-     /* 可选：净化器 */
-     none()  // 如果不需要，使用 none()
-   }
+  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
+    /* 可选：额外流步 */
+    none()  // 如果不需要，使用 none()
+  }
+
+  additional predicate isSanitizer(DataFlow::Node node) {
+    /* 可选：净化器 */
+    none()  // 如果不需要，使用 none()
+  }
  }
  
  module Flow = TaintTracking::Global<VulnConfig>;
