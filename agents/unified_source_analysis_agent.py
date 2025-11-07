@@ -190,7 +190,7 @@ class UnifiedSourceAnalysisAgent:
             logger.error("Failed to generate %s source CodeQL query: %s", language, exc)
             return f"Error generating CodeQL query: {str(exc)}", ""
 
-    async def analyze_sources(self, language: str, sink_analysis: str, show_thinking: bool = True) -> "AgentResult":
+    async def analyze_sources(self, language: str, sink_analysis: str, show_thinking: bool = True, event_callback=None) -> "AgentResult":
         """统一的多语言source分析方法，基于sink分析结果查找source点。"""
         try:
             directory = Path(self.source_root)
@@ -229,7 +229,7 @@ class UnifiedSourceAnalysisAgent:
                 source_paths=source_paths
             )
             
-            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
             
         except Exception as exc:
             logger.exception("Unexpected error in %s source analysis", language)

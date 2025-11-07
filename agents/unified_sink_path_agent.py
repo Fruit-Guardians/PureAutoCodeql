@@ -34,7 +34,7 @@ class UnifiedSinkPathAgent:
         """构建针对不同语言的提示词。"""
         return build_sink_prompt(language, cve_analysis, source_path, diff_path)
 
-    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True) -> "AgentResult":
+    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True, event_callback=None) -> "AgentResult":
         """统一的分析方法，根据语言类型执行相应的分析。"""
         try:
             directory = Path(self.source_root).resolve()
@@ -109,7 +109,7 @@ class UnifiedSinkPathAgent:
             print("diff_path_for_prompt:", diff_prompt_path)
 
             prompt = self.build_prompt(language, cve_analysis, source_prompt_path, diff_prompt_path)
-            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking)
+            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
 
         except Exception as exc:
             return AgentResult(content="", success=False, error=str(exc))

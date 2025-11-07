@@ -64,7 +64,7 @@ class MultiAgentAnalyzer:
         
         self.tools = await self.mcp_client.get_tools()
     
-    async def run_agent_stream(self, prompt: str, output_callback=None, show_thinking: bool = True):
+    async def run_agent_stream(self, prompt: str, output_callback=None, show_thinking: bool = True, event_callback=None):
         """Run a single agent with the given prompt and stream output, with optional thinking process display."""
         try:
             if not self.llm or not self.tools:
@@ -75,6 +75,16 @@ class MultiAgentAnalyzer:
             
             async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}):
                 event_name = event.get("event")
+                
+                # Phase 3: 推送事件到回调
+                if event_callback:
+                    from datetime import datetime
+                    await event_callback({
+                        "type": "agent_event",
+                        "event_name": event_name,
+                        "data": event.get("data", {}),
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
                 # 显示AI的思考过程
                 if show_thinking:

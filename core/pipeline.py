@@ -52,7 +52,8 @@ class CVEAnalysisStep(AnalysisStep):
         result = await cve_agent.analyze_cve(
             Path(context.cve_assets.json_path),
             intel_prompt=intel_prompt,
-            show_thinking=context.show_thinking
+            show_thinking=context.show_thinking,
+            event_callback=context.event_callback
         )
 
         if not result.success:
@@ -81,7 +82,8 @@ class SinkAnalysisStep(AnalysisStep):
             context.language,
             context.get_result("cve_analysis").content if context.has_result("cve_analysis") else "",
             str(context.cve_assets.diff_path) if context.cve_assets.diff_path else "",
-            show_thinking=context.show_thinking
+            show_thinking=context.show_thinking,
+            event_callback=context.event_callback
         )
 
         if not result.success:
@@ -113,7 +115,8 @@ class SourceAnalysisStep(AnalysisStep):
         result = await source_agent.analyze_sources(
             context.language,
             context.get_result("sink_analysis").content if context.has_result("sink_analysis") else "",
-            show_thinking=context.show_thinking
+            show_thinking=context.show_thinking,
+            event_callback=context.event_callback
         )
 
         if not result.success:
@@ -160,7 +163,7 @@ class CodeQLGenerationStep(AnalysisStep):
 
         print("=== CodeQL Query Generation ===")
         print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
-        compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=context.show_thinking)
+        compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=context.show_thinking, event_callback=context.event_callback)
         print(compose_output)
 
         # Normalize output into AgentResult for downstream consumers

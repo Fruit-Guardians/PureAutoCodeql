@@ -31,6 +31,9 @@ class AnalysisContext:
     # 配置选项
     show_thinking: bool = False
 
+    # Phase 3: 事件回调
+    event_callback: Optional[Any] = None
+
     def add_result(self, step_name: str, result: Any) -> None:
         """添加分析步骤的结果。"""
         self._results[step_name] = result
@@ -116,3 +119,6 @@ class AnalysisConfig:
     diff_path: Optional[str] = None
     source_root: Optional[str] = None
     db_path: Optional[str] = None
+
+    # Phase 3: 事件回调
+    event_callback: Optional[Any] = None

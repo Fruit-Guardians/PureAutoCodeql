@@ -24,7 +24,7 @@ class ProjectInfo(BaseModel):
 
 class ProjectDetail(ProjectInfo):
     """项目详细信息"""
-    
+
     cve_id: Optional[str] = Field(None, description="关联的CVE ID")
     cve_description: Optional[str] = Field(None, description="CVE描述")
     file_count: int = Field(0, description="文件总数")
@@ -33,7 +33,7 @@ class ProjectDetail(ProjectInfo):
 
 class FileInfo(BaseModel):
     """文件信息"""
-    
+
     path: str = Field(..., description="文件相对路径")
     name: str = Field(..., description="文件名")
     size: int = Field(..., description="文件大小(字节)")
@@ -43,7 +43,7 @@ class FileInfo(BaseModel):
 
 class ProjectFilesResponse(BaseModel):
     """项目文件列表响应"""
-    
+
     case_id: str = Field(..., description="项目案例ID")
     files: List[FileInfo] = Field(..., description="文件列表")
     total_count: int = Field(..., description="文件总数")
@@ -51,7 +51,7 @@ class ProjectFilesResponse(BaseModel):
 
 class TaskStatus(str, Enum):
     """任务状态枚举"""
-    
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -61,7 +61,7 @@ class TaskStatus(str, Enum):
 
 class AnalysisRequest(BaseModel):
     """分析任务请求"""
-    
+
     case_id: str = Field(..., description="项目案例ID")
     language: Optional[str] = Field(None, description="目标语言")
     requirement: Optional[str] = Field(None, description="CodeQL查询需求描述")
@@ -72,7 +72,7 @@ class AnalysisRequest(BaseModel):
 
 class AnalysisTaskInfo(BaseModel):
     """分析任务信息"""
-    
+
     task_id: str = Field(..., description="任务ID")
     case_id: str = Field(..., description="项目案例ID")
     status: TaskStatus = Field(..., description="任务状态")
@@ -85,7 +85,7 @@ class AnalysisTaskInfo(BaseModel):
 
 class AnalysisResult(BaseModel):
     """分析结果"""
-    
+
     task_id: str = Field(..., description="任务ID")
     case_id: str = Field(..., description="项目案例ID")
     status: TaskStatus = Field(..., description="任务状态")
@@ -98,7 +98,7 @@ class AnalysisResult(BaseModel):
 
 class TaskListResponse(BaseModel):
     """任务列表响应"""
-    
+
     tasks: List[AnalysisTaskInfo] = Field(..., description="任务列表")
     total: int = Field(..., description="任务总数")
     page: int = Field(1, description="当前页码")
@@ -107,7 +107,7 @@ class TaskListResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """健康检查响应"""
-    
+
     status: str = Field(..., description="服务状态")
     version: str = Field(..., description="API版本")
     timestamp: datetime = Field(..., description="当前时间")
@@ -115,7 +115,7 @@ class HealthResponse(BaseModel):
 
 class VersionResponse(BaseModel):
     """版本信息响应"""
-    
+
     api_version: str = Field(..., description="API版本")
     build_time: Optional[str] = Field(None, description="构建时间")
     commit_hash: Optional[str] = Field(None, description="Git提交哈希")
@@ -123,28 +123,34 @@ class VersionResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """错误响应"""
-    
+
     error: str = Field(..., description="错误类型")
     message: str = Field(..., description="错误消息")
     detail: Optional[Any] = Field(None, description="详细信息")
     timestamp: datetime = Field(default_factory=datetime.now, description="错误时间")
 
 
-class CodeQLComposeRequest(BaseModel):
-    """CodeQL生成工具请求"""
-    
-    requirement: str = Field(..., description="CodeQL查询需求描述")
-    language: Optional[str] = Field("java", description="目标语言")
-    database_path: Optional[str] = Field(None, description="CodeQL数据库路径")
-    max_rounds: int = Field(5, ge=1, le=10, description="最大迭代轮数")
-    exec_mode: Optional[str] = Field("analyze", description="执行模式: analyze或run")
+class StreamEventType(str, Enum):
+    """流式事件类型枚举"""
+
+    STEP_START = "step_start"
+    STEP_PROGRESS = "step_progress"
+    AGENT_ACTION = "agent_action"
+    TOOL_START = "tool_start"
+    TOOL_OUTPUT = "tool_output"
+    AGENT_OUTPUT = "agent_output"
+    STEP_COMPLETE = "step_complete"
+    ERROR = "error"
+    COMPLETED = "completed"
 
 
-class CodeQLComposeResponse(BaseModel):
-    """CodeQL生成工具响应"""
-    
-    success: bool = Field(..., description="是否成功")
-    query: Optional[str] = Field(None, description="生成的CodeQL查询")
-    result: Optional[str] = Field(None, description="执行结果")
-    error: Optional[str] = Field(None, description="错误信息")
-    rounds: int = Field(0, description="迭代轮数")
+class StreamEvent(BaseModel):
+    """流式事件模型"""
+
+    type: StreamEventType = Field(..., description="事件类型")
+    timestamp: datetime = Field(default_factory=datetime.now, description="事件时间戳")
+    step_name: Optional[str] = Field(None, description="当前步骤名称")
+    message: Optional[str] = Field(None, description="消息内容")
+    data: Optional[Dict[str, Any]] = Field(None, description="附加数据")
+
+

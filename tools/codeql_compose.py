@@ -437,6 +437,7 @@ class CodeQLComposeTool(BaseTool):
         run_manager: Optional[Any] = None,
         exec_mode: str = "analyze",
         show_thinking: bool = False,
+        event_callback = None,
     ) -> str:
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
@@ -523,7 +524,7 @@ class CodeQLComposeTool(BaseTool):
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
-                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking)
+                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
                     if not gen_result.success:
                         return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
@@ -711,7 +712,7 @@ class CodeQLComposeTool(BaseTool):
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
                     error_prompt = apply_placeholders(error_prompt_base, error_values)
-                    error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking)
+                    error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
                     if not error_analysis.success:
                         return (

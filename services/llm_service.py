@@ -107,7 +107,7 @@ class MultiAgentAnalyzer:
 
         self.tools = await self.mcp_client.get_tools()
 
-    async def run_agent(self, prompt: str, show_thinking: bool = True) -> AgentResult:
+    async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None) -> AgentResult:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             if not self.llm or not self.tools:
@@ -120,6 +120,16 @@ class MultiAgentAnalyzer:
                 {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
             ):
                 event_name = event.get("event")
+                
+                # Phase 3: 推送事件到回调
+                if event_callback:
+                    from datetime import datetime
+                    await event_callback({
+                        "type": "agent_event",
+                        "event_name": event_name,
+                        "data": event.get("data", {}),
+                        "timestamp": datetime.now().isoformat()
+                    })
 
                 # 显示AI的思考过程
                 if show_thinking:

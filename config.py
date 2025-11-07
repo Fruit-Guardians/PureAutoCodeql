@@ -212,10 +212,10 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
 
 def get_llm_config(role: LLMRole) -> LLMConfig:
     """根据角色获取 LLM 配置
-    
+
     Args:
         role: LLM 角色（think 或 chat）
-        
+
     Returns:
         LLMConfig: 对应的 LLM 配置
     """
@@ -272,16 +272,16 @@ def get_sarif2json_config() -> Sarif2JsonConfig:
 
 1. 推荐方式：通过角色获取配置
    from config import get_llm_config, LLMRole
-   
+
    # CodeQL 相关任务使用推理模型
    think_config = get_llm_config(LLMRole.THINK)
-   
-   # 一般分析任务使用对话模型  
+
+   # 一般分析任务使用对话模型
    chat_config = get_llm_config(LLMRole.CHAT)
 
 2. 便捷方式：使用便捷函数
    from config import get_think_config, get_chat_config
-   
+
    think_config = get_think_config()
    chat_config = get_chat_config()
 """
