@@ -212,31 +212,29 @@ compiled: false
     cpp_yml = '''---
 lockVersion: 1.0.0
 dependencies:
-  codeql/concepts:
-    version: 0.0.7
   codeql/controlflow:
     version: 2.0.17
+  codeql/cpp-all:
+    version: 6.0.0
   codeql/dataflow:
     version: 2.0.17
   codeql/mad:
     version: 1.0.33
-  codeql/python-all:
-    version: 4.0.17
-  codeql/regex:
+  codeql/quantum:
+    version: 0.0.11
+  codeql/rangeanalysis:
     version: 1.0.33
   codeql/ssa:
     version: 2.0.9
-  codeql/threat-models:
-    version: 1.0.33
   codeql/tutorial:
+    version: 1.0.33
+  codeql/typeflow:
     version: 1.0.33
   codeql/typetracking:
     version: 2.0.17
   codeql/util:
     version: 2.0.20
   codeql/xml:
-    version: 1.0.33
-  codeql/yaml:
     version: 1.0.33
 compiled: false
 '''
@@ -266,8 +264,19 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
         version = "^7.7.1"
         dep_pack = 'codeql/java-all'
 
-    qlpack_content = textwrap.dedent(
-        f"""---
+    # 根据语言选择 qlpack 模板；C/C++ 使用用户提供的固定模板
+    if lang == 'cpp':
+        qlpack_content = textwrap.dedent(
+            """---
+name: cve3
+version: 6.0.1
+dependencies:
+  codeql/cpp-all: "^6.0.0"
+"""
+        )
+    else:
+        qlpack_content = textwrap.dedent(
+            f"""---
 library: false
 warnOnImplicitThis: false
 name: getting-started/codeql-extra-queries-{lang}
@@ -275,7 +284,7 @@ version: 1.0.0
 dependencies:
   {dep_pack}: "{version}"
 """
-    )
+        )
 
 
     (pack_dir / 'qlpack.yml').write_text(qlpack_content, encoding='utf-8')
