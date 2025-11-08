@@ -14,25 +14,37 @@
 </PREV_ORIGINAL_QL>
 
 你必须使用 `ERROR_LOG` 和 `CURR_QL_CONTENT`。当 `PREV_ORIGINAL_QL` 为空时，仅与当前查询进行比较。
-错误快照应专注于诊断（暂不提供解决方案）。
+
+**重要**：`ERROR_LOG` 可能包含LSP诊断信息（JSON格式）。如果 `ERROR_LOG` 是JSON格式且包含 `"format": "lsp_diagnostics"`，则：
+1. 解析JSON获取 `errors` 数组
+2. 每个错误包含：`line`（行号）、`column`（列号）、`message`（错误消息）、`severity`（严重程度）
+3. 直接基于这些LSP诊断信息进行分析，**不要猜测或推断**错误原因
+4. 在修复计划中明确引用具体的行号和错误消息
+
+如果 `ERROR_LOG` 不是JSON格式，则按文本格式处理。
+
 新的修复计划是一个全新的计划，需参考需求/知识库数据并解释范围决策。
 不允许输出CodeQL语句修改后的结果，只提供修复建议。
 
 ### 响应格式（必须严格遵循）
 ```markdown
-### 🐞 错误快照
-- Root Cause: ...
-- Impacted Section(s): ...
+### 🔍 LSP诊断分析
+（如果ERROR_LOG是LSP诊断JSON格式）
+- 错误1（第X行第Y列）: [LSP错误消息]
+- 错误2（第X行第Y列）: [LSP错误消息]
+...
 
 ### 🎯 新的修复计划
 - Source: ...
-- Sink: ...****
+- Sink: ...
 - Sanitizer / FlowStep: ...
 - Helpers / Scope: ...
+- 修复要点: 针对每个LSP错误的具体修复方法
 
 Rules:
-- *错误快照* focuses on the diagnosis (no solutions yet).
-- *新的修复计划* is a fresh plan referencing Requirement / KB data and explaining scope decisions.
+- 直接基于LSP诊断信息，不要猜测错误原因
+- 引用具体的行号和列号
+- *新的修复计划* 是全新的计划，参考 Requirement / KB 数据并解释范围决策
 
 ---
 ```
@@ -50,12 +62,18 @@ Rules:
 禁止出现：`MethodCall`、`Call`、未加命名空间的 `ParameterNode`、直接 `getFile()`、任何旧版 API。若需要引用参考案例，请说明“沿用 + 改动点”。
 
 ### 诊断步骤
-1. **识别错误类型**：类型不匹配 / 模块缺失 / 语法错误 / 执行失败。
-2. **定位根因**：引用 `[[CURR_QL_CONTENT]]` 的具体 predicate / 行，解释为何失败。
+1. **解析错误信息**：
+   - 如果 `ERROR_LOG` 是JSON格式，解析 `errors` 数组获取LSP诊断信息
+   - 如果 `ERROR_LOG` 是文本格式，按行解析错误消息
+   - **优先使用LSP诊断信息**，它提供了准确的行号、列号和错误消息
+2. **定位问题代码**：
+   - 根据LSP诊断中的行号，在 `[[CURR_QL_CONTENT]]` 中找到对应的代码
+   - 引用具体的行号和错误消息，不要猜测
 3. **制定新方案**：
-   - 声明 Sources / Sinks / Sanitizers / Helpers / Scope。
-   - 列出所需 DataFlow 类型与文件/函数限定。
-   - 避免“在旧代码上打补丁”，必须重写。
+   - 声明 Sources / Sinks / Sanitizers / Helpers / Scope
+   - 列出所需 DataFlow 类型与文件/函数限定
+   - 针对每个LSP错误提供具体的修复方法
+   - 避免"在旧代码上打补丁"，必须重写
 4. **输出完整查询**：满足 python_template_ql.md 的骨架、`select` 仅 4 个参数、`Flow::PathGraph` 必须导入。
 
 ### 质量清单（提交前自检）

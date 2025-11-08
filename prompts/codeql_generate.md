@@ -7,7 +7,7 @@
 本 Prompt 将在每一轮调用时注入如下占位符，请使用它们来增强生成质量：
 
 - [[ROUND_INDEX]]：当前轮次编号（1 表示首轮）
-- [[LANGUAGE]]：目标语言（如 Java, Go, Python, Cpp, CSharp, JavaScript）
+- [[LANGUAGE]]：目标语言（如 Java,Python,Cpp,C）
 - [[REQUIREMENT]]：本轮的自然语言需求描述
 - [[PREV_ORIGINAL_QL]]：上一轮或首轮生成的原始 QL 内容（可能为空）
 - [[PREV_FIX_SUGGESTIONS]]：上一轮错误分析 Agent 给出的修复建议（可能为空）
@@ -70,62 +70,48 @@
    - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
 4. **Select语句格式:**
 
-   - Path-problem格式: `select sink.getNode(), source, sink, "message"`
-   - ❌ 不要添加额外的source/sink标签参数
-     当生成 @kind path-problem 类型的 CodeQL 查询时，必须严格遵循以下格式要求：
+   - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求
+   - Python：通常使用7个参数格式
+   - Java：通常使用7个参数格式  
+   - C/C++：通常使用6个参数格式
+   - ❌ 不要混用不同语言的格式
 
-### 1. 元数据要求
+### Path-problem 查询通用要求
+
+#### 1. 元数据要求
 
 - 必须使用 `@problem.severity` 而不是 `@severity`
 - 可选值：error, warning, recommendation
 - 示例：`@problem.severity error`
 
-### 2. Select语句格式
+#### 2. 必需组件
 
-Path-problem查询的select语句必须恰好包含4个元素，严格按照以下格式：
-
-```ql
-select sink.getNode(), source, sink, "描述信息"
-```
-
-**错误示例（会导致INVALID_RESULT_PATTERNS错误）：**
-
-```ql
-select sink.getNode(), source, sink, "消息", source, "源描述", sink, "汇描述"
-```
-
-**正确示例：**
-
-```ql
-select sink.getNode(), source, sink, "Potential SQL injection: User input flows into SQL query"
-```
-
-### 3. 必需组件
-
-- 数据流配置模块（实现DataFlow::ConfigSig）
+- 数据流配置模块（实现DataFlow::ConfigSig或DataFlow::Configuration）
 - PathNode类型的source和sink变量
 - flowPath谓词调用
 - 注意！ sink点的规范尽可能松，比如invoke点的调用不一定是Method调用的！根据漏洞信息动态调控
 
-### 4. 验证清单
+#### 3. 语言特定规范
+
+**重要**：不同语言有不同的API和语法规范，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的规范：
+
+- **Python**：请参考 `python_template_ql.md` 中的Python DataFlow API规范
+- **Java**：请参考 `java_temple_ql.md` 中的Java规范
+- **C/C++**：请参考 `c_template_ql.md` 中的C/C++规范
+
+#### 4. 验证清单（通用）
 
 生成path-problem查询后，请仔细检查：
 
 - [ ] 使用了 @problem.severity 而不是 @severity
-- [ ] select语句只有4个参数
+- [ ] select语句格式符合对应语言模板的要求
 - [ ] 包含了正确的PathNode类型声明
 - [ ] 使用了flowPath谓词
+- [ ] 遵循了对应语言的API规范（参考模板文件）
 
-遵循此规范可避免"Expected at least two result patterns"和"edges result set"相关错误。
+#### 5. 通用CodeQL规范
 
-3. RemoteFlowSource 使用规范
-
-- **正确用法**：`src instanceof RemoteFlowSource`
-- **错误用法**：`exists(RemoteFlowSource rfs | src = rfs.getSource())`
-- RemoteFlowSource 本身就是 DataFlow::Node，无需调用额外方法
-
-4. 谓词中的空条件表达
-
+**谓词中的空条件表达：**
 - **正确用法**：使用 `none()` 表示谓词不匹配任何内容
 - **错误用法**：直接使用 `false` 作为表达式
 - 示例：
@@ -133,7 +119,6 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
     none()  // 正确
   }
-
   ```
 
 ### 固定骨架
@@ -143,36 +128,24 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
 
 注意参考的模板可以结合 [[PREV_FIX_SUGGESTIONS]] 的修复思路进行适当调整（若存在）。
 
-## Python 专用：知识库智能推荐（仅 Python 语言时有效）
+---
 
-如果你正在生成 Python CodeQL 查询，以下是基于需求分析的智能推荐：
+## 语言特定内容（通过占位符自动注入）
 
-### ��ر�ǩ
-[[RELEVANT_TAGS]]
+**重要**：以下内容会根据 `[[LANGUAGE]]` 的值自动注入对应的语言特定内容：
 
-### ֪ʶ����ԴĿ¼
-[[KB_DIRECTORY_INDEX]]
+- **语言模板**：`[[QL_TEMPLATE]]` 占位符会被替换为对应语言的模板文件内容
+  - Python → `python_template_ql.md`（包含Python特定规范、知识库推荐等）
+  - Java → `java_temple_ql.md`
+  - C/C++ → `c_template_ql.md`
 
-### �ṹ�� KB JSON
-`json
-[[KB_STRUCTURED_CONTEXT]]
-`
+- **知识库推荐**：如果语言支持知识库（如Python），会通过 `[[KB_*]]` 占位符注入相关内容
+  - 非Python语言时，这些占位符为空，不会显示
 
-### �Ƽ�ʹ�õ�ģ�顢����ν�ʺ�ģ��
-[[KB_SUGGESTED_ITEMS]]
-
-### ���Ӳο�����
-[[KB_REFERENCE_SNIPPETS]]
-
-
-**使用建议**：
-- 优先使用推荐的 modules（import 语句）
-- 参考推荐的 helpers 来实现辅助谓词
-- 如果有匹配的 cases（成功案例），可以借鉴其结构
-- 注意避免推荐的 errors 中列出的常见错误
+**请严格遵循对应语言模板中的规范，不要混用不同语言的语法。**
 
 ---
 
-## 语言通用模板（C/C++ 请优先遵循以上 DataFlow 规则，不要引入 `new.*` 或 `Flow::*` 别名）
+## 语言通用模板
 
 [[QL_TEMPLATE]]
