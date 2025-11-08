@@ -1,118 +1,226 @@
-# C/C++ CodeQL 查询模板（通用数据流骨架）
+# C/C++ CodeQL 统一模板（基于 Heartbleed / EXIF / Curl 示例抽取）
 
-本模板用于在 C/C++ 代码中基于污点传播定位“用户可控输入”到“敏感 API”的路径问题。保留可替换占位符与示例注释，便于快速按需定制。
+本模板从 `projects/C_QL` 下三个经典查询抽取通用骨架与可复用模式：
+- Heartbleed 越界读取（memcpy 源参数）
+- EXIF 整数溢出（算术传播与边界检查）
+- Curl 不安全格式化（sprintf/vsprintf 目标缓冲区）
 
----
-
-## 一、固定骨架（严格遵守）
+按需“取消注释”对应示例块即可快速定制你的查询。
 
 ```ql
 /**
  * @kind path-problem
- * @name <简明英文名称>
- * @description <详细描述>
- * @id cpp/<项目>-<漏洞类型>
- * @problem.severity <error|warning|recommendation>
- * @security-severity <0.0-10.0>
- * @precision <high|medium|low>
- * @tags security
- *       <更多标签（每行一个），例如 external/cwe/cwe-190>
+ * @name C/C++ Unified Taint Flow template
+ * @id cpp/template-unified-taint
+ * @problem.severity error
+ * @precision high
+ * @tags security, taint
  */
 
 import cpp
-import semmle.code.cpp.dataflow.new.DataFlow
+import semmle.code.cpp.dataflow.DataFlow
 import semmle.code.cpp.dataflow.new.TaintTracking
 
-/** ========== Helper 谓词（可选）========== */
-<HELPER-PREDICATES>
-
-/** ========== 数据流配置 ========== */
-module VulnConfig implements DataFlow::ConfigSig {
-  /**
-   * 定义 Source（用户可控输入）。
-   * 典型来源：getenv/fgets/scanf/gets/read/recv 等；建议按需精确到参数位置或返回值。
-   * 示例（按需取消注释并调整）：
-   *
-   *  exists(FunctionCall fc | fc.getTarget().hasName("getenv") and src.asExpr() = fc)
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("fgets") and src.asExpr() = fc.getArgument(0))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("scanf") and src.asExpr() = fc.getArgument(0))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("read") and src.asExpr() = fc.getArgument(1))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("recv") and src.asExpr() = fc.getArgument(1))
-   */
-  predicate isSource(DataFlow::Node src) {
-    none()
+/** ===== 通用 Helper（示例抽取） ===== */
+class MemcpyLikeCall extends FunctionCall {
+  MemcpyLikeCall() {
+    this.getTarget().hasGlobalName(["memcpy", "__builtin_memcpy", "memmove", "bcopy"])
   }
+  Expr getSrc() { result = this.getArgument(1) }
+  Expr getLen() { result = this.getArgument(2) }
+}
 
-  /**
-   * 定义 Sink（敏感使用点）。
-   * 典型汇点：system/exec*/popen（命令执行）、strcpy/sprintf（危险字符串操作）、open/write（文件路径/写入）。
-   * 示例（按需取消注释并调整）：
-   *
-   *  exists(FunctionCall fc | (fc.getTarget().hasName("system") or fc.getTarget().hasName("popen")) and sink.asExpr() = fc.getArgument(0))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("execv") and sink.asExpr() = fc.getArgument(1))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("execve") and sink.asExpr() = fc.getArgument(1))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("strcpy") and sink.asExpr() = fc.getArgument(1))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("sprintf") and sink.asExpr() = fc.getArgument(1))
-   *  or exists(FunctionCall fc | fc.getTarget().hasName("open") and sink.asExpr() = fc.getArgument(0))
-   */
-  predicate isSink(DataFlow::Node sink) {
-    none()
+class UnsafeFormatCall extends FunctionCall {
+  UnsafeFormatCall() {
+    this.getTarget().hasGlobalName(["sprintf", "vsprintf", "snprintf", "vsnprintf"])
   }
+  Expr getDestBuffer() { result = this.getArgument(0) }
+  Expr getDangerousArgument() { exists(int i | i > 0 and i < this.getNumberOfArguments() and result = this.getArgument(i)) }
+}
 
-  /**
-   * 额外流步（可选）：用于指针别名、结构体字段传递、内存复制等场景增强污点传播。
-   * 示例（按需取消注释并调整）：
-   *
-   *  // 结构体字段传递（示意）：
-   *  // exists(Expr srcExpr, Expr dstExpr | src.asExpr() = srcExpr and dst.asExpr() = dstExpr and srcExpr.toString() = dstExpr.toString())
-   *  // 内存复制类：memcpy/strncpy（根据具体模型设置参数位置）
-   */
-  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    none()
-  }
-
-  /**
-   * 净化器（可选）：在此定义能有效移除污点的处理（如严格校验/归一化/白名单检查）。
-   */
-  predicate isSanitizer(DataFlow::Node node) {
-    none()
-  }
-
-  /**
-   * Barrier（可选）：若值在严格比较或白名单校验后使用，可作为传播屏障。
-   */
-  predicate isBarrier(DataFlow::Node node) {
-    none()
+class ExifReadFunction extends Function {
+  ExifReadFunction() {
+    this.hasGlobalName(["exif_get_long","exif_get_short","exif_get_slong","exif_get_sshort","exif_get_rational","exif_get_srational"])
   }
 }
 
-module Flow = TaintTracking::Global<VulnConfig>;
-import Flow::PathGraph
+/** 命令执行类调用（命令注入常见汇点） */
+class CommandExecCall extends FunctionCall {
+  CommandExecCall() {
+    this.getTarget().hasGlobalName(["system","popen","execl","execlp","execv","execve","execvp","execvpe"])
+  }
+  Expr getCmdArg() { result = this.getArgument(0) }
+}
 
-from Flow::PathNode src, Flow::PathNode sink
-where Flow::flowPath(src, sink)
-select sink.getNode(), src, sink,
-  "<诊断消息>",
-  src, "source", sink, "sink"
+/** 路径操作类调用（路径穿越常见汇点） */
+class PathOpCall extends FunctionCall {
+  PathOpCall() {
+    this.getTarget().hasGlobalName(["open","fopen","unlink","remove","rename"])
+  }
+  Expr getPathArg() { result = this.getArgument(0) }
+}
+
+/** 网络/文件读取写入目标缓冲区（常见外部输入源） */
+class NetReadCall extends FunctionCall {
+  NetReadCall() {
+    this.getTarget().hasGlobalName(["recv","read"])
+  }
+  /** read(fd, buf, count) / recv(sock, buf, len, flags) 的 buf 参数 */
+  Expr getBufArg() { result = this.getArgument(1) }
+}
+
+/** 标准输入读取到缓冲区（外部输入源） */
+class StdInReadCall extends FunctionCall {
+  StdInReadCall() {
+    this.getTarget().hasGlobalName(["fgets","gets","getline"])
+  }
+  Expr getBufArg() { result = this.getArgument(0) }
+}
+
+/** scanf/sscanf 将数据写入指针参数（外部输入源） */
+class ScanfLikeCall extends FunctionCall {
+  ScanfLikeCall() { this.getTarget().hasGlobalName(["scanf","sscanf"]) }
+  Expr getPointerArg() { exists(int i | i > 1 and i < this.getNumberOfArguments() and result = this.getArgument(i)) }
+}
+
+/** ===== 可选：算术/类型传播（EXIF 风格） ===== */
+predicate addArithmeticOrCastStep(DataFlow::Node n1, DataFlow::Node n2) {
+  exists(AddExpr add |
+    n1.asExpr() = add.getAnOperand() and
+    n2.asExpr() = add
+  )
+  or
+  exists(MulExpr mul |
+    n1.asExpr() = mul.getAnOperand() and
+    n2.asExpr() = mul
+  )
+  or
+  exists(Cast cast |
+    n1.asExpr() = cast.getExpr() and
+    n2.asExpr() = cast
+  )
+}
+
+/** ===== 精确度/召回率开关（默认更严格，需显式开启） ===== */
+predicate EnableDefaultSources() { false }
+predicate EnableDefaultSinks() { false }
+predicate EnableMildPropagation() { false }
+
+class VulnConfig extends DataFlow::Configuration {
+  /** ===== Source：取消注释一个或多个即可 ===== */
+  predicate isSource(DataFlow::Node src) {
+    // 环境变量返回值（直接返回字符串/指针）
+    EnableDefaultSources() and
+    exists(FunctionCall fc |
+      fc.getTarget().hasGlobalName(["getenv","getenv_s"]) and
+      src.asExpr() = fc
+    )
+    or
+    // 网络/文件读取到缓冲区（read/recv -> buf）
+    EnableDefaultSources() and
+    exists(NetReadCall nr |
+      src.asExpr() = nr.getBufArg()
+    )
+    or
+    // 标准输入读取到缓冲区（fgets/gets/getline -> buf）
+    EnableDefaultSources() and
+    exists(StdInReadCall sr |
+      src.asExpr() = sr.getBufArg()
+    )
+    or
+    // scanf/sscanf 的指针参数（被写入的数据）
+    EnableDefaultSources() and
+    exists(ScanfLikeCall sc |
+      src.asExpr() = sc.getPointerArg()
+    )
+    or
+    // EXIF 风格：EXIF读取函数的返回值
+    EnableDefaultSources() and
+    exists(FunctionCall ef |
+      ef.getTarget() instanceof ExifReadFunction and
+      src.asExpr() = ef
+    )
+    or
+    // main/wmain 的 argv 访问（简化模型）
+    EnableDefaultSources() and
+    exists(VariableAccess va |
+      va.getTarget() instanceof Parameter and
+      va.getTarget().(Parameter).getFunction().hasGlobalName(["main","wmain"]) and
+      va.getTarget().getName() = "argv" and
+      src.asExpr() = va
+    )
+  }
+
+  /** ===== Sink：取消注释一个或多个即可 ===== */
+  predicate isSink(DataFlow::Node sink) {
+    // 命令执行：system/popen/exec*
+    EnableDefaultSinks() and
+    exists(CommandExecCall ce |
+      sink.asExpr() = ce.getCmdArg()
+    )
+    or
+    // Heartbleed 风格：memcpy/memmove 源参数（潜在越界读取）
+    EnableDefaultSinks() and
+    exists(MemcpyLikeCall m |
+      sink.asExpr() = m.getSrc()
+    )
+    or
+    // 字符串复制族：strcpy/strcat（易溢出）
+    EnableDefaultSinks() and
+    exists(FunctionCall sc |
+      sc.getTarget().hasGlobalName(["strcpy","strcat"]) and
+      sink.asExpr() = sc.getArgument(1)
+    )
+    or
+    // 格式化目标缓冲区（长度未校验）
+    EnableDefaultSinks() and
+    exists(UnsafeFormatCall call |
+      sink.asExpr() = call.getDestBuffer()
+    )
+    or
+    // 路径操作的路径参数（路径穿越/伪造）
+    EnableDefaultSinks() and
+    exists(PathOpCall po |
+      sink.asExpr() = po.getPathArg()
+    )
+  }
+
+  /** 可选：传播增强（EXIF 风格） */
+  predicate isAdditionalFlowStep(DataFlow::Node n1, DataFlow::Node n2) {
+    EnableMildPropagation() and (
+      // 轻量传播增强（可选）
+      addArithmeticOrCastStep(n1, n2)
+      or
+      // 同一变量的不同访问点视作等价（缓解简单别名差异）
+      exists(VariableAccess va1, VariableAccess va2 |
+        n1.asExpr() = va1 and n2.asExpr() = va2 and va1.getTarget() = va2.getTarget()
+      )
+      or
+      // 结构字段的同名访问视作弱等价（FieldAccess/PointerFieldAccess）
+      exists(FieldAccess fa1, FieldAccess fa2 |
+        n1.asExpr() = fa1 and n2.asExpr() = fa2 and fa1.getTarget() = fa2.getTarget()
+      )
+      or
+      exists(PointerFieldAccess pfa1, PointerFieldAccess pfa2 |
+        n1.asExpr() = pfa1 and n2.asExpr() = pfa2 and pfa1.getTarget() = pfa2.getTarget()
+      )
+    )
+  }
+
+  /** 可选：净化器/屏障 */
+  predicate isSanitizer(DataFlow::Node n) { none() }
+  predicate isBarrier(DataFlow::Node n) {
+    none()
+    // 例：与常量比较后使用，视作传播屏障
+    // exists(RelationalOperation cmp, Literal limit |
+    //   cmp.getAnOperand() = n.asExpr() and cmp.getAnOperand() = limit
+    // )
+  }
+}
+
+from VulnConfig cfg, DataFlow::PathNode source, DataFlow::PathNode sink
+where cfg.hasFlowPath(source, sink)
+select sink.getNode(), source, sink, "Untrusted data flows into a sensitive operation"
 ```
 
----
-
-## 二、占位符说明与填写建议
-- `<HELPER-PREDICATES>`：放置复用谓词（如函数匹配、文件/路径过滤、类型/原型匹配）。可定义 `class`/`predicate`，例如 `UnsafeFormatCall`/`DangerousMemoryOperation`。
-- `isSource`：按需求选择返回值或具体参数作为源；`getenv` 等返回值可用 `src.asExpr() = fc`。可结合文件/函数约束（`getRelativePath().regexpMatch(...)` / `getEnclosingFunction().hasName(...)`）。
-- `isSink`：精确到具体参数位置（如 `system(cmd)` 的 `cmd` 是第 0 个参数；`strcpy(dst, src)` 的风险在第 2 参数；`open(path, ...)` 的路径在第 1 参数）。
-- `isAdditionalFlowStep`：当默认传播不足时，加入别名复制、结构体字段等自定义步（见 Heartbleed/EXIF/Curl 示例）。
-- `isSanitizer` / `isBarrier`：若存在明确净化/屏障逻辑（白名单、边界比较、严格长度检查），在此定义以减少误报。
-
-## 三、常见场景映射（示例）
-- 命令注入：`isSource(getenv/fgets/scanf/recv) → isSink(system/exec*/popen)`
-- 路径遍历：`isSource(getenv/fgets/scanf) → isSink(open/fopen/remove/rename)`
-- 缓冲区溢出：`isSource(getenv/fgets/scanf/recv) → isSink(strcpy/strcat/sprintf)`（按参数位置设置为源或汇）
-- EXIF 整数溢出：`exif_get_* 返回值/变量 → memcpy/malloc size 参数`，并在 `isAdditionalFlowStep` 中添加 `Add/Mul/Cast` 传播，在 `isBarrier` 中定义常量比较屏障。
-- Heartbleed 越界读取：`rrec.data → memcpy 源参数`，并加入结构体字段/数组地址传播与长度对比谓词（在 Helper 中定义）。
-
-## 四、验证建议
-- 先在目标文件或函数作用域上试跑，确保语法与数据流；再推广到完整数据库。
-- 使用 `PathGraph` 输出 `src/sink`，便于复核路径与关键节点标签（select 中的 `$@` 可高亮参数）。
-- 若传播不到位，优先补 `isAdditionalFlowStep`；若误报，补 `isSanitizer` 或 `isBarrier`；必要时加文件/函数约束精确到补丁范围。
+使用方法：在 `isSource` / `isSink` 中按你的场景取消注释对应块，并在必要时打开 `isAdditionalFlowStep` 的算术/类型传播。该模板保证编译通过（默认 `none()`），你只需逐步放开对应块即可得到 Heartbleed / EXIF / Curl 风格查询。

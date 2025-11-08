@@ -53,15 +53,21 @@
    - ✅ 严格使用 `MethodCall` (正确)
    - ❌ 禁止使用 `MethodAccess` (已弃用)
    - ❌ 禁止使用 `MethodAccessExpr` (不存在)
-2. **接口实现规范:**
+2. **接口实现规范（C/C++）:**
 
-   - `DataFlow::ConfigSig` 只需要实现: `isSource`, `isSink`
+   - 使用 `class Config extends DataFlow::Configuration`
+   - 必须实现: `isSource`, `isSink`
    - 可选实现: `isAdditionalFlowStep`
-   - ❌ 不要实现 `isSanitizer` (不属于此接口)
-3. **必要导入:**
+   - ❌ 不要实现 `isSanitizer`（不属于该接口）
+3. **必要导入（按语言区分）:**
 
-   - 必须导入: `import Flow::PathGraph`
-   - 模块定义: `module Flow = TaintTracking::Global<Config>;`
+   - C/C++（稳定接口）：
+     - `import cpp`
+     - `import semmle.code.cpp.dataflow.DataFlow`
+     - `class Config extends DataFlow::Configuration`
+     - PathGraph 使用: `DataFlow::PathNode` + `cfg.hasFlowPath(source, sink)`
+     - ❌ 不要使用 `new.*` 模块或 `Flow::*` 别名
+   - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
 4. **Select语句格式:**
 
    - Path-problem格式: `select sink.getNode(), source, sink, "message"`
@@ -158,6 +164,6 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
 
 ---
 
-## 语言通用模板
+## 语言通用模板（C/C++ 请优先遵循以上 DataFlow 规则，不要引入 `new.*` 或 `Flow::*` 别名）
 
 [[QL_TEMPLATE]]
