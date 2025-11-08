@@ -38,6 +38,8 @@ class PythonKnowledgeBase:
         self.source_dir = repo_root / "resources" / "codeql" / "python"
         self.mirror_dir = repo_root / "projects" / "python_kb"
         self._sections: Optional[Dict[str, List[Dict[str, Any]]]] = None
+        self._tag_variant_map: Optional[Dict[str, Set[str]]] = None
+        self._known_tags_cache: Optional[Set[str]] = None
 
     def ensure_mirror(self) -> bool:
         """确保知识库在 projects 目录下可用，以便通过 MCP 文件系统访问。"""
@@ -85,12 +87,46 @@ class PythonKnowledgeBase:
         return "\n".join(entries)
 
     def _collect_known_tags(self) -> Set[str]:
-        tags: Set[str] = set()
+        self._ensure_tag_indexes()
+        return set(self._known_tags_cache or ())
+
+    @staticmethod
+    def _expand_tag_variants(tag: str) -> Set[str]:
+        base = (tag or "").strip().lower()
+        if not base:
+            return set()
+
+        variants: Set[str] = {base}
+        parts = [part for part in re.split(r"[-_/]+", base) if part]
+        variants.update(parts)
+        condensed = "".join(parts)
+        underscore_joined = "_".join(parts)
+        for candidate in (condensed, underscore_joined):
+            if candidate:
+                variants.add(candidate)
+        return variants
+
+    def _ensure_tag_indexes(self) -> None:
+        if self._tag_variant_map is not None and self._known_tags_cache is not None:
+            return
+
+        tag_variants: Dict[str, Set[str]] = {}
+        known_tags: Set[str] = set()
+
         for items in self.sections().values():
             for item in items:
-                for tag in item.get("tags", []):
-                    tags.add(str(tag).lower())
-        return tags
+                for raw_tag in item.get("tags", []):
+                    canonical = str(raw_tag).strip().lower()
+                    if not canonical:
+                        continue
+                    known_tags.add(canonical)
+                    for variant in self._expand_tag_variants(canonical):
+                        if variant not in tag_variants:
+                            tag_variants[variant] = set()
+                        tag_variants[variant].add(canonical)
+
+        self._tag_variant_map = tag_variants
+        self._known_tags_cache = known_tags
 
     @staticmethod
     def _tokenize_requirement(requirement: str) -> Set[str]:
@@ -104,8 +140,14 @@ class PythonKnowledgeBase:
         tokens = self._tokenize_requirement(requirement)
         if not tokens:
             return set()
-        known_tags = self._collect_known_tags()
-        return tokens & known_tags
+        self._ensure_tag_indexes()
+        if not self._tag_variant_map:
+            return set()
+
+        matched: Set[str] = set()
+        for token in tokens:
+            matched.update(self._tag_variant_map.get(token.lower(), set()))
+        return matched
 
     def _select_items(
         self,
@@ -185,7 +227,6 @@ class PythonKnowledgeBase:
             "kb_suggestions": suggestions,
             "relevant_tags": ", ".join(sorted(matched_tags)),
         }
-
 
 def build_placeholder_map(
     *,
