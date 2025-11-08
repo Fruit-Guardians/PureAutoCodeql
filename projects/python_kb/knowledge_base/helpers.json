@@ -160,24 +160,14 @@
     "tags": ["sanitizer", "constant", "safe-path"]
   },
   {
-    "id": "helper:isParameterInFunction",
+    "id": "helper:parameter-in-function",
     "name": "isParameterInFunction",
     "signature": "predicate isParameterInFunction(DataFlow::Node n, string funcPattern)",
     "description": "Checks if a node is a parameter in a function matching the given pattern (qualified name regex).",
-    "implementation": "exists(DataFlow::ParameterNode p | p = n and p.getScope().getQualifiedName().regexpMatch(funcPattern))",
-    "example": "isParameterInFunction(source, \"(^|.*\\.)local_doc_chat$\")",
+    "implementation": "exists(DataFlow::ParameterNode p, string qn | p = n and n.getEnclosingCallable().getQualifiedName() = qn and qn.regexpMatch(funcPattern))",
+    "example": "isParameterInFunction(source, \"(^|.*\\\\.)eval$\") // parameter in any eval function",
     "source": "CVE-2022-22817",
     "tags": ["source", "parameter", "scoping"]
-  },
-  {
-    "id": "helper:parameter-of-function",
-    "name": "parameterOfFunction",
-    "signature": "predicate parameterOfFunction(DataFlow::Node n, string funcName)",
-    "description": "Returns true when `n` is a parameter node belonging to the function with the given name (new dataflow API safe pattern).",
-    "implementation": "n instanceof DataFlow::ParameterNode and n.getScope().getName() = funcName",
-    "example": "parameterOfFunction(src, \"delete_docs\")",
-    "source": "CVE-2024-7099",
-    "tags": ["source", "parameter", "dataflow-new"]
   },
   {
     "id": "helper:open-to-write-flow",

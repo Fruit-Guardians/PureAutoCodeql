@@ -18,34 +18,5 @@
       "Update configuration modules to implement `DataFlow::ConfigSig`."
     ],
     "tags": ["api-mismatch", "compile"]
-  },
-  {
-    "id": "error:function-parameter-node",
-    "pattern": "Function::Parameter",
-    "cause": "Legacy Function::Parameter APIs (`getFunction()`, `getCfgNode()`, `getAParameter()`) are not available in the new dataflow library.",
-    "fix": [
-      "Model parameter sources as `DataFlow::ParameterNode` (for example: `source instanceof DataFlow::ParameterNode`).",
-      "Use `node.getScope()` to relate the parameter node back to the owning `Function`."
-    ],
-    "tags": ["api-mismatch", "source", "compile"]
-  },
-  {
-    "id": "error:dataflow-callable-compare",
-    "pattern": "DataFlowDispatch::DataFlowCallable is incompatible with Function::Function",
-    "cause": "`call.getEnclosingCallable()` returns a `DataFlowDispatch::DataFlowCallable`, which cannot be compared directly to `Function`.",
-    "fix": [
-      "Use `call.getScope()` (preferred) or convert the callable to its definition before comparing with a `Function`.",
-      "Example: `exists(Function f | call.getScope() = f and f.getName() = \"delete_files\")`."
-    ],
-    "tags": ["api-mismatch", "sink", "compile"]
-  },
-  {
-    "id": "error:sanitizer-additional",
-    "pattern": "predicate declaration 'isSanitizer' does not implement a signature member",
-    "cause": "`isSanitizer` is optional in `DataFlow::ConfigSig`; it must be marked `additional` if you keep the predicate without overriding behaviour.",
-    "fix": [
-      "Either delete `isSanitizer` when unused, or declare it as `additional predicate isSanitizer(DataFlow::Node node) { none() }`."
-    ],
-    "tags": ["config", "compile", "warning"]
   }
 ]
