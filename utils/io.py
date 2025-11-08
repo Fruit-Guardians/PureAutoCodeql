@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
 
     from utils.intel import IntelBundle
 
+logger = logging.getLogger(__name__)
+
 
 def read_json_text(path: Path) -> str:
     """读取JSON文件，验证其语法，并返回原始文本。"""
@@ -26,6 +29,16 @@ def read_json_text(path: Path) -> str:
     return text
 
 
+def _format_result_content(result: Optional["AgentResult"]) -> str:
+    """统一格式化结果内容。"""
+    if not result:
+        return "❌ 无结果"
+    if result.success:
+        return result.content
+    error_msg = result.error if result.error else "未知错误"
+    return f"❌ 分析失败: {error_msg}"
+
+
 def write_analysis_output(
     cve_result: "AgentResult",
     sink_result: "AgentResult",
@@ -35,9 +48,17 @@ def write_analysis_output(
     intel_bundle: Optional["IntelBundle"] = None,
     codeql_result: Optional["AgentResult"] = None,
     codeql_execution_result: Optional["AgentResult"] = None,
+    language: Optional[str] = None,
+    encoding: str = "utf-8",
 ) -> None:
     """将合并的Source和Sink分析结果以及CodeQL查询和执行结果写入Markdown文件。"""
     try:
+        # 确保输出目录存在
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 确定语言显示名称
+        language_display = language.title() if language else "Code"
+        
         sections = [
             "# Multi-Agent Analysis Output\n",
         ]
@@ -51,11 +72,11 @@ def write_analysis_output(
         sections.extend(
             [
                 "\n## CVE Analysis\n",
-                (cve_result.content if cve_result and cve_result.success else f"(failed) {cve_result.error if cve_result else 'no result'}"),
-                "\n\n## Java Sink Analysis\n",
-                (sink_result.content if sink_result and sink_result.success else f"(failed) {sink_result.error if sink_result else 'no result'}"),
-                "\n\n## Java Source Analysis\n",
-                (source_result.content if source_result and source_result.success else f"(failed) {source_result.error if source_result else 'no result'}"),
+                _format_result_content(cve_result),
+                f"\n\n## {language_display} Sink Analysis\n",
+                _format_result_content(sink_result),
+                f"\n\n## {language_display} Source Analysis\n",
+                _format_result_content(source_result),
             ]
         )
 
@@ -64,7 +85,7 @@ def write_analysis_output(
             sections.extend(
                 [
                     "\n\n## Generated CodeQL Query\n",
-                    (codeql_result.content if codeql_result and codeql_result.success else f"(failed) {codeql_result.error if codeql_result else 'no result'}"),
+                    _format_result_content(codeql_result),
                 ]
             )
 
@@ -73,14 +94,40 @@ def write_analysis_output(
             sections.extend(
                 [
                     "\n\n## CodeQL Execution Results\n",
-                    (codeql_execution_result.content if codeql_execution_result and codeql_execution_result.success else f"(failed) {codeql_execution_result.error if codeql_execution_result else 'no result'}"),
+                    _format_result_content(codeql_execution_result),
                 ]
             )
 
         sections.append("\n")
 
         output = "".join(sections)
-        output_path.write_text(output, encoding="utf-8")
-        print(f"Output written to {output_path}")
+        
+        # 写入文件
+        output_path.write_text(output, encoding=encoding)
+        
+        # 验证文件写入成功
+        if not output_path.exists():
+            raise OSError(f"文件写入失败: {output_path} 不存在")
+        
+        file_size = output_path.stat().st_size
+        if file_size == 0:
+            raise ValueError(f"文件写入失败: {output_path} 大小为0")
+        
+        logger.info(f"✅ 分析结果已写入: {output_path} (大小: {file_size} 字节)")
+        
+    except PermissionError as e:
+        error_msg = f"文件权限错误，无法写入 {output_path}: {e}"
+        logger.error(error_msg)
+        raise PermissionError(error_msg) from e
+    except OSError as e:
+        error_msg = f"文件系统错误，无法写入 {output_path}: {e}"
+        logger.error(error_msg)
+        raise OSError(error_msg) from e
+    except UnicodeEncodeError as e:
+        error_msg = f"编码错误，无法使用 {encoding} 编码写入文件: {e}"
+        logger.error(error_msg)
+        raise
     except Exception as e:
-        print(f"Failed to write analysis output: {e}")
+        error_msg = f"写入分析输出失败: {e}"
+        logger.exception(error_msg)
+        raise RuntimeError(error_msg) from e

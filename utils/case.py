@@ -160,9 +160,6 @@ def extract_cve_id(filename: str) -> Optional[str]:
     return None
 
 
-
-
-
 def default_language_db(case_paths: CasePaths, language: str) -> Optional[Path]:
     """如果存在，返回给定语言的预期CodeQL数据库路径。"""
 

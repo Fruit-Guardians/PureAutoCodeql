@@ -99,8 +99,7 @@ class CodeQLExecutionService:
         if sarif_path:
             try:
                 config = get_sarif2json_config()
-                sarif_file = Path(sarif_path)
-                json_file = sarif_file.with_suffix(".json")
+                json_file = Path(sarif_path).with_suffix(".json")
                 paths_count = write_paths_json(
                     sarif_path,
                     str(json_file),

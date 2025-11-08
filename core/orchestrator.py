@@ -3,6 +3,7 @@
 提供分析过程的整体协调和管理功能。
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,8 @@ from core.pipeline import AnalysisPipeline
 from services.language_detector import LanguageDetector
 from utils.case import CveAssets, discover_cve_assets, resolve_case
 from utils.intel import IntelBundle, collect_intel
-from utils.io import write_analysis_output
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisOrchestrator:
@@ -70,20 +72,9 @@ class AnalysisOrchestrator:
                 event_callback=self.config.event_callback
             )
 
-            # 创建并执行分析流水线
+            # 创建并执行分析流水线（包含输出处理）
             pipeline = AnalysisPipeline.create_default_pipeline()
-            result = await pipeline.execute(context)
-
-            # 保存分析结果
-            if self.config.output_file:
-                write_analysis_output(
-                    result.cve_result,
-                    result.sink_result,
-                    result.source_result,
-                    Path(self.config.output_file),
-                    codeql_result=result.codeql_result,
-                    codeql_execution_result=result.codeql_execution_result,
-                )
+            result = await pipeline.execute(context, config=self.config)
 
             # 显示执行摘要
             self._print_execution_summary(result)
@@ -91,7 +82,7 @@ class AnalysisOrchestrator:
             return result
 
         except Exception as e:
-            print(f"案例分析错误: {e}")
+            logger.exception(f"案例分析错误: {e}")
             error_result = AnalysisResult(
                 case_id=case_id,
                 language="unknown",
@@ -123,6 +114,7 @@ class AnalysisOrchestrator:
         """从命令行参数创建编排器。"""
         config = AnalysisConfig(
             show_thinking=args.stream,
-            refresh_intel=getattr(args, 'refresh_intel', False)
+            refresh_intel=getattr(args, 'refresh_intel', False),
+            output_file=getattr(args, 'output', None)
         )
         return cls(config)

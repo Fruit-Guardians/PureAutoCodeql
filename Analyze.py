@@ -28,7 +28,7 @@ async def run_case_analysis(
     config = AnalysisConfig(
         show_thinking=stream,
         refresh_intel=refresh_intel,
-        output_file=output_file or "output.md"
+        output_file=output_file  # None 表示使用时间戳目录
     )
 
     # 创建并运行编排器

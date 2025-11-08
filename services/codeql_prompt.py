@@ -24,7 +24,7 @@ def build_placeholder_map(
     """Return a ready-to-use placeholder dictionary for prompt templates."""
     return {
         "ROUND_INDEX": str(round_index or 1),
-        "LANGUAGE": (language or "java"),
+        "LANGUAGE": (language or "unknown"),
         "REQUIREMENT": (requirement or ""),
         "PREV_ORIGINAL_QL": (prev_original_ql or ""),
         "PREV_FIX_SUGGESTIONS": (prev_fix_suggestions or ""),

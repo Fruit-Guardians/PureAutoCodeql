@@ -54,9 +54,8 @@ PureAutoCodeql/
 ├── 📦 utils/                       # 工具函数层 - 通用工具
 ├── 📝 prompts/                     # 提示词层 - 提示词管理
 ├── ⚙️ config.py                    # 配置管理
-├── 🚀 Analyze_new.py               # 新架构入口文件 (推荐)
-├── 🚀 Analyze.py                   # 原始入口文件 (已备份)
-└── 🧪 test_new_architecture.py     # 架构测试脚本
+├── 🚀 Analyze.py                   # 主入口文件
+└── 📊 Information/                 # 情报收集模块 (GHSA/NVD)
 ```
 
 ### 核心组件
@@ -80,18 +79,23 @@ pip install -r requirements.txt
 
 ### 快速运行
 
-#### 🎯 **推荐方式：使用新架构**
+#### 🎯 **使用主入口文件**
 
 ```bash
-# 使用新架构入口文件
-uv run python Analyze_new.py --case CVE-2021-21985
-```
-
-#### 🔄 **兼容方式：使用原有接口**
-
-```bash
-# 仍然可以使用原有命令
+# 分析单个案例
 uv run python Analyze.py --case CVE-2021-21985
+
+# 显示AI思考过程
+uv run python Analyze.py --case CVE-2021-21985 --stream
+
+# 强制刷新情报数据
+uv run python Analyze.py --case CVE-2021-21985 --refresh-intel
+
+# 列出所有可用案例
+uv run python Analyze.py --list
+
+# 验证案例有效性
+uv run python Analyze.py --validate CVE-2021-21985
 ```
 
 ### 基本使用示例
@@ -120,20 +124,18 @@ async def analyze_vulnerability():
 asyncio.run(analyze_vulnerability())
 ```
 
-#### 兼容API (无需修改现有代码)
+#### 命令行接口
 
-```python
-import asyncio
-from Analyze_new import run_case_analysis  # 完全兼容原有接口
+```bash
+# 基本用法
+python Analyze.py --case CVE-2021-21985
 
-async def main():
-    await run_case_analysis(
-        case_id="CVE-2021-21985",
-        refresh_intel=False,
-        stream=True  # 显示AI思考过程
-    )
-
-asyncio.run(main())
+# 完整参数示例
+python Analyze.py \
+    --case CVE-2021-21985 \
+    --stream \
+    --refresh-intel \
+    --output custom_output.md
 ```
 
 ### 批量分析
@@ -200,57 +202,44 @@ export CHAT_MODEL=your_custom_chat_model
 
 ## 🧪 测试和验证
 
-### 运行架构测试
-
-```bash
-# 测试新架构功能
-python test_new_architecture.py
-```
-
-测试内容：
-- ✅ 模块导入测试
-- ✅ 服务创建测试
-- ✅ 编排器功能测试
-- ✅ 异步组件测试
-
 ### 验证分析功能
 
 ```bash
 # 运行示例分析
-uv run python Analyze_new.py --case CVE-2021-21985 --stream
+uv run python Analyze.py --case CVE-2021-21985 --stream
+
+# 验证案例结构
+uv run python Analyze.py --validate CVE-2021-21985
+
+# 查看可用案例
+uv run python Analyze.py --list
 ```
 
 ## 📖 详细文档
 
 | 文档 | 描述 |
 |------|------|
-| [📋 架构文档](docs/architecture.md) | 详细的架构设计和组件说明 |
-| [🔄 迁移指南](docs/migration_guide.md) | 从旧版本到新版本的迁移指南 |
-| [📚 API参考](docs/api_reference.md) | 完整的API接口文档 |
-| [⚙️ 配置指南](docs/configuration.md) | 详细的配置说明 |
+| [📋 架构文档](openspec/docs/architecture.md) | 详细的架构设计和组件说明 |
+| [🔄 迁移指南](openspec/docs/migration_guide.md) | 从旧版本到新版本的迁移指南 |
+| [📚 API参考](openspec/docs/api_reference.md) | 完整的API接口文档 |
+| [📝 项目规范](openspec/project.md) | 项目开发规范和流程 |
+| [📋 OpenSpec](openspec/README.md) | 项目规范和变更管理 |
 
-## 🔄 迁移到新架构
+## 🔄 代码质量优化
 
-### 无需修改现有代码
+### 最新优化 (2025-01)
 
-现有代码可以直接使用新的入口文件：
+- ✅ **信息收集模块优化** - 修复了 NVD 信息获取中的代码重复问题
+- ✅ **核心流水线优化** - 修复了格式化字符串潜在错误，清理了未使用的导入
+- ✅ **工具模块优化** - 修复了硬编码语言名称问题，支持多语言动态显示
+- ✅ **服务模块优化** - 修复了默认语言硬编码问题，优化了代码结构
 
-```python
-# 只需要改变导入
-- from Analyze import run_case_analysis
-+ from Analyze_new import run_case_analysis
+### 代码质量特性
 
-# 其他代码保持不变
-await run_case_analysis("CVE-2021-21985")
-```
-
-### 渐进式升级
-
-1. **第一阶段**: 使用 `Analyze_new.py` 替代 `Analyze.py`
-2. **第二阶段**: 逐步使用新的服务类
-3. **第三阶段**: 使用 `AnalysisOrchestrator` 重构业务逻辑
-
-详细迁移指南请参考 [🔄 迁移指南](docs/migration_guide.md)
+- 🧹 **代码清理** - 移除了未使用的导入和重复代码
+- 🔧 **错误修复** - 修复了潜在的运行时错误
+- 🌐 **多语言支持** - 改进了多语言场景下的处理逻辑
+- 📝 **代码规范** - 统一了代码风格和最佳实践
 
 ## 🎯 使用场景
 

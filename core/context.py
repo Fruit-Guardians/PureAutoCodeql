@@ -109,7 +109,10 @@ class AnalysisConfig:
     lsp_pack_root: Optional[str] = None
 
     # 输出配置
-    output_file: str = "output.md"
+    output_file: Optional[str] = None  # 如果指定，写入该文件；否则使用时间戳目录
+    output_base_dir: str = "output"  # 输出基础目录
+    output_encoding: str = "utf-8"  # 输出文件编码
+    keep_output_dirs: int = 10  # 保留的输出目录数量（0表示不清理）
 
     # 执行配置
     show_thinking: bool = False
