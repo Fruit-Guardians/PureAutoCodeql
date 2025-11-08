@@ -90,35 +90,22 @@ def summarize(diags):
 
 # ---------------- Hot LSP Engine ----------------
 class HotCodeQL:
-    def __init__(self, codeql: str, pack_root: Path, synchronous: bool=False, init_timeout: float=60.0, quiet_logs: bool=False):
+    def __init__(self, codeql: str, pack_root: Path, synchronous: bool=False, init_timeout: float=25.0, quiet_logs: bool=False, query_file: Path=None):
         self.codeql = codeql
         self.pack_root = pack_root
         self.synchronous = synchronous
         self.init_timeout = init_timeout
         self.quiet_logs = quiet_logs
-
-        # single virtual doc we keep open & update
-        self.tmp_dir = self.pack_root / ".codeql-lsp-service"
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        self.doc_path = self.tmp_dir / "_agent_check.ql"
-        if not self.doc_path.exists():
-            self.doc_path.write_text("// temp ql file\n", encoding="utf-8")
+        self.query_file = query_file
 
         self.proc = None
         self.q = queue.Queue()
-        self.uri = to_uri(self.doc_path)
+        self.uri = to_uri(self.query_file)
         self.version = 0
 
     def start(self):
         # check codeql
         subprocess.run([self.codeql, "version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        # prewarm (best effort): compile --check-only
-        try:
-            subprocess.run([self.codeql, "query", "compile", "--check-only", str(self.doc_path)],
-                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
 
         # start LSP
         cmd = [self.codeql, "execute", "language-server", "--check-errors=ON_CHANGE"]
@@ -216,7 +203,7 @@ class HotCodeQL:
         write_msg(self.proc, {"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{}}})
 
         # didOpen once
-        text = self.doc_path.read_text(encoding="utf-8", errors="replace")
+        text = self.query_file.read_text(encoding="utf-8", errors="replace")
         self.version = 1
         write_msg(self.proc, {
             "jsonrpc":"2.0","method":"textDocument/didOpen",
@@ -255,7 +242,7 @@ class HotCodeQL:
     def check_code(self, code_text: str, wait_secs: float = 8.0):
         # update local file (可选：也能直接只发 didChange，不写盘；为稳妥这里仍写盘)
         try:
-            self.doc_path.write_text(code_text, encoding="utf-8")
+            self.query_file.write_text(code_text, encoding="utf-8")
         except Exception:
             pass
         self.version += 1
@@ -337,8 +324,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if self.path == "/shutdown":
             self._send_json({"ok": True})
-            # 立即关闭连接并停止服务器
-            self.server.shutdown()
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
 
         return self._send_json({"error":"not found"}, 404)
@@ -348,11 +334,14 @@ def main():
     ap.add_argument("--codeql", default="codeql", help="Path to codeql executable or 'codeql' if in PATH")
     ap.add_argument("--pack-root", required=True, help="Directory containing codeql-pack.yml/qlpack.yml")
     ap.add_argument("--port", type=int, default=8766, help="HTTP port")
+    ap.add_argument("--query-file", required=True, help="Path to query file relative to pack root")
     ap.add_argument("--synchronous", action="store_true", help="Run LS single-threaded (more stable, slightly slower)")
     ap.add_argument("--quiet-logs", action="store_true", help="Do not mirror LS stderr")
     args = ap.parse_args()
 
     pack_root = Path(args.pack_root).resolve()
+    query_file = Path(args.query_file).resolve()
+    
     if not pack_root.exists():
         print(f"[ERR] pack root not found: {pack_root}", file=sys.stderr); sys.exit(1)
     if not ((pack_root / "codeql-pack.yml").exists() or (pack_root / "qlpack.yml").exists()):
@@ -360,7 +349,7 @@ def main():
 
     # start engine
     engine = HotCodeQL(codeql=args.codeql, pack_root=pack_root, synchronous=args.synchronous,
-                       init_timeout=60.0, quiet_logs=args.quiet_logs)
+                       init_timeout=25.0, quiet_logs=args.quiet_logs, query_file=query_file)
     try:
         engine.start()
     except Exception as e:

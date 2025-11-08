@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import re
-import json
-import time
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Callable, List, Set
 
-import requests
+#Service
+from services.lsp_service import CodeQLLSPService
+from services.codeql_prompt import PythonKnowledgeBase
+
+
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
@@ -33,250 +33,6 @@ from utils.codeql import (
     is_database_error,
 )
 from utils.sarif_utils import write_paths_json
-
-
-class LSPCodeQLService:
-    """CodeQL LSP HTTP服务管理类"""
-    
-    def __init__(self, pack_root: str, port: int = 8766):
-        self.pack_root = pack_root
-        self.port = port
-        self.process = None
-        self.base_url = f"http://127.0.0.1:{port}"
-    
-    def start_server(self, pack_root: str) -> bool:
-        """启动LSP HTTP服务器"""
-        try:
-            # 启动LSP服务器
-            lsp_script_path = Path(__file__).parent / "lsp_codeql.py"
-            if not lsp_script_path.exists():
-                return False
-                
-            self.process = subprocess.Popen([
-                "python", str(lsp_script_path),
-                "--pack-root", pack_root,
-                "--port", str(self.port),
-                "--quiet-logs"
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            # 等待服务器启动
-            for _ in range(30):  # 最多等待30秒
-                time.sleep(1)
-                try:
-                    response = requests.get(f"{self.base_url}/health", timeout=2)
-                    if response.status_code == 200:
-                        return True
-                except:
-                    continue
-            
-            return False
-        except Exception as e:
-            print(f"LSP服务器启动失败: {e}")
-            return False
-    
-    def check_codeql_syntax(self, codeql_text: str) -> Dict[str, Any]:
-        """检查CodeQL语法"""
-        try:
-            response = requests.post(
-                f"{self.base_url}/check",
-                json={"code": codeql_text},
-                timeout=30
-            )
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return {"error": f"HTTP {response.status_code}: {response.text}"}
-        except Exception as e:
-            return {"error": f"请求失败: {e}"}
-    
-    def stop_server(self):
-        """停止LSP服务器"""
-        if self.process:
-            try:
-                # 发送关闭请求
-                requests.post(f"{self.base_url}/shutdown", timeout=5)
-            except:
-                pass
-            
-            # 终止进程
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=5)
-            except:
-                try:
-                    self.process.kill()
-                    self.process.wait(timeout=2)
-                except:
-                    pass
-            
-            # 确保进程被清理
-            if self.process and self.process.poll() is None:
-                self.process.kill()
-            
-            self.process = None
-            
-            # 强制清理可能的端口占用
-            import socket
-            try:
-                # 尝试绑定端口来释放可能的TIME_WAIT状态
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(('127.0.0.1', self.port))
-                s.close()
-            except:
-                pass
-
-
-class PythonKnowledgeBase:
-    """处理Python CodeQL知识库的辅助类，用于提取和推荐模块、帮助器、模板等。"""
-
-    CORE_MODULE_IDS = [
-        "module:dataflow",
-        "module:tainttracking",
-        "module:remote-flow-sources",
-    ]
-
-    DIRECTORY_DESCRIPTIONS: Dict[str, str] = {
-        "README.md": "Overview of the Python CodeQL knowledge base and workflow tips.",
-        "CODEQL_PATH_QUERY_GUIDE.md": "Path-problem skeleton and authoring guidance.",
-        "templates/path_problem_skeleton.ql": "Baseline skeleton for Python path-problem queries.",
-        "knowledge_base/modules.json": "Module imports with summaries, exports, and tags.",
-        "knowledge_base/helpers.json": "Reusable helper predicates with signatures and examples.",
-        "knowledge_base/templates.json": "Scenario templates referencing helpers/modules.",
-        "knowledge_base/cases.json": "Successful CVE queries referencing helper ids.",
-        "knowledge_base/errors.json": "Compiler error patterns with causes and fixes.",
-        "tools/retrieve.py": "Tag-driven retrieval CLI for combining modules/helpers/templates.",
-    }
-
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.source_dir = repo_root / "projects" / "python_kb"
-        self._sections: Optional[Dict[str, List[Dict[str, Any]]]] = None
-
-    def _load_section(self, name: str) -> List[Dict[str, Any]]:
-        kb_root = self.source_dir / "knowledge_base"
-        path = kb_root / f"{name}.json"
-        if not path.is_file():
-            return []
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-
-    def sections(self) -> Dict[str, List[Dict[str, Any]]]:
-        if self._sections is None:
-            self._sections = {
-                "modules": self._load_section("modules"),
-                "helpers": self._load_section("helpers"),
-                "templates": self._load_section("templates"),
-                "cases": self._load_section("cases"),
-                "errors": self._load_section("errors"),
-            }
-        return self._sections
-
-    def build_directory_index(self) -> str:
-        """返回相对于MCP根目录（projects/）的简洁目录索引。"""
-        if not self.source_dir.is_dir():
-            return ""
-
-        entries = []
-        for relative_path, description in self.DIRECTORY_DESCRIPTIONS.items():
-            entries.append(f"- `projects/python_kb/{relative_path}` - {description}")
-        return "\n".join(entries)
-
-    def _collect_known_tags(self) -> Set[str]:
-        tags: Set[str] = set()
-        for items in self.sections().values():
-            for item in items:
-                for tag in item.get("tags", []):
-                    tags.add(str(tag).lower())
-        return tags
-
-    @staticmethod
-    def _tokenize_requirement(requirement: str) -> Set[str]:
-        return {token.lower() for token in re.findall(r"[a-zA-Z0-9_]+", requirement or "") if token}
-
-    def derive_tags(self, requirement: str) -> Set[str]:
-        tokens = self._tokenize_requirement(requirement)
-        if not tokens:
-            return set()
-        known_tags = self._collect_known_tags()
-        matched = tokens & known_tags
-        return matched
-
-    def _select_items(self, section: str, tags: Set[str], limit: int = 5) -> List[Dict[str, Any]]:
-        items = self.sections().get(section, [])
-        if not items:
-            return []
-
-        selected: List[Dict[str, Any]] = []
-        tag_lower = {tag.lower() for tag in tags}
-
-        if section == "modules":
-            for module_id in self.CORE_MODULE_IDS:
-                for item in items:
-                    if item.get("id") == module_id and item not in selected:
-                        selected.append(item)
-
-        for item in items:
-            item_tags = {str(tag).lower() for tag in item.get("tags", [])}
-            if tag_lower & item_tags and item not in selected:
-                selected.append(item)
-
-        if not selected:
-            selected = items[:limit]
-
-        return selected[:limit]
-
-    def build_suggestions(self, tags: Set[str]) -> str:
-        """Produce a compact recommendation list grouped by knowledge base section."""
-        sections_order = ["modules", "helpers", "templates", "cases", "errors"]
-        lines: List[str] = []
-        if tags:
-            lines.append(f"Matched tags: {', '.join(sorted(tags))}")
-        else:
-            lines.append("Matched tags: (none)")
-
-        for section in sections_order:
-            items = self._select_items(section, tags)
-            if not items:
-                continue
-            lines.append(f"[{section}]")
-            for item in items:
-                item_id = item.get("id", "unknown")
-                if section == "modules":
-                    summary = item.get("summary") or item.get("usage_notes") or ""
-                elif section == "helpers":
-                    summary = item.get("description") or ""
-                elif section == "templates":
-                    summary = item.get("description") or ""
-                    file_hint = item.get("file")
-                    if file_hint:
-                        summary = f"{summary} (file: {file_hint})"
-                elif section == "cases":
-                    summary = item.get("summary") or ""
-                    path_hint = item.get("path")
-                    if path_hint:
-                        summary = f"{summary} (query: {path_hint})"
-                else:
-                    summary = item.get("cause") or ""
-                tag_list = ", ".join(item.get("tags", []))
-                tag_suffix = f" [tags: {tag_list}]" if tag_list else ""
-                summary = summary.strip()
-                lines.append(f"- {item_id}: {summary}{tag_suffix}")
-        return "\n".join(lines)
-
-    def build_context(self, requirement: str) -> Dict[str, str]:
-        if not self.source_dir.is_dir():
-            return {}
-        matched_tags = self.derive_tags(requirement)
-        directory_index = self.build_directory_index()
-        suggestions = self.build_suggestions(matched_tags)
-        return {
-            "kb_directory_index": directory_index,
-            "kb_suggestions": suggestions,
-            "relevant_tags": ", ".join(sorted(matched_tags)),
-        }
 
 
 class CodeQLComposeInput(BaseModel):
@@ -434,7 +190,6 @@ class CodeQLComposeTool(BaseTool):
     async def _arun(
         self,
         requirement: str,
-        run_manager: Optional[Any] = None,
         exec_mode: str = "analyze",
         show_thinking: bool = False,
         event_callback = None,
@@ -470,10 +225,6 @@ class CodeQLComposeTool(BaseTool):
 
         gen_agent = self._gen_agent_cls(self.analyzer)
         error_agent = self._error_agent_cls(self.analyzer)
-        execution_service = self._execution_service_factory(
-            self.default_database_path,
-            target_language,
-        )
 
         ql_template = self._load_ql_template(target_language)
         round_index = 1
@@ -487,15 +238,16 @@ class CodeQLComposeTool(BaseTool):
         print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
         print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
         print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
-        lsp_service = LSPCodeQLService(pack_root)
+        lsp_service = CodeQLLSPService(pack_root, query_file)
         
         # 添加详细的进度指示
         import time
         start_time = time.time()
         print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
         
+
         # 调用start_server方法，它内部已经有30秒的重试机制
-        if lsp_service.start_server(str(pack_root)):
+        if lsp_service.start():
             elapsed_time = time.time() - start_time
             print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
         else:
@@ -540,10 +292,10 @@ class CodeQLComposeTool(BaseTool):
                     try:
                         # 使用LSP服务检查语法
                         print(f"🔍 [CodeQLComposeTool] 进行CodeQL语法检查...")
-                        syntax_result = lsp_service.check_codeql_syntax(current_ql)
+
+                        syntax_result = lsp_service.check_syntax(current_ql)
                         print(syntax_result)
                         
-                        # 模拟执行结果结构
                         if "error" in syntax_result:
                             print(f"❌ [CodeQLComposeTool] LSP语法检查失败: {syntax_result['error']}")
                             exec_result = {"success": False, "output": syntax_result["error"]}
@@ -655,9 +407,6 @@ class CodeQLComposeTool(BaseTool):
                             return result
                         else:
                             print("codeql query:", current_ql)
-                            sarif_path = exec_result.get('sarif_path')
-                            json_path: Optional[str] = None
-                            paths_count: Optional[int] = None
                             
                             # 如果已经成功执行了CodeQL查询，将字典转换为CodeQLExecutionResult对象
                             from services.codeql_execution import CodeQLExecutionResult
@@ -731,6 +480,8 @@ class CodeQLComposeTool(BaseTool):
         finally:
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
-            lsp_service.stop_server()
+            lsp_service.stop()
 
         return f"Unexpected end of iteration loop after {max_iterations} rounds"
+
+
