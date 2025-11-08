@@ -35,8 +35,14 @@ def write_msg(proc, payload: dict):
     if proc.poll() is not None:
         raise RuntimeError(f"language-server exited with code {proc.returncode}")
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-    header = f"Content-Length: {len(data)}\r\n\r\n".encode('ascii')
-    proc.stdin.write(header); proc.stdin.write(data); proc.stdin.flush()
+    # Some LSP servers (including CodeQL LS on Windows) are strict about Content-Type.
+    header = (
+        f"Content-Length: {len(data)}\r\n"
+        f"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n"
+    ).encode('ascii')
+    proc.stdin.write(header)
+    proc.stdin.write(data)
+    proc.stdin.flush()
 
 def reader(stream, q: queue.Queue):
     while True:
@@ -84,38 +90,35 @@ def summarize(diags):
 
 # ---------------- Hot LSP Engine ----------------
 class HotCodeQL:
-    def __init__(self, codeql: str, pack_root: Path, synchronous: bool=False, init_timeout: float=25.0, quiet_logs: bool=False):
+    def __init__(self, codeql: str, pack_root: Path, synchronous: bool=False, init_timeout: float=25.0, quiet_logs: bool=False, query_file: Path=None):
         self.codeql = codeql
         self.pack_root = pack_root
         self.synchronous = synchronous
         self.init_timeout = init_timeout
         self.quiet_logs = quiet_logs
-
-        # single virtual doc we keep open & update
-        self.tmp_dir = self.pack_root / ".codeql-lsp-service"
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        self.doc_path = self.tmp_dir / "_agent_check.ql"
-        if not self.doc_path.exists():
-            self.doc_path.write_text("// temp ql file\n", encoding="utf-8")
+        self.query_file = query_file
 
         self.proc = None
         self.q = queue.Queue()
-        self.uri = to_uri(self.doc_path)
+        self.uri = to_uri(self.query_file)
         self.version = 0
 
     def start(self):
         # check codeql
         subprocess.run([self.codeql, "version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # prewarm (best effort): compile --check-only
-        try:
-            subprocess.run([self.codeql, "query", "compile", "--check-only", str(self.doc_path)],
-                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
         # start LSP
         cmd = [self.codeql, "execute", "language-server", "--check-errors=ON_CHANGE"]
+        # Provide explicit search-path so the LS can resolve packs without relying on client config.
+        search_dirs = [str(self.pack_root)]
+        user_packages = Path.home() / ".codeql" / "packages"
+        if user_packages.exists():
+            search_dirs.append(str(user_packages))
+        sep = ";" if os.name == "nt" else ":"
+        if search_dirs:
+            cmd.extend(["--search-path", sep.join(search_dirs)])
+        # Surface logs to stderr for easier troubleshooting
+        cmd.extend(["-v", "--log-to-stderr"])
         if self.synchronous:
             cmd.append("--synchronous")
         env = os.environ.copy()
@@ -134,46 +137,73 @@ class HotCodeQL:
                         pass
             t_err = threading.Thread(target=_stderr_printer, daemon=True); t_err.start()
 
+        # attempt initialize with workspace root first
         root_uri = to_uri(self.pack_root)
-        init_req = {
-            "jsonrpc":"2.0","id":1,"method":"initialize",
-            "params":{
-                "processId": None,
-                "clientInfo": {"name":"codeql-lsp-service","version":"1.0"},
-                "rootUri": root_uri,
-                "workspaceFolders":[{"uri": root_uri, "name": self.pack_root.name}],
-                "capabilities":{"textDocument":{}, "workspace":{"configuration": True}},
-                "trace":"off"
+        def _try_initialize(root_uri_value, folders):
+            init_req = {
+                "jsonrpc":"2.0","id":1,"method":"initialize",
+                "params":{
+                    "processId": None,
+                    "clientInfo": {"name":"codeql-lsp-service","version":"1.0"},
+                    "rootUri": root_uri_value,
+                    "workspaceFolders": folders,
+                    "capabilities":{
+                        "textDocument":{},
+                        "workspace":{"configuration": True, "workspaceFolders": True}
+                    },
+                    "trace":"off"
+                }
             }
-        }
-        write_msg(self.proc, init_req)
+            write_msg(self.proc, init_req)
 
-        deadline = time.time() + self.init_timeout
-        initialized_ok = False
-        while time.time() < deadline:
-            if self.proc.poll() is not None:
-                raise RuntimeError(f"LSP exited early: {self.proc.returncode}")
-            try:
-                payload = self.q.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            if isinstance(payload, dict) and payload.get("method") == "workspace/configuration" and "id" in payload:
-                items = payload.get("params", {}).get("items", [])
-                write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":[{} for _ in items]})
-                continue
-            if isinstance(payload, dict) and payload.get("method") == "client/registerCapability" and "id" in payload:
-                write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":None})
-                continue
-            if isinstance(payload, dict) and payload.get("id") == 1:
-                initialized_ok = True; break
+            deadline = time.time() + self.init_timeout
+            while time.time() < deadline:
+                if self.proc.poll() is not None:
+                    raise RuntimeError(f"LSP exited early: {self.proc.returncode}")
+                try:
+                    payload = self.q.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if isinstance(payload, dict) and payload.get("method") == "workspace/configuration" and "id" in payload:
+                    items = payload.get("params", {}).get("items", [])
+                    write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":[{} for _ in items]})
+                    continue
+                if isinstance(payload, dict) and payload.get("method") == "client/registerCapability" and "id" in payload:
+                    write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":None})
+                    continue
+                if isinstance(payload, dict) and payload.get("id") == 1:
+                    return True
+            return False
+
+        initialized_ok = _try_initialize(root_uri, [{"uri": root_uri, "name": self.pack_root.name}])
         if not initialized_ok:
-            raise RuntimeError("No response to initialize()")
+            # fallback: restart LS and try rootless workspace (some environments require this)
+            try:
+                self.proc.terminate()
+            except Exception:
+                pass
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True); t_out.start()
+            if not self.quiet_logs:
+                def _stderr_printer():
+                    while True:
+                        line = self.proc.stderr.readline()
+                        if not line:
+                            return
+                        try:
+                            sys.stderr.write("[server] " + line.decode('utf-8', errors='replace'))
+                        except Exception:
+                            pass
+                t_err = threading.Thread(target=_stderr_printer, daemon=True); t_err.start()
+            initialized_ok = _try_initialize(None, [])
+            if not initialized_ok:
+                raise RuntimeError("No response to initialize()")
 
         write_msg(self.proc, {"jsonrpc":"2.0","method":"initialized","params":{}})
         write_msg(self.proc, {"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{}}})
 
         # didOpen once
-        text = self.doc_path.read_text(encoding="utf-8", errors="replace")
+        text = self.query_file.read_text(encoding="utf-8", errors="replace")
         self.version = 1
         write_msg(self.proc, {
             "jsonrpc":"2.0","method":"textDocument/didOpen",
@@ -212,7 +242,7 @@ class HotCodeQL:
     def check_code(self, code_text: str, wait_secs: float = 8.0):
         # update local file (可选：也能直接只发 didChange，不写盘；为稳妥这里仍写盘)
         try:
-            self.doc_path.write_text(code_text, encoding="utf-8")
+            self.query_file.write_text(code_text, encoding="utf-8")
         except Exception:
             pass
         self.version += 1
@@ -294,8 +324,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if self.path == "/shutdown":
             self._send_json({"ok": True})
-            # 立即关闭连接并停止服务器
-            self.server.shutdown()
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
 
         return self._send_json({"error":"not found"}, 404)
@@ -305,11 +334,14 @@ def main():
     ap.add_argument("--codeql", default="codeql", help="Path to codeql executable or 'codeql' if in PATH")
     ap.add_argument("--pack-root", required=True, help="Directory containing codeql-pack.yml/qlpack.yml")
     ap.add_argument("--port", type=int, default=8766, help="HTTP port")
+    ap.add_argument("--query-file", required=True, help="Path to query file relative to pack root")
     ap.add_argument("--synchronous", action="store_true", help="Run LS single-threaded (more stable, slightly slower)")
     ap.add_argument("--quiet-logs", action="store_true", help="Do not mirror LS stderr")
     args = ap.parse_args()
 
     pack_root = Path(args.pack_root).resolve()
+    query_file = Path(args.query_file).resolve()
+    
     if not pack_root.exists():
         print(f"[ERR] pack root not found: {pack_root}", file=sys.stderr); sys.exit(1)
     if not ((pack_root / "codeql-pack.yml").exists() or (pack_root / "qlpack.yml").exists()):
@@ -317,7 +349,7 @@ def main():
 
     # start engine
     engine = HotCodeQL(codeql=args.codeql, pack_root=pack_root, synchronous=args.synchronous,
-                       init_timeout=25.0, quiet_logs=args.quiet_logs)
+                       init_timeout=25.0, quiet_logs=args.quiet_logs, query_file=query_file)
     try:
         engine.start()
     except Exception as e:

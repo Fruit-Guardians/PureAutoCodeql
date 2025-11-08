@@ -226,7 +226,6 @@ async def get_project_detail(case_id: str) -> ProjectDetail:
     # 构建目录结构
     directory_structure = {
         "source_code": _build_directory_structure(case_paths.source_code, max_depth=2),
-        "queries": _build_directory_structure(case_paths.queries, max_depth=2),
         "db": _build_directory_structure(case_paths.db, max_depth=1),
     }
     

@@ -58,7 +58,8 @@ class CVEAnalysisStep(AnalysisStep):
 
         if not result.success:
             print(f"CVE analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result
@@ -88,7 +89,8 @@ class SinkAnalysisStep(AnalysisStep):
 
         if not result.success:
             print(f"{context.language.title()} sink analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result
@@ -121,7 +123,8 @@ class SourceAnalysisStep(AnalysisStep):
 
         if not result.success:
             print(f"{context.language.title()} source analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result

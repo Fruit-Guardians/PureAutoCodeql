@@ -11,7 +11,7 @@
       "DataFlow::localFlow",
       "DataFlow::localFlowStep"
     ],
-    "usage_notes": "All path queries must import this module. Mixes with TaintTracking for end-to-end flows. Works with nodes from control/data flow graph. Function parameters appear as DataFlow::ParameterNode (avoid Function::Parameter.* APIs).",
+    "usage_notes": "All path queries must import this module. Mixes with TaintTracking for end-to-end flows. Works with nodes from control/data flow graph.",
     "tags": ["core", "dataflow", "python"]
   },
   {

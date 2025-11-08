@@ -37,12 +37,12 @@
       "module:remote-flow-sources"
     ],
     "helpers_required": [
-      "helper:callee-is-global-name",
+      "helper:callee-is-name",
       "helper:callee-is-attr",
-      "helper:attr-receiver-module",
+      "helper:attr-receiver-django",
       "helper:is-redirect-call"
     ],
-    "notes": "Import helper predicates calleeIsGlobalName, calleeIsAttr, attrReceiverLooksLikeModule, isRedirectCall. Source is RemoteFlowSource; sink is first argument to redirect-like call.",
+    "notes": "Import helper predicates calleeIsName, calleeIsAttr, receiverLooksLikeDjangoShortcuts, isRedirectCall. Source is RemoteFlowSource; sink is first argument to redirect-like call.",
     "tags": ["django", "redirect", "taint"]
   },
   {
@@ -56,11 +56,11 @@
       "module:remote-flow-sources"
     ],
     "helpers_required": [
-      "helper:callee-is-global-name",
+      "helper:callee-is-name",
       "helper:callee-is-attr",
-      "helper:is-eval-call"
+      "helper:attr-receiver-eval"
     ],
-    "notes": "Use helper predicates calleeIsGlobalName, calleeIsAttr, isEvalCall (covers attr receivers internally). Sink targets call.getArg(0) for eval/exec family.",
+    "notes": "Use helper predicates calleeIsName, calleeIsAttr, attrReceiverIsLikelyEvalCarrier. Sink targets call.getArg(0) for eval/exec family.",
     "tags": ["eval", "taint", "remote-source"]
   }
 ]

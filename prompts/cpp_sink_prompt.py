@@ -30,6 +30,7 @@ def build_cpp_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = 
 **可用工具:**
 
 * `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
+* 工具参数约束：调用 `read_text_file` 时，不能同时指定 `head` 与 `tail`；如需同时查看文件顶部与底部，请分两次分别读取。
 
 **输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 
@@ -43,7 +44,6 @@ def build_cpp_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = 
 - 文件路径：`[精确文件路径]`
 - 函数/方法：`[涉及 Sink 的函数或方法]`
 - 相关敏感 API：`[system/exec/write/strcpy/sql/模板等]`
-- 行号：`[关键调用发生的行号]`
 - 触发条件（若已知）：`[输入来源或前置条件]`
 
 #### 3. 代码片段（必要时）
@@ -64,5 +64,6 @@ void vulnerable() {{
 **执行规则:**
 * 你可以直接调用工具，无需事先征求同意。
 * 整个过程必须保持自主性，直接按步骤执行并输出最终报告。
+* 使用 `server-filesystem` 的 `read_text_file` 时，严格避免同时设置 `head` 与 `tail` 参数；需要两段内容时请分两次读取并在报告中标注来源。
 * 如果分析后无法明确找到Sink点，请在报告的"分析与理由"部分清楚地说明，并解释可能的原因（例如，漏洞逻辑复杂，关键代码不在提供的文件范围内等）。
 """
