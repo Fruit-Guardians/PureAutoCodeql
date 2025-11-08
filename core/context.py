@@ -81,12 +81,13 @@ class AnalysisResult:
     def get_summary(self) -> str:
         """获取分析结果摘要。"""
         status = "✅ 成功" if self.success and self.is_complete() else "❌ 失败/不完整"
+        execution_time_str = f"{self.execution_time:.2f}秒" if self.execution_time else "未记录"
         summary = f"""
 案例分析摘要:
 - 案例ID: {self.case_id}
 - 编程语言: {self.language}
 - 分析状态: {status}
-- 执行时间: {self.execution_time:.2f}秒 (如果有)
+- 执行时间: {execution_time_str}
 """
         if self.error_message:
             summary += f"- 错误信息: {self.error_message}\n"

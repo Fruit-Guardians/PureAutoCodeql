@@ -3,7 +3,6 @@
 提供分析步骤的定义和流水线执行功能。
 """
 
-import asyncio
 import time
 import json
 import shutil
@@ -280,21 +279,20 @@ class AnalysisPipeline:
             )
             
             # 查找最新的SARIF文件
-            sarif_files = list(Path('.').glob('output/result_*.sarif'))
+            output_base = Path('output')
+            sarif_files = list(output_base.glob('result_*.sarif')) if output_base.exists() else []
             if sarif_files:
                 latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
                 # 复制SARIF文件到输出目录
                 sarif_filename = latest_sarif.name
                 shutil.copy2(latest_sarif, output_dir / sarif_filename)
 
-                #复制后删除保持在一个文件中统一输出
-                import os
-                os.remove(latest_sarif)
+                # 复制后删除保持在一个文件中统一输出
+                latest_sarif.unlink()
                 
                 # 使用sarif2json.py转换SARIF文件为JSON
                 try:
                     from utils.sarif_utils import sarif_to_all_paths
-                    import json
                     
                     # 读取SARIF文件
                     with open(output_dir / sarif_filename, 'r', encoding='utf-8') as f:
