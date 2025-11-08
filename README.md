@@ -96,6 +96,14 @@ uv run python Analyze.py --list
 
 # 验证案例有效性
 uv run python Analyze.py --validate CVE-2021-21985
+
+# 列出所有可用的模型提供商及其状态
+uv run python Analyze.py --list-providers
+
+# 使用指定模型提供商进行分析
+uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
+uv run python Analyze.py --case CVE-2021-21985 --provider siliconflow
+uv run python Analyze.py --case CVE-2021-21985 --provider zhipu
 ```
 
 ### 基本使用示例
@@ -135,7 +143,8 @@ python Analyze.py \
     --case CVE-2021-21985 \
     --stream \
     --refresh-intel \
-    --output custom_output.md
+    --output custom_output.md \
+    --provider deepseek
 ```
 
 ### 批量分析
@@ -162,17 +171,37 @@ asyncio.run(batch_analysis())
 
 ## 🔧 LLM 配置
 
-本项目使用集中化的 LLM 配置系统（`config.py`），支持多种服务商：
+本项目使用集中化的 LLM 配置系统（`config.py`），支持多种服务商，并提供**快捷切换**功能。
 
 ### 支持的服务商
 
-| 服务商 | 推理模型 | 对话模型 | 状态 |
-|--------|----------|----------|------|
-| **DeepSeek** | deepseek-reasoner | deepseek-chat | ✅ 推荐 |
-| **SiliconFlow** | deepseek-ai/DeepSeek-R1 | Pro/deepseek-ai/DeepSeek-V3.2-Exp | ✅ 稳定 |
-| **智谱GLM** | glm-4.6 | glm-4.6 | ✅ 可用 |
+| 服务商 | 推理模型 | 对话模型 | 状态 | 默认 |
+|--------|----------|----------|------|------|
+| **DeepSeek** | deepseek-reasoner | deepseek-chat | ✅ 推荐 | ✅ 默认 |
+| **SiliconFlow** | deepseek-ai/DeepSeek-R1 | Pro/deepseek-ai/DeepSeek-V3.2-Exp | ✅ 稳定 | - |
+| **智谱GLM** | glm-4.6 | glm-4.6 | ✅ 可用 | - |
 
-### 环境变量配置
+### 🚀 快捷切换模型提供商
+
+#### 方式一：命令行参数（推荐）
+
+无需修改环境变量，直接在命令行指定提供商：
+
+```bash
+# 使用 DeepSeek（默认）
+python Analyze.py --case CVE-2021-21985 --provider deepseek
+
+# 使用 SiliconFlow
+python Analyze.py --case CVE-2021-21985 --provider siliconflow
+
+# 使用智谱GLM
+python Analyze.py --case CVE-2021-21985 --provider zhipu
+
+# 查看所有可用提供商及其状态
+python Analyze.py --list-providers
+```
+
+#### 方式二：环境变量配置
 
 ```bash
 # 选择服务商 (可选，默认: deepseek)
@@ -192,12 +221,33 @@ export OPENAI_API_KEY=your_fallback_key
 export OPENAI_BASE_URL=your_custom_endpoint
 ```
 
+**注意**：命令行参数 `--provider` 会覆盖环境变量 `LLM_PROVIDER` 的设置。
+
 ### 模型配置
 
 ```bash
 # 自定义模型 (可选)
 export THINK_MODEL=your_custom_reasoning_model
 export CHAT_MODEL=your_custom_chat_model
+```
+
+### 提供商状态检查
+
+运行 `--list-providers` 可以查看：
+- ✅ 所有可用的提供商
+- 📊 每个提供商的状态（可用/API Key缺失/不可达）
+- 🤖 每个提供商使用的模型
+- 🔗 API 端点信息
+
+示例输出：
+```
+📋 可用的模型提供商:
+🔹 DeepSeek (deepseek)
+   状态: ✅ 可用
+   推理模型: deepseek-reasoner
+   对话模型: deepseek-chat
+   Base URL: https://api.deepseek.com/v1
+...
 ```
 
 ## 🧪 测试和验证
@@ -229,6 +279,8 @@ uv run python Analyze.py --list
 
 ### 最新优化 (2025-01)
 
+- ✅ **模型提供商快捷切换** - 支持命令行参数快速切换模型提供商，无需修改环境变量
+- ✅ **统一日志系统** - 创建了统一的日志配置模块，区分用户交互和系统日志
 - ✅ **信息收集模块优化** - 修复了 NVD 信息获取中的代码重复问题
 - ✅ **核心流水线优化** - 修复了格式化字符串潜在错误，清理了未使用的导入
 - ✅ **工具模块优化** - 修复了硬编码语言名称问题，支持多语言动态显示
@@ -240,6 +292,8 @@ uv run python Analyze.py --list
 - 🔧 **错误修复** - 修复了潜在的运行时错误
 - 🌐 **多语言支持** - 改进了多语言场景下的处理逻辑
 - 📝 **代码规范** - 统一了代码风格和最佳实践
+- 🤖 **模型切换** - 支持运行时快速切换模型提供商，提升使用灵活性
+- 📊 **日志系统** - 统一的日志配置，更好的调试和监控能力
 
 ## 🎯 使用场景
 
