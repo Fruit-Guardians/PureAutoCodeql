@@ -34,9 +34,23 @@ class UnifiedSinkPathAgent:
         """构建针对不同语言的提示词。"""
         return build_sink_prompt(language, cve_analysis, source_path, diff_path)
 
-    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True, event_callback=None) -> "AgentResult":
+    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> "AgentResult":
         """统一的分析方法，根据语言类型执行相应的分析。"""
         try:
+            _agent_name = agent_name or "Sink Path Analysis Agent"
+            _agent_type = agent_type or "sink_analysis"
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始{language}语言Sink路径分析",
+                    "data": {"language": language, "diff_path": diff_path}
+                })
+            
             directory = Path(self.source_root).resolve()
 
             # MCP 根目录（server-filesystem允许的根）
@@ -109,7 +123,31 @@ class UnifiedSinkPathAgent:
             print("diff_path_for_prompt:", diff_prompt_path)
 
             prompt = self.build_prompt(language, cve_analysis, source_prompt_path, diff_prompt_path)
-            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"{language}语言Sink路径分析完成",
+                    "data": {"success": result.success}
+                })
+            
+            return result
 
         except Exception as exc:
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"Sink路径分析失败: {str(exc)}",
+                    "data": {"error": str(exc)}
+                })
+            
             return AgentResult(content="", success=False, error=str(exc))

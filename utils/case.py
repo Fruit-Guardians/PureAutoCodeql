@@ -20,7 +20,6 @@ class CasePaths:
 
     root: Path
     source_code: Path
-    queries: Path
     db: Path
     inputs: Path
     intel: Path
@@ -41,7 +40,6 @@ def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePath
     root = (base_dir / case_id).resolve()
     mapping = {
         "source_code": root / "source_code",
-        "queries": root / "queries",
         "db": root / "db",
         "inputs": root / "inputs",
         "intel": root / "intel",
@@ -68,7 +66,6 @@ def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePath
     return CasePaths(
         root=root,
         source_code=mapping["source_code"],
-        queries=mapping["queries"],
         db=mapping["db"],
         inputs=mapping["inputs"],
         intel=mapping["intel"],

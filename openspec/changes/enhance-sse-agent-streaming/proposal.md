@@ -9,6 +9,8 @@
 
 增强SSE事件传输以包含Agent级别的详细信息，可以提供更好的可观测性和用户体验。
 
+**重要**: 此增强功能仅影响API模式下的SSE流式输出，不干扰CLI模式下的正常运行。所有event_callback参数均为可选，CLI模式下保持原有行为。
+
 ## What Changes
 
 - 在 `StreamEvent` 模型中添加 `agent_name` 和 `agent_type` 字段，标识当前执行的Agent
@@ -26,12 +28,18 @@
 - **Affected specs**: 新增 `api-sse-streaming` capability
 - **Affected code**:
   - `api/models.py` - 扩展 `StreamEvent` 和 `StreamEventType`
-  - `agents/cve_analysis_agent.py` - 添加事件回调
-  - `agents/unified_sink_path_agent.py` - 添加事件回调
-  - `agents/unified_source_analysis_agent.py` - 添加事件回调
-  - `agents/codeql_gen_agents/codeql_gen_agent.py` - 添加事件回调
-  - `GenerateCodeQL.py` - 增强流式输出的事件推送
+  - `agents/cve_analysis_agent.py` - 添加可选的事件回调
+  - `agents/unified_sink_path_agent.py` - 添加可选的事件回调
+  - `agents/unified_source_analysis_agent.py` - 添加可选的事件回调
+  - `agents/codeql_gen_agents/codeql_gen_agent.py` - 添加可选的事件回调
+  - `GenerateCodeQL.py` - 增强流式输出的事件推送（保持CLI兼容）
   - `core/pipeline.py` - 传递Agent上下文
-- **Breaking Changes**: 无，仅扩展现有事件模型
-- **Migration**: 现有客户端无需修改，新事件类型为可选处理
+- **Breaking Changes**: 无，所有变更向后兼容
+- **Migration**: 
+  - 现有API客户端无需修改，新事件类型为可选处理
+  - CLI模式完全不受影响，继续使用原有的show_thinking机制
+- **CLI兼容性保证**:
+  - 所有 `event_callback` 参数为可选（默认None）
+  - 当 `event_callback=None` 时，跳过所有事件推送逻辑
+  - CLI模式的 `show_thinking` 和终端输出功能保持不变
 

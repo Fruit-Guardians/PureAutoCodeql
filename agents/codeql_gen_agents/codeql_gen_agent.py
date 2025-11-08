@@ -71,9 +71,27 @@ class CodeQLGenAgent:
         round_index: int = 1,
         prev_original_ql: Optional[str] = None,
         prev_fix_suggestions: Optional[str] = None,
+        show_thinking: bool = False,
+        event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
     ) -> "AgentResult":
         """Generate CodeQL query content using MultiAgentAnalyzer with prompt context."""
         try:
+            _agent_name = agent_name or "CodeQL Generation Agent"
+            _agent_type = agent_type or "codeql_generation"
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始CodeQL查询生成（第{round_index}轮）",
+                    "data": {"language": language, "round_index": round_index}
+                })
+            
             prompt = self.build_prompt(
                 language=language,
                 requirement=requirement,
@@ -81,8 +99,39 @@ class CodeQLGenAgent:
                 prev_original_ql=prev_original_ql,
                 prev_fix_suggestions=prev_fix_suggestions,
             )
-            return await self.analyzer.run_agent(prompt)
+            
+            result = await self.analyzer.run_agent(
+                prompt, 
+                show_thinking=show_thinking, 
+                event_callback=event_callback
+            )
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL查询生成完成（第{round_index}轮）",
+                    "data": {"success": result.success, "round_index": round_index}
+                })
+            
+            return result
+            
         except Exception as e:
+            if event_callback:
+                from datetime import datetime
+                _agent_name = agent_name or "CodeQL Generation Agent"
+                _agent_type = agent_type or "codeql_generation"
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL查询生成失败: {str(e)}",
+                    "data": {"error": str(e)}
+                })
+            
             from dataclasses import dataclass
 
             @dataclass

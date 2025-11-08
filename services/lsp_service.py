@@ -14,8 +14,9 @@ from typing import Any, Dict
 class CodeQLLSPService:
     """CodeQL LSP语法检查服务管理器。"""
 
-    def __init__(self, pack_root: str = None):
-        self.pack_root = pack_root or str(Path.cwd())
+    def __init__(self, pack_root: Path = None, query_file: Path = None):
+        self.pack_root = pack_root 
+        self.query_file = query_file
         self.process = None
         self.port = 8766
         self.base_url = f"http://127.0.0.1:{self.port}"
@@ -23,16 +24,20 @@ class CodeQLLSPService:
 
     def start(self) -> bool:
         """启动LSP服务。"""
+
+        
         try:
             # 启动LSP服务
             cmd = [
                 sys.executable, "-m", "tools.lsp_codeql",
-                "--pack-root", self.pack_root,
+                "--pack-root", str(self.pack_root),
                 "--port", str(self.port),
+                "--query-file", str(self.query_file),
                 "--quiet-logs"
             ]
 
-            print(f"启动LSP服务命令: {' '.join(cmd)}")
+            print(cmd)
+
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,

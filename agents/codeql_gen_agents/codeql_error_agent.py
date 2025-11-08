@@ -65,17 +65,66 @@ class CodeQLErrorAgent:
         curr_ql_content: str,
         round_index: int = 1,
         prev_original_ql: Optional[str] = None,
+        show_thinking: bool = False,
+        event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
     ) -> "AgentResult":
         """Run error analysis with current and previous context to produce fix suggestions."""
         try:
+            _agent_name = agent_name or "CodeQL Error Analysis Agent"
+            _agent_type = agent_type or "codeql_error_analysis"
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始CodeQL错误分析（第{round_index}轮）",
+                    "data": {"round_index": round_index}
+                })
+            
             prompt = self.build_prompt(
                 error_log=error_log,
                 curr_ql_content=curr_ql_content,
                 round_index=round_index,
                 prev_original_ql=prev_original_ql,
             )
-            return await self.analyzer.run_agent(prompt)
+            
+            result = await self.analyzer.run_agent(
+                prompt, 
+                show_thinking=show_thinking, 
+                event_callback=event_callback
+            )
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL错误分析完成（第{round_index}轮）",
+                    "data": {"success": result.success, "round_index": round_index}
+                })
+            
+            return result
+            
         except Exception as e:
+            if event_callback:
+                from datetime import datetime
+                _agent_name = agent_name or "CodeQL Error Analysis Agent"
+                _agent_type = agent_type or "codeql_error_analysis"
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL错误分析失败: {str(e)}",
+                    "data": {"error": str(e)}
+                })
+            
             from dataclasses import dataclass
 
             @dataclass

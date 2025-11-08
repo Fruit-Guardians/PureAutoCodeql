@@ -142,6 +142,11 @@ class StreamEventType(str, Enum):
     STEP_COMPLETE = "step_complete"
     ERROR = "error"
     COMPLETED = "completed"
+    # Agent级别事件类型
+    AGENT_START = "agent_start"
+    AGENT_THINKING = "agent_thinking"
+    AGENT_TOOL_CALL = "agent_tool_call"
+    AGENT_COMPLETE = "agent_complete"
 
 
 class StreamEvent(BaseModel):
@@ -152,5 +157,7 @@ class StreamEvent(BaseModel):
     step_name: Optional[str] = Field(None, description="当前步骤名称")
     message: Optional[str] = Field(None, description="消息内容")
     data: Optional[Dict[str, Any]] = Field(None, description="附加数据")
+    agent_name: Optional[str] = Field(None, description="Agent名称")
+    agent_type: Optional[str] = Field(None, description="Agent类型")
 
 

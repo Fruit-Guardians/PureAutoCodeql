@@ -176,9 +176,17 @@ class UnifiedSourceAnalysisAgent:
             
             compose_output = await self.codeql_composer._arun(requirement, show_thinking=show_thinking)
             ql_code = None
+            # 优先匹配标准格式：```ql
             block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
             if block:
                 ql_code = block.group(1).strip()
+            
+            # 匹配带空格的格式：``` ql
+            if not ql_code:
+                block = re.search(r"```\s+ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
+                if block:
+                    ql_code = block.group(1).strip()
+            
             if not ql_code:
                 tag = re.search(r"<codeql>(.*?)</codeql>", compose_output, re.DOTALL)
                 if tag:
@@ -190,9 +198,24 @@ class UnifiedSourceAnalysisAgent:
             logger.error("Failed to generate %s source CodeQL query: %s", language, exc)
             return f"Error generating CodeQL query: {str(exc)}", ""
 
-    async def analyze_sources(self, language: str, sink_analysis: str, show_thinking: bool = True, event_callback=None) -> "AgentResult":
+    async def analyze_sources(self, language: str, sink_analysis: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> "AgentResult":
         """统一的多语言source分析方法，基于sink分析结果查找source点。"""
         try:
+            _agent_name = agent_name or "Source Analysis Agent"
+            _agent_type = agent_type or "source_analysis"
+            
+            # Phase 2.7: 推送 AGENT_START 事件
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始{language}语言Source点分析",
+                    "data": {"language": language}
+                })
+            
             directory = Path(self.source_root)
             
             # 如果 source_root 是文件，使用其父目录
@@ -213,10 +236,22 @@ class UnifiedSourceAnalysisAgent:
                     success: bool
                     error: str = None
 
-                return AgentResult(content=json.dumps({"candidates": []}), success=True)
+                result = AgentResult(content=json.dumps({"candidates": []}), success=True)
+                
+                # 推送完成事件
+                if event_callback:
+                    from datetime import datetime
+                    await event_callback({
+                        "type": "agent_complete",
+                        "timestamp": datetime.now().isoformat(),
+                        "agent_name": _agent_name,
+                        "agent_type": _agent_type,
+                        "message": f"{language}语言Source点分析完成（未找到源文件）",
+                        "data": {"success": True}
+                    })
+                
+                return result
 
-            # 构建基于sink分析的提示词
-            # 从sink_analysis中提取CVE信息（如果包含的话）
             cve_analysis = ""
             if "CVE" in sink_analysis:
                 # 尝试从sink分析结果中提取CVE相关信息
@@ -229,10 +264,35 @@ class UnifiedSourceAnalysisAgent:
                 source_paths=source_paths
             )
             
-            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"{language}语言Source点分析完成",
+                    "data": {"success": result.success}
+                })
+            
+            return result
             
         except Exception as exc:
             logger.exception("Unexpected error in %s source analysis", language)
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"Source点分析失败: {str(exc)}",
+                    "data": {"error": str(exc)}
+                })
+            
             from dataclasses import dataclass
 
             @dataclass

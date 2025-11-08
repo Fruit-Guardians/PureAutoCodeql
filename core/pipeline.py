@@ -25,8 +25,9 @@ from tools.codeql_compose import CodeQLComposeTool
 class AnalysisStep(ABC):
     """分析步骤抽象基类。"""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, agent_name: str = None):
         self.name = name
+        self.agent_name = agent_name or name
 
     @abstractmethod
     async def execute(self, context: AnalysisContext) -> Any:
@@ -38,7 +39,7 @@ class CVEAnalysisStep(AnalysisStep):
     """CVE分析步骤。"""
 
     def __init__(self):
-        super().__init__("cve_analysis")
+        super().__init__("cve_analysis", agent_name="CVE Analysis Agent")
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CVE分析。"""
@@ -53,12 +54,15 @@ class CVEAnalysisStep(AnalysisStep):
             Path(context.cve_assets.json_path),
             intel_prompt=intel_prompt,
             show_thinking=context.show_thinking,
-            event_callback=context.event_callback
+            event_callback=context.event_callback,
+            agent_name=self.agent_name,
+            agent_type=self.name
         )
 
         if not result.success:
             print(f"CVE analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result
@@ -68,7 +72,7 @@ class SinkAnalysisStep(AnalysisStep):
     """Sink路径分析步骤。"""
 
     def __init__(self):
-        super().__init__("sink_analysis")
+        super().__init__("sink_analysis", agent_name="Sink Path Analysis Agent")
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Sink路径分析。"""
@@ -83,12 +87,15 @@ class SinkAnalysisStep(AnalysisStep):
             context.get_result("cve_analysis").content if context.has_result("cve_analysis") else "",
             str(context.cve_assets.diff_path) if context.cve_assets.diff_path else "",
             show_thinking=context.show_thinking,
-            event_callback=context.event_callback
+            event_callback=context.event_callback,
+            agent_name=self.agent_name,
+            agent_type=self.name
         )
 
         if not result.success:
             print(f"{context.language.title()} sink analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result
@@ -98,7 +105,7 @@ class SourceAnalysisStep(AnalysisStep):
     """Source分析步骤。"""
 
     def __init__(self):
-        super().__init__("source_analysis")
+        super().__init__("source_analysis", agent_name="Source Analysis Agent")
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Source分析。"""
@@ -116,12 +123,15 @@ class SourceAnalysisStep(AnalysisStep):
             context.language,
             context.get_result("sink_analysis").content if context.has_result("sink_analysis") else "",
             show_thinking=context.show_thinking,
-            event_callback=context.event_callback
+            event_callback=context.event_callback,
+            agent_name=self.agent_name,
+            agent_type=self.name
         )
 
         if not result.success:
             print(f"{context.language.title()} source analysis failed: {result.error}")
-        else:
+        elif not context.show_thinking:
+            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
             print(result.content)
 
         return result
@@ -131,7 +141,7 @@ class CodeQLGenerationStep(AnalysisStep):
     """CodeQL查询生成步骤。"""
 
     def __init__(self):
-        super().__init__("codeql_generation")
+        super().__init__("codeql_generation", agent_name="CodeQL Generation Agent")
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CodeQL查询生成。"""
@@ -163,7 +173,13 @@ class CodeQLGenerationStep(AnalysisStep):
 
         print("=== CodeQL Query Generation ===")
         print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
-        compose_output = await codeql_tool._arun(codeql_requirement, show_thinking=context.show_thinking, event_callback=context.event_callback)
+        compose_output = await codeql_tool._arun(
+            codeql_requirement, 
+            show_thinking=context.show_thinking, 
+            event_callback=context.event_callback,
+            agent_name=self.agent_name,
+            agent_type=self.name
+        )
         print(compose_output)
 
         # Normalize output into AgentResult for downstream consumers

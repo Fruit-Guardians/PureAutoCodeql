@@ -2,7 +2,7 @@
   {
     "id": "case:cve-2024-8412",
     "cve": "CVE-2024-8412",
-    "path": "QLdatabase/Python/py/CVE-2024-8412/CVE-2024-8412.ql",
+    "path": "resources/codeql/python/py/CVE-2024-8412/CVE-2024-8412.ql",
     "summary": "Django open redirect: unvalidated 'next' parameter flows into redirect() without host validation",
     "vulnerability_type": "Open Redirect (CWE-601)",
     "status": "success",
@@ -25,7 +25,7 @@
   {
     "id": "case:cve-2025-54802",
     "cve": "CVE-2025-54802",
-    "path": "QLdatabase/Python/py/CVE-2025-54802/CVE-2025-54802.ql",
+    "path": "resources/codeql/python/py/CVE-2025-54802/CVE-2025-54802.ql",
     "summary": "pyLoad CNL arbitrary file write: HTTP input flows to open() path and fp.write() causing path traversal",
     "vulnerability_type": "Path Traversal / Arbitrary File Write (CWE-22)",
     "status": "success",
@@ -49,7 +49,7 @@
   {
     "id": "case:cve-2024-7099",
     "cve": "CVE-2024-7099",
-    "path": "QLdatabase/Python/py/CVE-2024-7099/CVE-2024-7099.ql",
+    "path": "resources/codeql/python/py/CVE-2024-7099/CVE-2024-7099.ql",
     "summary": "SQL injection: function parameters flow into execute_query_() in affected functions",
     "vulnerability_type": "SQL Injection (CWE-89)",
     "status": "success",
@@ -70,7 +70,7 @@
   {
     "id": "case:cve-2022-22817",
     "cve": "CVE-2022-22817",
-    "path": "QLdatabase/Python/py/CVE-2022-22817/CVE-2022-22817.ql",
+    "path": "resources/codeql/python/py/CVE-2022-22817/CVE-2022-22817.ql",
     "summary": "PIL ImageMath.eval: intra-library taint from 'expression' parameter to builtins.eval()",
     "vulnerability_type": "Code Injection (CWE-94)",
     "status": "success",
@@ -93,7 +93,7 @@
   {
     "id": "case:cve-2025-47789",
     "cve": "CVE-2025-47789",
-    "path": "QLdatabase/Python/py/CVE-2025-47789/CVE-2025-47789.ql",
+    "path": "resources/codeql/python/py/CVE-2025-47789/CVE-2025-47789.ql",
     "summary": "Django redirect with noise reduction: filters out reverse() and constant '/' paths, requires no host validation",
     "vulnerability_type": "Open Redirect (CWE-601)",
     "status": "success",
@@ -118,7 +118,7 @@
   {
     "id": "case:cve-2025-46725",
     "cve": "CVE-2025-46725",
-    "path": "QLdatabase/Python/py/CVE-2025-46725/CVE-2025-46725.ql",
+    "path": "resources/codeql/python/py/CVE-2025-46725/CVE-2025-46725.ql",
     "summary": "Universal eval detection: covers builtins.eval, pandas.eval, DataFrame.eval, PIL.ImageMath.eval",
     "vulnerability_type": "Code Injection (CWE-94)",
     "status": "success",
@@ -140,7 +140,7 @@
   {
     "id": "case:cve-2025-54381",
     "cve": "CVE-2025-54381",
-    "path": "QLdatabase/Python/py/CVE-2025-54381/CVE-2025-54381.ql",
+    "path": "resources/codeql/python/py/CVE-2025-54381/CVE-2025-54381.ql",
     "summary": "Case study placeholder (add details if available)",
     "vulnerability_type": "TBD",
     "status": "success",
@@ -151,7 +151,7 @@
   {
     "id": "case:cve-2024-10940",
     "cve": "CVE-2024-10940",
-    "path": "QLdatabase/Python/py/CVE-2024-10940/CVE-2024-10940.ql",
+    "path": "resources/codeql/python/py/CVE-2024-10940/CVE-2024-10940.ql",
     "summary": "Langchain ImagePromptTemplate: path taint flows into open(..., 'rb') file reads",
     "vulnerability_type": "Path Traversal / Arbitrary File Read (CWE-22)",
     "status": "success",

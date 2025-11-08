@@ -1,6 +1,6 @@
 ## ADDED Requirements
 ### Requirement: Case Workspace Layout
-The system SHALL validate that every selected case workspace under `projects/<case-id>/` provides the required subdirectories (`source_code/`, `queries/`, `db/`, `inputs/`, `intel/`) before running any agents.
+The system SHALL validate that every selected case workspace under `projects/<case-id>/` provides the required subdirectories (`source_code/`, `db/`, `inputs/`, `intel/`) before running any agents.
 
 #### Scenario: Directory Validation
 - **WHEN** the user invokes a multi-agent workflow with `--case <case-id>`
