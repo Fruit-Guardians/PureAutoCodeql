@@ -234,3 +234,6 @@ projects/CVE-2021-21985/
 projects/CVE-2024-7099/
 projects/CVE-2025-54802/
 projects/CVE-2022-22817/
+# 忽略所有 zip 文件，避免超过 GitHub 100MB 限制
+*.zip
+projects/*.zip
