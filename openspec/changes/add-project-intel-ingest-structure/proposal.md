@@ -4,7 +4,7 @@
 - We need a documented ingest stage so both Java and Python orchestrators can reuse one structure and automatically hydrate intelligence before analysis.
 
 ## What Changes
-- Introduce a standard `projects/<case-id>/` workspace layout covering `source_code/`, `queries/`, `db/`, `inputs/`, and `intel/`.
+- Introduce a standard `projects/<case-id>/` workspace layout covering `source_code/`, `db/`, `inputs/`, and `intel/`.
 - Extend orchestrators to accept a `--case` (or equivalent) argument, load CVE JSON/diff from `inputs/`, and run `ghsa_fetch.py` / `nvd_info_fetch.py`, caching results under `intel/`.
 - Normalize ingest output into a reusable structure that downstream agents can consume (e.g., populated CVE markdown, cached JSON, failure markers).
 - Update specs to capture the new workspace requirement, ingest stage, caching policy, and final report consolidation.

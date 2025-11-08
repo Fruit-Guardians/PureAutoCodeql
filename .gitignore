@@ -217,18 +217,18 @@ build.bat
 output/
 temp/
 projects/
+# 明确忽略所有queries目录，防止意外提交
+*/queries/
 # # /projects/CVE-2021-21985/db/db-java/default/cache/predicates
 # projects/CVE-2024-7099/
 # projects/CVE-2024-7099/db/
 # projects/CVE-2024-7099/inputs/
 # projects/CVE-2024-7099/intel/
-# projects/CVE-2024-7099/queries/
 # projects/CVE-2024-7099/source_code/
 # projects/CVE-2021-21985/
 # projects/CVE-2021-21985/db/
 # projects/CVE-2021-21985/inputs/
 # projects/CVE-2021-21985/intel/
-# projects/CVE-2021-21985/queries/
 # projects/CVE-2021-21985/source_code/
 # projects/CVE-2025-54802
 projects/CVE-2021-21985/

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, Callable, List, Set
+from typing import Any, Dict, Optional, Type, Callable
 
 #Service
 from services.lsp_service import CodeQLLSPService
@@ -390,6 +390,20 @@ class CodeQLComposeTool(BaseTool):
                     # Check execution result
                     if exec_result.get('success', False):
                         mode_now = (exec_mode or 'analyze').lower()
+                        
+                        # 创建CodeQLExecutionResult对象
+                        from services.codeql_execution import CodeQLExecutionResult
+                        execution_result = CodeQLExecutionResult(
+                            success=exec_result.get('success', False),
+                            output=exec_result.get('output', ''),
+                            sarif_path=exec_result.get('sarif_path'),
+                            json_path=exec_result.get('json_path'),
+                            paths_count=exec_result.get('paths_count'),
+                            result_file=exec_result.get('result_file'),
+                            preview=exec_result.get('preview')
+                        )
+                        
+                        # 正常结果处理
                         if mode_now == 'run' and run_query_and_decode_to_text:
                             result_file = exec_result.get('result_file')
                             full_text = exec_result.get('output', '') or ''
@@ -407,18 +421,6 @@ class CodeQLComposeTool(BaseTool):
                             return result
                         else:
                             print("codeql query:", current_ql)
-                            
-                            # 如果已经成功执行了CodeQL查询，将字典转换为CodeQLExecutionResult对象
-                            from services.codeql_execution import CodeQLExecutionResult
-                            execution_result = CodeQLExecutionResult(
-                                success=exec_result.get('success', False),
-                                output=exec_result.get('output', ''),
-                                sarif_path=exec_result.get('sarif_path'),
-                                json_path=exec_result.get('json_path'),
-                                paths_count=exec_result.get('paths_count'),
-                                result_file=exec_result.get('result_file'),
-                                preview=exec_result.get('preview')
-                            )
                             return self._format_success_result(
                                 query=current_ql,
                                 round_index=round_index,
