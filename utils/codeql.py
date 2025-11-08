@@ -267,7 +267,7 @@ def create_temporary_qlpack(query_content: str, language: Optional[str] = None) 
     # 根据语言选择 qlpack 模板；C/C++ 使用用户提供的固定模板
     if lang == 'cpp':
         qlpack_content = textwrap.dedent(
-            """---
+            """
 name: cve3
 version: 6.0.1
 dependencies:
@@ -276,7 +276,7 @@ dependencies:
         )
     else:
         qlpack_content = textwrap.dedent(
-            f"""---
+            f"""
 library: false
 warnOnImplicitThis: false
 name: getting-started/codeql-extra-queries-{lang}
