@@ -141,14 +141,23 @@ select sink.getNode(), source, sink, "Potential SQL injection: User input flows 
 
 如果你正在生成 Python CodeQL 查询，以下是基于需求分析的智能推荐：
 
-### 相关标签
+### ��ر�ǩ
 [[RELEVANT_TAGS]]
 
-### 知识库资源目录
+### ֪ʶ����ԴĿ¼
 [[KB_DIRECTORY_INDEX]]
 
-### 推荐使用的模块、辅助谓词和模板
+### �ṹ�� KB JSON
+`json
+[[KB_STRUCTURED_CONTEXT]]
+`
+
+### �Ƽ�ʹ�õ�ģ�顢����ν�ʺ�ģ��
 [[KB_SUGGESTED_ITEMS]]
+
+### ���Ӳο�����
+[[KB_REFERENCE_SNIPPETS]]
+
 
 **使用建议**：
 - 优先使用推荐的 modules（import 语句）
