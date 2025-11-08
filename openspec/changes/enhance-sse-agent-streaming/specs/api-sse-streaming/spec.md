@@ -60,3 +60,22 @@
 - **WHEN** 系统定义新的事件类型（`AGENT_START`、`AGENT_THINKING`、`AGENT_TOOL_CALL`、`AGENT_COMPLETE`）
 - **THEN** 这些类型在 `StreamEventType` 枚举中定义，API文档中有明确说明
 
+### Requirement: CLI模式兼容性
+系统 SHALL 确保事件回调机制不干扰CLI模式的正常运行。
+
+#### Scenario: 可选事件回调参数
+- **WHEN** Agent方法接收 `event_callback` 参数
+- **THEN** 该参数为可选参数，默认值为None，不传入时不影响Agent正常执行
+
+#### Scenario: CLI模式下无事件推送
+- **WHEN** CLI模式下运行Agent（`event_callback=None`）
+- **THEN** 所有事件推送逻辑被跳过（通过 `if event_callback:` 条件判断），不产生额外开销
+
+#### Scenario: CLI终端输出保持不变
+- **WHEN** CLI模式下使用 `show_thinking=True`
+- **THEN** 终端输出功能（emoji、格式化输出）保持原有行为，不受事件回调机制影响
+
+#### Scenario: API模式与CLI模式独立
+- **WHEN** API模式下传入 `event_callback`
+- **THEN** 事件推送到SSE流，同时CLI的 `show_thinking` 可独立控制终端输出（两者不冲突）
+

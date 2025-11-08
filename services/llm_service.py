@@ -107,7 +107,7 @@ class MultiAgentAnalyzer:
 
         self.tools = await self.mcp_client.get_tools()
 
-    async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None) -> AgentResult:
+    async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> AgentResult:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             if not self.llm or not self.tools:
@@ -121,20 +121,41 @@ class MultiAgentAnalyzer:
             ):
                 event_name = event.get("event")
                 
-                # Phase 3: 推送事件到回调
-                if event_callback:
+                # Phase 3.2: 推送 AGENT_THINKING 事件（当检测到思考标记）
+                if event_callback and event_name == "on_agent_action":
                     from datetime import datetime
+                    action = event.get("data", {}).get("action")
+                    if action and hasattr(action, "tool"):
+                        thinking_message = f"决定使用工具 '{action.tool}'"
+                        await event_callback({
+                            "type": "agent_thinking",
+                            "timestamp": datetime.now().isoformat(),
+                            "agent_name": agent_name,
+                            "agent_type": agent_type,
+                            "message": thinking_message,
+                            "data": {
+                                "tool": action.tool,
+                                "tool_input": action.tool_input if hasattr(action, "tool_input") else None
+                            }
+                        })
+                
+                if event_callback and event_name == "on_tool_start":
+                    from datetime import datetime
+                    tool_name = event.get("name", "")
                     await event_callback({
-                        "type": "agent_event",
-                        "event_name": event_name,
-                        "data": event.get("data", {}),
-                        "timestamp": datetime.now().isoformat()
+                        "type": "agent_tool_call",
+                        "timestamp": datetime.now().isoformat(),
+                        "agent_name": agent_name,
+                        "agent_type": agent_type,
+                        "message": f"开始调用工具: {tool_name}",
+                        "data": {
+                            "tool_name": tool_name,
+                            "event_data": event.get("data", {})
+                        }
                     })
 
-                # 显示AI的思考过程
                 if show_thinking:
                     if event_name == "on_agent_action":
-                        # AI决定使用工具
                         action = event.get("data", {}).get("action")
                         if action and hasattr(action, "tool"):
                             print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
@@ -142,12 +163,10 @@ class MultiAgentAnalyzer:
                                 print(f"   工具输入: {action.tool_input}")
 
                     elif event_name == "on_tool_start":
-                        # 工具开始执行
                         tool_name = event.get("name", "")
                         print(f"🔧 工具执行: {tool_name}")
 
                     elif event_name == "on_tool_end":
-                        # 工具执行完成
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
                         output_preview = _format_tool_output(tool_name, output) if output else ""
@@ -157,12 +176,11 @@ class MultiAgentAnalyzer:
                             print(f"✅ 工具完成: {tool_name}")
 
                     elif event_name == "on_agent_step":
-                        # AI完成一步思考
+
                         step_output = event.get("data", {}).get("output", "")
                         if step_output and hasattr(step_output, "intermediate_steps"):
                             print("💭 AI完成一步推理")
 
-                # 捕获最终的模型输出
                 if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
@@ -182,7 +200,18 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
-                            # 实时显示AI的最终回答
+                            
+                            if event_callback:
+                                from datetime import datetime
+                                await event_callback({
+                                    "type": "agent_thinking",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "agent_name": agent_name,
+                                    "agent_type": agent_type,
+                                    "message": text,
+                                    "data": {"stream_chunk": text}
+                                })
+                            
                             if show_thinking:
                                 print(text, end="", flush=True)
 

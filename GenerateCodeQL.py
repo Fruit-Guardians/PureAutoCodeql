@@ -64,7 +64,7 @@ class MultiAgentAnalyzer:
         
         self.tools = await self.mcp_client.get_tools()
     
-    async def run_agent_stream(self, prompt: str, output_callback=None, show_thinking: bool = True, event_callback=None):
+    async def run_agent_stream(self, prompt: str, output_callback=None, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None):
         """Run a single agent with the given prompt and stream output, with optional thinking process display."""
         try:
             if not self.llm or not self.tools:
@@ -76,17 +76,41 @@ class MultiAgentAnalyzer:
             async for event in agent.astream_events({"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}):
                 event_name = event.get("event")
                 
-                # Phase 3: 推送事件到回调
-                if event_callback:
+                # Phase 3.2: 推送 AGENT_THINKING 事件（当检测到思考标记）
+                if event_callback and event_name == "on_agent_action":
                     from datetime import datetime
+                    action = event.get("data", {}).get("action")
+                    if action and hasattr(action, "tool"):
+                        thinking_message = f"决定使用工具 '{action.tool}'"
+                        await event_callback({
+                            "type": "agent_thinking",
+                            "timestamp": datetime.now().isoformat(),
+                            "agent_name": agent_name,
+                            "agent_type": agent_type,
+                            "message": thinking_message,
+                            "data": {
+                                "tool": action.tool,
+                                "tool_input": action.tool_input if hasattr(action, "tool_input") else None
+                            }
+                        })
+                
+                # Phase 3.3: 推送 AGENT_TOOL_CALL 事件（当检测到工具调用）
+                if event_callback and event_name == "on_tool_start":
+                    from datetime import datetime
+                    tool_name = event.get("name", "")
                     await event_callback({
-                        "type": "agent_event",
-                        "event_name": event_name,
-                        "data": event.get("data", {}),
-                        "timestamp": datetime.now().isoformat()
+                        "type": "agent_tool_call",
+                        "timestamp": datetime.now().isoformat(),
+                        "agent_name": agent_name,
+                        "agent_type": agent_type,
+                        "message": f"开始调用工具: {tool_name}",
+                        "data": {
+                            "tool_name": tool_name,
+                            "event_data": event.get("data", {})
+                        }
                     })
                 
-                # 显示AI的思考过程
+                # Phase 3.6: 保持CLI模式的 show_thinking 终端输出不受影响
                 if show_thinking:
                     if event_name == "on_agent_action":
                         # AI决定使用工具
@@ -152,7 +176,7 @@ class MultiAgentAnalyzer:
                         if step_output and hasattr(step_output, "intermediate_steps"):
                             print("💭 AI完成一步推理")
                 
-                # 捕获最终的模型输出
+                # Phase 3.5: 捕获最终的模型输出（确保流式输出的完整性）
                 if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if hasattr(chunk, "content") and chunk.content:
@@ -165,13 +189,28 @@ class MultiAgentAnalyzer:
                         except Exception:
                             text = str(chunk.content)
                         if text:
+                            # Phase 3.5: 确保所有内容都被收集（不丢失内容）
                             content_parts.append(text)
-                            # 实时显示AI的最终回答
+                            
+                            # Phase 3.2: 推送流式输出作为 AGENT_THINKING 事件
+                            if event_callback:
+                                from datetime import datetime
+                                await event_callback({
+                                    "type": "agent_thinking",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "agent_name": agent_name,
+                                    "agent_type": agent_type,
+                                    "message": text,
+                                    "data": {"stream_chunk": text}
+                                })
+                            
+                            # Phase 3.6: 保持CLI模式的实时显示AI的最终回答
                             if show_thinking:
                                 print(text, end="", flush=True)
                             if output_callback:
                                 output_callback(text)
 
+            # Phase 3.5: 确保完整内容被返回
             final_content = "".join(content_parts)
             if show_thinking:
                 print("\n🎯 AI推理完成")

@@ -83,10 +83,48 @@ class CVEAnalysisAgent:
     ) -> "AgentResult":
         """分析CVE JSON文件并返回Markdown报告。"""
         try:
+            # Phase 2.2: 推送 AGENT_START 事件
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": "CVE Analysis Agent",
+                    "agent_type": "cve_analysis",
+                    "message": "开始CVE分析",
+                    "data": {"json_path": str(json_path)}
+                })
+            
             json_text = read_json_text(json_path)
             prompt = self.build_prompt(json_text, intel_prompt)
-            return await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            
+            # Phase 2.3: 推送 AGENT_COMPLETE 事件
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": "CVE Analysis Agent",
+                    "agent_type": "cve_analysis",
+                    "message": "CVE分析完成",
+                    "data": {"success": result.success}
+                })
+            
+            return result
         except Exception as e:
+            # 推送错误事件
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": "CVE Analysis Agent",
+                    "agent_type": "cve_analysis",
+                    "message": f"CVE分析失败: {str(e)}",
+                    "data": {"error": str(e)}
+                })
+            
             from dataclasses import dataclass
             
             @dataclass
