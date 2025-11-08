@@ -40,19 +40,16 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
         return f"找到 {count} 个目录"
 
     if tool_name == "directory_tree":
-        try:
-            data = json.loads(text)
-            if isinstance(data, list):
-                count = len(data)
-                return f"读取目录结构 ({count} 个条目)"
-        except Exception:
-            pass
         return "读取目录结构"
 
     if tool_name == "search_files":
         # 清理输出，移除可能的tool_call_id等元数据
         cleaned_text = text.split("' name=")[0] if "' name=" in text else text
         cleaned_text = cleaned_text.strip().strip("'\"")
+        
+        # 检查是否是 "No matches found" 的情况
+        if "no matches found" in cleaned_text.lower() or cleaned_text.lower() == "no matches found":
+            return "未找到匹配"
         
         lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
         count = len(lines)
@@ -69,9 +66,7 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
             return f"找到 {count} 个文件"
 
     if tool_name == "read_text_file":
-        lines = text.splitlines()
-        line_count = len(lines)
-        return f"读取文件 ({line_count} 行)"
+        return "读取文件"
 
     # 其他工具简化输出
     if len(text) > 100:
@@ -330,7 +325,15 @@ class MultiAgentAnalyzer:
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
                         output_preview = _format_tool_output(tool_name, output)
-                        print(f"✅ {output_preview}")
+                        
+                        # 根据输出内容决定显示标识
+                        if "未找到" in output_preview or "no matches found" in str(output).lower():
+                            # 未找到结果时显示 ⚠️
+                            print(f"⚠️ {output_preview}")
+                        else:
+                            # 成功时显示 ✅
+                            print(f"✅ {output_preview}")
+                        
                         # 显示详细内容（针对特定工具）
                         _print_detailed_tool_output(tool_name, output)
                         current_tool = None
