@@ -47,13 +47,7 @@ def fetch_cve_payload(cve_id: str, api_key: Optional[str]) -> Dict[str, Any]:
     req = urllib.request.Request(url, headers=headers)
 
     # Create SSL context with workarounds for Python 3.13 compatibility issues
-    ssl_context = ssl.create_default_context()
-    try:
-        ssl_context.options |= ssl.OP_NO_SSLv2
-        ssl_context.options |= ssl.OP_NO_SSLv3
-        ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
-    except AttributeError:
-        pass
+    ssl_context = _create_ssl_context()
 
     last_error: Optional[Exception] = None
     for attempt in range(3):
