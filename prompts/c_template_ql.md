@@ -14,7 +14,8 @@
 import cpp
 // Choose one of the following data flow analysis libraries
 import semmle.code.cpp.dataflow.new.DataFlow
-// import semmle.code.cpp.dataflow.new.TaintTracking
+import semmle.code.cpp.dataflow.new.TaintTracking
+import semmle.code.cpp.controlflow.Guards
 
 // Import the path graph module to be able to select paths
 import DataFlow::PathGraph

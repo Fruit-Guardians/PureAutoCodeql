@@ -277,6 +277,18 @@ class MultiAgentAnalyzer:
         )
 
         self.tools = await self.mcp_client.get_tools()
+        try:
+            for t in self.tools:
+                try:
+                    setattr(t, "handle_tool_error", True)
+                except Exception:
+                    pass
+                try:
+                    setattr(t, "handle_validation_error", True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> AgentResult:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
@@ -354,14 +366,21 @@ class MultiAgentAnalyzer:
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
                         output_preview = _format_tool_output(tool_name, output)
+                        status = None
+                        try:
+                            status = getattr(output, "status", None)
+                        except Exception:
+                            status = None
+                        if status is None and isinstance(output, dict):
+                            status = output.get("status")
 
-                        # 根据输出内容决定显示标识
-                        if "未找到" in output_preview or "no matches found" in str(output).lower():
-                            # 未找到结果时显示 ⚠️
-                            print(f"⚠️ {output_preview}")
+                        if status == "error":
+                            print(f"❌ {output_preview}")
                         else:
-                            # 成功时显示 ✅
-                            print(f"✅ {output_preview}")
+                            if "未找到" in output_preview or "no matches found" in str(output).lower():
+                                print(f"⚠️ {output_preview}")
+                            else:
+                                print(f"✅ {output_preview}")
 
                         # 显示详细内容（针对特定工具）
                         _print_detailed_tool_output(tool_name, output)
