@@ -6,6 +6,11 @@ from core.orchestrator import AnalysisOrchestrator
 from core.context import AnalysisConfig
 from services.language_detector import LanguageDetector
 from utils.case import resolve_case, discover_cve_assets
+from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
+
+# 初始化日志系统
+setup_logging(level="INFO")
+logger = get_logger(__name__)
 
 
 
@@ -37,28 +42,32 @@ async def run_case_analysis(
 
     # 显示结果摘要
     if result.success:
-        print(f"\n🎉 分析成功完成！")
-        print(f"📋 案例ID: {result.case_id}")
-        print(f"💻 编程语言: {result.language}")
+        print_user_success(f"\n🎉 分析成功完成！")
+        print_user_info(f"📋 案例ID: {result.case_id}")
+        print_user_info(f"💻 编程语言: {result.language}")
         if result.execution_time:
-            print(f"⏱️  执行时间: {result.execution_time:.2f}秒")
+            print_user_info(f"⏱️  执行时间: {result.execution_time:.2f}秒")
 
         if result.is_complete():
-            print("✅ 所有分析步骤都成功完成")
+            print_user_success("✅ 所有分析步骤都成功完成")
         else:
-            print("⚠️  部分分析步骤未完成")
+            print_user_warning("⚠️  部分分析步骤未完成")
 
         if config.output_file:
-            print(f"📄 分析报告已保存到: {config.output_file}")
+            print_user_info(f"📄 分析报告已保存到: {config.output_file}")
+        else:
+            logger.info(f"分析结果已保存到时间戳目录")
     else:
-        print(f"\n❌ 分析失败: {result.error_message}")
+        print_user_error(f"\n❌ 分析失败: {result.error_message}")
+        logger.error(f"案例分析失败: {result.error_message}")
 
 
 def list_available_cases() -> None:
     """列出所有可用的案例"""
     projects_dir = Path("projects")
     if not projects_dir.exists():
-        print("❌ projects目录不存在")
+        print_user_error("projects目录不存在")
+        logger.error("projects目录不存在")
         return
 
     # 排除特殊文件夹：模板目录和镜像目录
@@ -69,7 +78,8 @@ def list_available_cases() -> None:
     ]
 
     if not case_dirs:
-        print("❌ 没有找到任何案例")
+        print_user_error("没有找到任何案例")
+        logger.warning("没有找到任何案例")
         return
 
     print("📁 可用的案例:")
@@ -79,7 +89,8 @@ def list_available_cases() -> None:
             cve_assets = discover_cve_assets(case_paths)
             print(f"  📂 {case_dir.name} -> {cve_assets.cve_id}")
         except Exception as e:
-            print(f"  📂 {case_dir.name} -> (解析失败: {e})")
+            print_user_warning(f"  📂 {case_dir.name} -> (解析失败: {e})")
+            logger.warning(f"解析案例 {case_dir.name} 失败: {e}", exc_info=True)
 
 
 async def validate_case(case_id: str) -> bool:
@@ -88,23 +99,25 @@ async def validate_case(case_id: str) -> bool:
         case_paths = resolve_case(case_id)
         cve_assets = discover_cve_assets(case_paths)
 
-        print(f"✅ 案例 {case_id} 验证通过")
-        print(f"   📁 根目录: {case_paths.root}")
-        print(f"   🎯 CVE ID: {cve_assets.cve_id}")
-        print(f"   📄 JSON文件: {cve_assets.json_path}")
+        print_user_success(f"✅ 案例 {case_id} 验证通过")
+        print_user_info(f"   📁 根目录: {case_paths.root}")
+        print_user_info(f"   🎯 CVE ID: {cve_assets.cve_id}")
+        print_user_info(f"   📄 JSON文件: {cve_assets.json_path}")
         if cve_assets.diff_path:
-            print(f"   🔄 Diff文件: {cve_assets.diff_path}")
+            print_user_info(f"   🔄 Diff文件: {cve_assets.diff_path}")
         else:
-            print(f"   ⚠️  没有Diff文件")
+            print_user_warning(f"   ⚠️  没有Diff文件")
 
         # 检测语言
         detector = LanguageDetector()
         language = detector.detect_language(case_paths)
-        print(f"   💻 检测语言: {language}")
+        print_user_info(f"   💻 检测语言: {language}")
+        logger.info(f"案例 {case_id} 验证通过，语言: {language}")
 
         return True
     except Exception as e:
-        print(f"❌ 案例 {case_id} 验证失败: {e}")
+        print_user_error(f"❌ 案例 {case_id} 验证失败: {e}")
+        logger.error(f"案例 {case_id} 验证失败: {e}", exc_info=True)
         return False
 
 
@@ -193,11 +206,11 @@ async def main() -> None:
             )
 
     except KeyboardInterrupt:
-        print("\n⚠️  分析被用户中断")
+        print_user_warning("\n⚠️  分析被用户中断")
+        logger.warning("分析被用户中断")
     except Exception as e:
-        print(f"\n❌ 执行出错: {e}")
-        import traceback
-        traceback.print_exc()
+        print_user_error(f"\n❌ 执行出错: {e}")
+        logger.exception(f"执行出错: {e}")
 
 
 if __name__ == "__main__":

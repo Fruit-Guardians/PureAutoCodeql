@@ -29,37 +29,37 @@ class AnalysisOrchestrator:
         try:
             # 解析案例结构
             case_paths = resolve_case(case_id)
-            print(f"正在分析案例: {case_id}")
-            print(f"案例根目录: {case_paths.root}")
+            logger.info(f"正在分析案例: {case_id}")
+            logger.debug(f"案例根目录: {case_paths.root}")
             if self.config.show_thinking:
-                print("[DEBUG] 启用AI思考过程显示模式")
+                logger.debug("启用AI思考过程显示模式")
 
             # 发现CVE资产
             cve_assets = discover_cve_assets(case_paths)
-            print(f"[TARGET] 分析CVE: {cve_assets.cve_id}")
+            logger.info(f"分析CVE: {cve_assets.cve_id}")
             if cve_assets.json_path.exists():
-                print(f"[JSON] JSON文件: {cve_assets.json_path} (本地)")
+                logger.debug(f"JSON文件: {cve_assets.json_path} (本地)")
             else:
-                print(f"[JSON] JSON文件: {cve_assets.json_path} (网络获取)")
+                logger.debug(f"JSON文件: {cve_assets.json_path} (网络获取)")
             if cve_assets.diff_path:
-                print(f"[DIFF] Diff文件: {cve_assets.diff_path} (本地)")
+                logger.debug(f"Diff文件: {cve_assets.diff_path} (本地)")
             else:
-                print(f"[INFO] Diff文件: 无")
+                logger.debug("Diff文件: 无")
 
             # 收集情报数据
-            print("正在收集漏洞情报...")
+            logger.info("正在收集漏洞情报...")
             intel_bundle = collect_intel(
                 case_paths, cve_assets, use_cache=not self.config.refresh_intel
             )
 
             if intel_bundle.used_cache:
-                print("[CACHE] 使用缓存的情报数据")
+                logger.info("使用缓存的情报数据")
             else:
-                print("[NEW] 已获取最新情报数据")
+                logger.info("已获取最新情报数据")
 
             # 检测语言
             language = self.language_detector.detect_language(case_paths)
-            print(f"检测到语言: {language}")
+            logger.info(f"检测到语言: {language}")
 
             # 创建分析上下文
             context = AnalysisContext(
@@ -93,21 +93,21 @@ class AnalysisOrchestrator:
 
     def _print_execution_summary(self, result: AnalysisResult) -> None:
         """打印执行摘要。"""
-        print(f"\n=== 分析完成 ===")
+        logger.info("=== 分析完成 ===")
         if result.execution_time:
-            print(f"总耗时: {result.execution_time:.2f} 秒")
+            logger.info(f"总耗时: {result.execution_time:.2f} 秒")
 
-        print(f"案例ID: {result.case_id}")
-        print(f"编程语言: {result.language}")
-        print(f"分析状态: {'成功' if result.success else '失败'}")
+        logger.info(f"案例ID: {result.case_id}")
+        logger.info(f"编程语言: {result.language}")
+        logger.info(f"分析状态: {'成功' if result.success else '失败'}")
 
         if result.error_message:
-            print(f"错误信息: {result.error_message}")
+            logger.error(f"错误信息: {result.error_message}")
 
         if result.is_complete():
-            print("[COMPLETE] 所有分析步骤均已完成")
+            logger.info("所有分析步骤均已完成")
         else:
-            print("[WARNING] 部分分析步骤未完成或失败")
+            logger.warning("部分分析步骤未完成或失败")
 
     @classmethod
     def create_from_args(cls, args) -> "AnalysisOrchestrator":

@@ -3,12 +3,17 @@
 提供CodeQL语言服务器协议的封装，用于语法检查和验证。
 """
 
+import logging
 import requests
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict
+
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class CodeQLLSPService:
@@ -36,7 +41,7 @@ class CodeQLLSPService:
                 "--quiet-logs"
             ]
 
-            print(cmd)
+            logger.debug(f"启动LSP服务命令: {' '.join(cmd)}")
 
             self.process = subprocess.Popen(
                 cmd,
@@ -46,34 +51,32 @@ class CodeQLLSPService:
             )
 
             # 等待服务启动
-            print(f"等待LSP服务启动... (超时时间: {self.init_timeout}秒)")
+            logger.info(f"等待LSP服务启动... (超时时间: {self.init_timeout}秒)")
             for i in range(self.init_timeout):  # 最多等待指定秒数
                 try:
                     response = requests.get(f"{self.base_url}/health", timeout=1)
                     if response.status_code == 200:
-                        print(f"✅ LSP服务在第{i+1}秒启动成功")
+                        logger.info(f"LSP服务在第{i+1}秒启动成功")
                         return True
                 except Exception as e:
                     if i % 5 == 0:  # 每5秒显示一次等待状态
-                        print(f"等待LSP服务启动... ({i+1}/{self.init_timeout}秒)")
+                        logger.debug(f"等待LSP服务启动... ({i+1}/{self.init_timeout}秒)")
                 time.sleep(1)
 
             # 如果服务启动超时，检查进程输出
-            print("❌ LSP服务启动超时")
+            logger.error("LSP服务启动超时")
             if self.process and self.process.poll() is not None:
                 stdout, stderr = self.process.communicate()
-                print(f"LSP进程退出码: {self.process.returncode}")
+                logger.error(f"LSP进程退出码: {self.process.returncode}")
                 if stdout:
-                    print(f"LSP进程标准输出: {stdout}")
+                    logger.error(f"LSP进程标准输出: {stdout}")
                 if stderr:
-                    print(f"LSP进程错误输出: {stderr}")
+                    logger.error(f"LSP进程错误输出: {stderr}")
 
             return False
 
         except Exception as e:
-            print(f"❌ LSP服务启动失败: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"LSP服务启动失败: {e}")
             return False
 
     def check_syntax(self, codeql_code: str) -> Dict[str, Any]:
