@@ -103,6 +103,7 @@ class AnalysisConfig:
 
     # LLM配置
     llm_config: Optional[Any] = None
+    llm_provider: Optional[str] = None  # 模型提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
 
     # LSP配置
     lsp_enabled: bool = True

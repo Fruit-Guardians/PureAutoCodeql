@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 
 
 class LLMRole(Enum):
@@ -150,10 +150,15 @@ def _is_reachable(base_url: str, timeout: float = 2.0) -> bool:
         with urlopen(req, timeout=timeout) as resp:  # noqa: S310 (stdlib)
             # 任意返回即视为可达
             return True
+    except HTTPError:
+        # HTTP 错误（401 Unauthorized, 404 Not Found, 500等）说明服务可达
+        # 只是需要认证或路径不对，但服务本身是可达的
+        return True
     except URLError:
+        # URL 错误（连接超时、DNS解析失败等）视为不可达
         return False
     except Exception:
-        # 其他错误也视为不可达
+        # 其他未知错误视为不可达
         return False
 
 
@@ -210,17 +215,54 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
     )
 
 
-def get_llm_config(role: LLMRole) -> LLMConfig:
+def get_llm_config(role: LLMRole, provider_name: Optional[str] = None) -> LLMConfig:
     """根据角色获取 LLM 配置
 
     Args:
         role: LLM 角色（think 或 chat）
+        provider_name: 可选的提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
 
     Returns:
         LLMConfig: 对应的 LLM 配置
     """
-    api_key, base_url, model = _get_env_config(role)
-    provider = _read_env_provider().value
+    # 如果指定了提供商，使用指定的；否则从环境变量读取
+    if provider_name:
+        provider = None
+        provider_lower = provider_name.strip().lower()
+        for p in LLMProvider:
+            if p.value == provider_lower:
+                provider = p
+                break
+        if provider is None:
+            raise ValueError(f"不支持的提供商: {provider_name}。支持的提供商: {', '.join(p.value for p in LLMProvider)}")
+    else:
+        provider = _read_env_provider()
+
+    # 获取该提供商的配置
+    api_key = _read_env_api_key(provider)
+    base_url = _read_env_base_url(provider)
+    env_think_model, env_chat_model = _read_env_models()
+
+    # 每个服务商的合理默认模型（可被 THINK_MODEL/CHAT_MODEL 覆盖）
+    defaults = {
+        LLMProvider.DEEPSEEK: {
+            "think": "deepseek-reasoner",
+            "chat": "deepseek-chat",
+        },
+        LLMProvider.SILICONFLOW: {
+            "think": "deepseek-ai/DeepSeek-R1",
+            "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp",
+        },
+        LLMProvider.ZHIPU: {
+            "think": "glm-4.6",
+            "chat": "glm-4.6",
+        },
+    }
+
+    if role == LLMRole.THINK:
+        model = env_think_model or defaults[provider]["think"]
+    else:
+        model = env_chat_model or defaults[provider]["chat"]
 
     if role not in (LLMRole.THINK, LLMRole.CHAT):
         raise ValueError(f"不支持的 LLM 角色: {role}")
@@ -233,8 +275,59 @@ def get_llm_config(role: LLMRole) -> LLMConfig:
         streaming=True,
         max_tokens=None,
         max_retries=3,
-        provider=provider,
+        provider=provider.value,
     )
+
+
+def get_llm_config_by_provider(provider_name: str, role: LLMRole) -> LLMConfig:
+    """根据提供商名称和角色获取 LLM 配置（便捷函数）
+
+    Args:
+        provider_name: 提供商名称（deepseek/siliconflow/zhipu）
+        role: LLM 角色（think 或 chat）
+
+    Returns:
+        LLMConfig: 对应的 LLM 配置
+    """
+    return get_llm_config(role, provider_name=provider_name)
+
+
+def list_available_providers() -> list[dict]:
+    """列出所有可用的提供商及其信息
+
+    Returns:
+        包含提供商信息的字典列表
+    """
+    providers_info = []
+    for provider in LLMProvider:
+        api_key = _read_env_api_key(provider)
+        base_url = _read_env_base_url(provider)
+        defaults = {
+            LLMProvider.DEEPSEEK: {"think": "deepseek-reasoner", "chat": "deepseek-chat"},
+            LLMProvider.SILICONFLOW: {"think": "deepseek-ai/DeepSeek-R1", "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp"},
+            LLMProvider.ZHIPU: {"think": "glm-4.6", "chat": "glm-4.6"},
+        }
+        
+        # 检查可达性
+        is_reachable = _is_reachable(base_url)
+        has_api_key = bool(api_key)
+        
+        providers_info.append({
+            "name": provider.value,
+            "display_name": {
+                LLMProvider.DEEPSEEK: "DeepSeek",
+                LLMProvider.SILICONFLOW: "SiliconFlow (硅基流动)",
+                LLMProvider.ZHIPU: "智谱GLM",
+            }.get(provider, provider.value),
+            "think_model": defaults[provider]["think"],
+            "chat_model": defaults[provider]["chat"],
+            "base_url": base_url,
+            "has_api_key": has_api_key,
+            "is_reachable": is_reachable,
+            "status": "✅ 可用" if (has_api_key and is_reachable) else ("⚠️  API Key缺失" if not has_api_key else "❌ 不可达"),
+        })
+    
+    return providers_info
 
 
 THINK_CONFIG = get_llm_config(LLMRole.THINK)

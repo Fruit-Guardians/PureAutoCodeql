@@ -46,7 +46,14 @@ class CVEAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CVE分析。"""
-        analyzer = MultiAgentAnalyzer()
+        # 从配置中获取提供商信息
+        provider = getattr(context, '_config', None) and context._config.llm_provider
+        if provider:
+            from config import get_llm_config_by_provider, LLMRole
+            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
+            analyzer = MultiAgentAnalyzer(llm_config)
+        else:
+            analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
 
         cve_agent = CVEAnalysisAgent(analyzer)
@@ -79,7 +86,14 @@ class SinkAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Sink路径分析。"""
-        analyzer = MultiAgentAnalyzer()
+        # 从配置中获取提供商信息
+        provider = getattr(context, '_config', None) and context._config.llm_provider
+        if provider:
+            from config import get_llm_config_by_provider, LLMRole
+            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
+            analyzer = MultiAgentAnalyzer(llm_config)
+        else:
+            analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
 
         sink_agent = UnifiedSinkPathAgent(analyzer, context.case_paths.source_code)
@@ -112,7 +126,14 @@ class SourceAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Source分析。"""
-        analyzer = MultiAgentAnalyzer()
+        # 从配置中获取提供商信息
+        provider = getattr(context, '_config', None) and context._config.llm_provider
+        if provider:
+            from config import get_llm_config_by_provider, LLMRole
+            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
+            analyzer = MultiAgentAnalyzer(llm_config)
+        else:
+            analyzer = MultiAgentAnalyzer()
         await analyzer.initialize()
 
         source_agent = UnifiedSourceAnalysisAgent(
@@ -164,8 +185,15 @@ class CodeQLGenerationStep(AnalysisStep):
         """
 
         # 使用推理模型
-        from config import get_think_config
-        codeql_analyzer = MultiAgentAnalyzer(get_think_config())
+        # 从配置中获取提供商信息
+        provider = getattr(context, '_config', None) and context._config.llm_provider
+        if provider:
+            from config import get_llm_config_by_provider, LLMRole
+            think_config = get_llm_config_by_provider(provider, LLMRole.THINK)
+            codeql_analyzer = MultiAgentAnalyzer(think_config)
+        else:
+            from config import get_think_config
+            codeql_analyzer = MultiAgentAnalyzer(get_think_config())
         await codeql_analyzer.initialize()
 
         codeql_tool = CodeQLComposeTool(
@@ -229,6 +257,9 @@ class AnalysisPipeline:
             language=context.language
         )
         config = config or AnalysisConfig()
+        
+        # 将配置存储到上下文中，供步骤使用
+        context._config = config
 
         try:
             for step in self.steps:

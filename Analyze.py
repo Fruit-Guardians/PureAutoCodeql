@@ -7,6 +7,7 @@ from core.context import AnalysisConfig
 from services.language_detector import LanguageDetector
 from utils.case import resolve_case, discover_cve_assets
 from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
+from config import list_available_providers, get_llm_config_by_provider, LLMRole
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -18,7 +19,8 @@ async def run_case_analysis(
     case_id: str,
     refresh_intel: bool = False,
     stream: bool = False,
-    output_file: Optional[str] = None
+    output_file: Optional[str] = None,
+    provider: Optional[str] = None
 ) -> None:
     """
     运行完整的案例分析
@@ -28,13 +30,32 @@ async def run_case_analysis(
         refresh_intel: 是否强制刷新情报数据
         stream: 是否显示AI思考过程
         output_file: 自定义输出文件名
+        provider: 模型提供商名称（deepseek/siliconflow/zhipu）
     """
     # 创建配置
     config = AnalysisConfig(
         show_thinking=stream,
         refresh_intel=refresh_intel,
-        output_file=output_file  # None 表示使用时间戳目录
+        output_file=output_file,  # None 表示使用时间戳目录
+        llm_provider=provider
     )
+    
+    # 显示模型提供商信息
+    if provider:
+        try:
+            chat_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
+            print_user_info(f"🤖 使用模型提供商: {provider} ({chat_config.model})")
+            logger.info(f"使用模型提供商: {provider}, 模型: {chat_config.model}, Base URL: {chat_config.base_url}")
+        except Exception as e:
+            print_user_error(f"❌ 无法使用提供商 {provider}: {e}")
+            logger.error(f"提供商配置失败: {e}", exc_info=True)
+            return
+    else:
+        # 显示当前环境变量配置的提供商
+        from config import get_chat_config
+        chat_config = get_chat_config()
+        print_user_info(f"🤖 使用模型提供商: {chat_config.provider or '环境变量配置'} ({chat_config.model})")
+        logger.info(f"使用环境变量配置的模型提供商: {chat_config.provider}, 模型: {chat_config.model}")
 
     # 创建并运行编排器
     orchestrator = AnalysisOrchestrator(config)
@@ -154,6 +175,11 @@ def parse_arguments() -> argparse.Namespace:
         metavar="CASE_ID",
         help="验证指定案例是否有效"
     )
+    group.add_argument(
+        "--list-providers",
+        action="store_true",
+        help="列出所有可用的模型提供商及其状态"
+    )
 
     # 可选参数
     parser.add_argument(
@@ -173,10 +199,41 @@ def parse_arguments() -> argparse.Namespace:
         metavar="FILE",
         help="指定输出文件名 (默认: output.md)"
     )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["deepseek", "siliconflow", "zhipu"],
+        metavar="PROVIDER",
+        help="指定模型提供商 (deepseek/siliconflow/zhipu)，覆盖环境变量 LLM_PROVIDER"
+    )
 
     parser.set_defaults(stream=True)
 
     return parser.parse_args()
+
+
+def list_providers() -> None:
+    """列出所有可用的模型提供商"""
+    providers = list_available_providers()
+    
+    print("\n" + "=" * 80)
+    print("📋 可用的模型提供商:")
+    print("=" * 80)
+    
+    for provider in providers:
+        print(f"\n🔹 {provider['display_name']} ({provider['name']})")
+        print(f"   状态: {provider['status']}")
+        print(f"   推理模型: {provider['think_model']}")
+        print(f"   对话模型: {provider['chat_model']}")
+        print(f"   Base URL: {provider['base_url']}")
+        if not provider['has_api_key']:
+            print(f"   ⚠️  需要设置 API Key 环境变量")
+    
+    print("\n" + "=" * 80)
+    print("💡 使用方式:")
+    print("   python Analyze.py --case CVE-2021-21985 --provider deepseek")
+    print("   export LLM_PROVIDER=deepseek  # 或通过环境变量设置")
+    print("=" * 80 + "\n")
 
 
 async def main() -> None:
@@ -184,25 +241,28 @@ async def main() -> None:
     args = parse_arguments()
 
     try:
-        if args.list:
+        if args.list_providers:
+            list_providers()
+        elif args.list:
             list_available_cases()
-
         elif args.validate:
             await validate_case(args.validate)
-
         elif args.case:
             print(f"🚀 PureAutoCodeQL 启动")
             print(f"🎯 分析案例: {args.case}")
             print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
             print(f"🔄 刷新情报: {'是' if args.refresh_intel else '否'}")
             print(f"📄 输出文件: {args.output or 'output.md'}")
+            if args.provider:
+                print(f"🤖 模型提供商: {args.provider} (命令行指定)")
             print("-" * 50)
 
             await run_case_analysis(
                 case_id=args.case,
                 refresh_intel=args.refresh_intel,
                 stream=args.stream,
-                output_file=args.output
+                output_file=args.output,
+                provider=args.provider
             )
 
     except KeyboardInterrupt:
