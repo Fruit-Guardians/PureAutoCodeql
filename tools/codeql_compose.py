@@ -117,7 +117,16 @@ class CodeQLComposeTool(BaseTool):
 
     @staticmethod
     def _extract_codeql_from_response(content: str) -> Optional[str]:
+        # 优先匹配标准格式：```ql
         match = re.search(r"```ql\s*(.*?)```", content, re.DOTALL)
+        if match:
+            code = match.group(1).strip()
+            if code.startswith("\n"):
+                code = code[1:]
+            return code
+
+        # 匹配带空格的格式：``` ql
+        match = re.search(r"```\s+ql\s*(.*?)```", content, re.DOTALL)
         if match:
             code = match.group(1).strip()
             if code.startswith("\n"):
@@ -128,6 +137,7 @@ class CodeQLComposeTool(BaseTool):
         if match:
             return match.group(1).strip()
 
+        # 最后匹配通用格式：```
         match = re.search(r"```\s*(.*?)```", content, re.DOTALL)
         if match:
             code = match.group(1).strip()
