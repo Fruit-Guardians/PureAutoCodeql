@@ -176,9 +176,17 @@ class UnifiedSourceAnalysisAgent:
             
             compose_output = await self.codeql_composer._arun(requirement, show_thinking=show_thinking)
             ql_code = None
+            # 优先匹配标准格式：```ql
             block = re.search(r"```ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
             if block:
                 ql_code = block.group(1).strip()
+            
+            # 匹配带空格的格式：``` ql
+            if not ql_code:
+                block = re.search(r"```\s+ql\s*\n(.*?)\n```", compose_output, re.DOTALL)
+                if block:
+                    ql_code = block.group(1).strip()
+            
             if not ql_code:
                 tag = re.search(r"<codeql>(.*?)</codeql>", compose_output, re.DOTALL)
                 if tag:
