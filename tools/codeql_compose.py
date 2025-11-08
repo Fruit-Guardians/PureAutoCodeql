@@ -16,14 +16,11 @@ from pydantic import BaseModel, Field
 
 from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
 from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
-from config import get_sarif2json_config
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
     apply_placeholders,
     CodeQLSyntaxSession,
-    CodeQLExecutionService,
-    CodeQLExecutionResult,
 )
 from utils.codeql import (
     create_temporary_qlpack,
@@ -32,7 +29,6 @@ from utils.codeql import (
     validate_codeql_database,
     is_database_error,
 )
-from utils.sarif_utils import write_paths_json
 
 
 class CodeQLComposeInput(BaseModel):
@@ -69,13 +65,6 @@ class CodeQLComposeTool(BaseTool):
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
         syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
-        execution_service_factory: Optional[
-            Callable[[str, str], CodeQLExecutionService]
-        ] = None,
-        execute_fn: Callable[[str, str, Optional[str]], Dict[str, Any]] = execute_codeql_query,
-        decode_fn: Optional[
-            Callable[[str, str, Optional[str]], Dict[str, Any]]
-        ] = run_query_and_decode_to_text,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -87,25 +76,8 @@ class CodeQLComposeTool(BaseTool):
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
         self._syntax_session_cls = syntax_session_cls
-        self._execution_service_factory = (
-            execution_service_factory or self._default_execution_service_factory
-        )
-        self._execute_fn = execute_fn
-        self._decode_fn = decode_fn
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
-
-    def _default_execution_service_factory(
-        self,
-        database_path: str,
-        language: str,
-    ) -> CodeQLExecutionService:
-        return CodeQLExecutionService(
-            database_path=database_path,
-            language=language,
-            execute_fn=self._execute_fn,
-            decode_fn=self._decode_fn,
-        )
 
     def _get_kb_context(self, requirement: str, project_root: Path, language: str) -> Dict[str, str]:
         """Return structured KB context for the given language, if available."""
@@ -125,67 +97,6 @@ class CodeQLComposeTool(BaseTool):
             return cached.build_context(requirement)
         except Exception:
             return {}
-
-    @staticmethod
-    def _preflight_validate_query(query: str, language: str) -> Optional[str]:
-        """Lightweight structural checks before invoking the LSP."""
-        if not query:
-            return "Query body is empty."
-
-        issues: List[str] = []
-        normalized = query.lower()
-
-        if "@kind path-problem" not in normalized:
-            issues.append("Missing '@kind path-problem' metadata block.")
-        if "module flow =" not in normalized:
-            issues.append("Missing 'module Flow = TaintTracking::Global<...>' definition.")
-        if "select " not in normalized:
-            issues.append("Missing 'select' result clause.")
-        if "import flow::pathgraph" not in normalized:
-            issues.append("Missing 'import Flow::PathGraph'.")
-
-        target_lang = (language or "").lower()
-        if target_lang == "python":
-            required_imports = [
-                "import python",
-                "import semmle.python.dataflow.new.dataflow",
-                "import semmle.python.dataflow.new.tainttracking",
-            ]
-            for token in required_imports:
-                if token not in normalized:
-                    issues.append(f"Missing required Python import '{token}'.")
-
-            has_parameter_node = "dataflow::parameternode" in normalized
-            has_remote_source = (
-                "import semmle.python.dataflow.new.remoteflowsources" in normalized
-                or "remoteflowsource" in normalized
-            )
-            if not (has_parameter_node or has_remote_source):
-                issues.append(
-                    "Python sources must use either DataFlow::ParameterNode or RemoteFlowSource."
-                )
-
-            other_required_tokens = [
-                "dataflow::callcfgnode",
-                "dataflow::attrread",
-                "getlocation().getfile()",
-            ]
-            for token in other_required_tokens:
-                if token not in normalized:
-                    issues.append(f"Missing required Python dataflow token '{token}'.")
-
-            blacklist_patterns = {
-                r"(?<!DataFlow::)ParameterNode": "Use 'DataFlow::ParameterNode' with explicit namespace and '.()' casting.",
-                r"\bMethodCall\b": "Python new dataflow API does not expose 'MethodCall'; use 'DataFlow::CallCfgNode' + AttrRead instead.",
-                r"\bgetFile\s*\(": "Call 'node.getLocation().getFile()' instead of 'getFile()'.",
-            }
-            for pattern, message in blacklist_patterns.items():
-                if re.search(pattern, query):
-                    issues.append(message)
-
-        if not issues:
-            return None
-        return "Preflight validation failed:\n" + "\n".join(f"- {msg}" for msg in issues)
 
     def _lsp_and_execute(
         self,
@@ -233,17 +144,46 @@ class CodeQLComposeTool(BaseTool):
                 print("✅ [CodeQLComposeTool] 未发现任何诊断信息")
 
             if errors:
-                error_messages = []
+                # 构建详细的LSP诊断信息，包含完整的JSON格式以便错误分析Agent使用
+                error_details = []
+                error_messages = []  # 初始化可读格式的错误消息列表
                 for error in errors:
                     message = error.get("message", "Unknown error")
                     range_info = error.get("range", {})
                     start = range_info.get("start", {})
                     line = start.get("line", 0) + 1
                     character = start.get("character", 0) + 1
+                    end = range_info.get("end", {})
+                    end_line = end.get("line", 0) + 1
+                    end_character = end.get("character", 0) + 1
+                    
+                    # 构建结构化错误信息
+                    error_detail = {
+                        "line": line,
+                        "column": character,
+                        "end_line": end_line,
+                        "end_column": end_character,
+                        "message": message,
+                        "severity": error.get("severity", 1),
+                        "source": error.get("source", ""),
+                    }
+                    error_details.append(error_detail)
+                    
+                    # 同时保留可读格式
                     error_messages.append(f"Line {line}, Column {character}: {message}")
 
                 print(f"❌ [CodeQLComposeTool] 发现 {len(errors)} 个语法错误")
-                return {"success": False, "output": "\n".join(error_messages)}
+                
+                # 返回完整的LSP诊断信息（JSON格式 + 可读格式）
+                lsp_error_output = {
+                    "format": "lsp_diagnostics",
+                    "errors": error_details,
+                    "readable": "\n".join(error_messages),
+                    "diagnostics_count": len(errors),
+                    "all_diagnostics": diagnostics  # 包含所有诊断信息（错误、警告等）
+                }
+                import json
+                return {"success": False, "output": json.dumps(lsp_error_output, indent=2, ensure_ascii=False)}
 
             print(f"✅ [CodeQLComposeTool] 语法检查通过")
             print(f"🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
@@ -318,7 +258,7 @@ class CodeQLComposeTool(BaseTool):
     def _format_success_result(
         query: str,
         round_index: int,
-        execution: CodeQLExecutionResult,
+        execution: Any,  # CodeQLExecutionResult from services.codeql_execution
     ) -> str:
         result = (
             f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n"
@@ -444,7 +384,7 @@ class CodeQLComposeTool(BaseTool):
             return f"Error: Failed to start LSP service for syntax checking"
 
         try:
-            with self._syntax_session_cls(pack_root) as syntax_session:
+            with self._syntax_session_cls(pack_root):
                 while round_index <= max_iterations:
                     gen_prompt_base = gen_agent.build_prompt(
                         language=target_language,
@@ -480,17 +420,13 @@ class CodeQLComposeTool(BaseTool):
                         final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
                         return final_result
                     
-
-                    preflight_msg = self._preflight_validate_query(current_ql, target_language)
-                    if preflight_msg:
-                        exec_result = {"success": False, "output": preflight_msg}
-                    else:
-                        exec_result = self._lsp_and_execute(
-                            current_ql=current_ql,
-                            target_language=target_language,
-                            query_file=query_file,
-                            lsp_service=lsp_service,
-                        )
+                    # 直接使用 LSP 进行语法检查和执行
+                    exec_result = self._lsp_and_execute(
+                        current_ql=current_ql,
+                        target_language=target_language,
+                        query_file=query_file,
+                        lsp_service=lsp_service,
+                    )
 
                     # Check execution result
                     if exec_result.get('success', False):
@@ -502,14 +438,14 @@ class CodeQLComposeTool(BaseTool):
                             success=exec_result.get('success', False),
                             output=exec_result.get('output', ''),
                             sarif_path=exec_result.get('sarif_path'),
-                            json_path=exec_result.get('json_path'),
-                            paths_count=exec_result.get('paths_count'),
+                            json_path=exec_result.get('json_path'),  # execute_codeql_query 不返回此字段，为 None
+                            paths_count=exec_result.get('paths_count'),  # execute_codeql_query 不返回此字段，为 None
                             result_file=exec_result.get('result_file'),
                             preview=exec_result.get('preview')
                         )
                         
                         # 正常结果处理
-                        if mode_now == 'run' and run_query_and_decode_to_text:
+                        if mode_now == 'run' and run_query_and_decode_to_text is not None:
                             result_file = exec_result.get('result_file')
                             full_text = exec_result.get('output', '') or ''
                             lines = (full_text.splitlines() if isinstance(full_text, str) else [])
@@ -537,16 +473,6 @@ class CodeQLComposeTool(BaseTool):
                             return final_result
 
                     # 如果语法检查通过但执行失败，继续纠错循环
-                    if round_index >= max_iterations:
-                        error_info = self._format_error_info(exec_result.get('output', ''), round_index)
-                        is_success = False
-                        final_result = (
-                            f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
-                            f"Final error:\n{error_info}\n\n"
-                            f"Last attempted query:\n```ql\n{current_ql}\n```"
-                        )
-                        return final_result
-
                     if round_index >= max_iterations:
                         error_info = self._format_error_info(exec_result.get('output', ''), round_index)
                         is_success = False
