@@ -26,17 +26,17 @@
 - [x] 3.6 确保CLI模式的 `show_thinking` 终端输出不受影响
 
 ## Phase 4: Pipeline层传递Agent上下文
-- [ ] 4.1 修改 `core/pipeline.py` 的 `PipelineStep` 添加 `agent_name` 属性
-- [ ] 4.2 在创建各个Step时指定 `agent_name`（CVE、Sink、Source、CodeQL等）
-- [ ] 4.3 在Step执行时将 `agent_name` 传递给Agent的 `analyze` 方法
-- [ ] 4.4 确保 `event_callback` 能访问到Agent上下文信息
+- [x] 4.1 修改 `core/pipeline.py` 的 `PipelineStep` 添加 `agent_name` 属性
+- [x] 4.2 在创建各个Step时指定 `agent_name`（CVE、Sink、Source、CodeQL等）
+- [x] 4.3 在Step执行时将 `agent_name` 传递给Agent的 `analyze` 方法
+- [x] 4.4 确保 `event_callback` 能访问到Agent上下文信息
 
 ## Phase 5: CodeQL生成Agent集成（保持CLI兼容）
-- [ ] 5.1 修改 `agents/codeql_gen_agents/codeql_gen_agent.py` 接收可选的 `event_callback=None` 参数
-- [ ] 5.2 在CodeQL生成开始时推送 `AGENT_START` 事件（仅当 `event_callback` 不为None）
-- [ ] 5.3 在生成过程中推送 `AGENT_THINKING` 事件（如有思考过程，且 `event_callback` 不为None）
-- [ ] 5.4 在CodeQL生成完成时推送 `AGENT_COMPLETE` 事件（仅当 `event_callback` 不为None）
-- [ ] 5.5 在CodeQL错误分析Agent中也添加相应事件（保持可选）
+- [x] 5.1 修改 `agents/codeql_gen_agents/codeql_gen_agent.py` 接收可选的 `event_callback=None` 参数
+- [x] 5.2 在CodeQL生成开始时推送 `AGENT_START` 事件（仅当 `event_callback` 不为None）
+- [x] 5.3 在生成过程中推送 `AGENT_THINKING` 事件（如有思考过程，且 `event_callback` 不为None）
+- [x] 5.4 在CodeQL生成完成时推送 `AGENT_COMPLETE` 事件（仅当 `event_callback` 不为None）
+- [x] 5.5 在CodeQL错误分析Agent中也添加相应事件（保持可选）
 
 ## Phase 6: 测试和验证
 - [ ] 6.1 单元测试：验证新事件类型的序列化和反序列化
@@ -50,8 +50,7 @@
 - [ ] 6.9 混合模式测试：验证API模式和CLI模式可以独立工作
 
 ## Phase 7: 文档和示例
-- [ ] 7.1 更新API文档，说明新增的事件类型
-- [ ] 7.2 创建Agent事件监听的客户端示例
-- [ ] 7.3 添加事件数据结构说明文档
-- [ ] 7.4 更新README，说明Agent流式输出功能
-
+- [x] 7.1 更新API文档，说明新增的事件类型
+- [x] 7.2 创建Agent事件监听的客户端示例
+- [x] 7.3 添加事件数据结构说明文档
+- [x] 7.4 更新README，说明Agent流式输出功能

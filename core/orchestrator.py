@@ -66,7 +66,8 @@ class AnalysisOrchestrator:
                 cve_assets=cve_assets,
                 language=language,
                 intel_bundle=intel_bundle,
-                show_thinking=self.config.show_thinking
+                show_thinking=self.config.show_thinking,
+                event_callback=self.config.event_callback
             )
 
             # 创建并执行分析流水线

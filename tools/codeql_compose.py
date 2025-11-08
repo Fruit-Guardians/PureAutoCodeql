@@ -366,6 +366,8 @@ class CodeQLComposeTool(BaseTool):
         exec_mode: str = "analyze",
         show_thinking: bool = False,
         event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
     ) -> str:
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
@@ -390,6 +392,20 @@ class CodeQLComposeTool(BaseTool):
 
         target_language = self.default_language
         max_iterations = self.default_max_rounds
+        
+        _agent_name = agent_name or "CodeQL Compose Tool"
+        _agent_type = agent_type or "codeql_compose"
+        
+        if event_callback:
+            from datetime import datetime
+            await event_callback({
+                "type": "agent_start",
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": _agent_name,
+                "agent_type": _agent_type,
+                "message": f"开始CodeQL查询生成与验证（{target_language}）",
+                "data": {"language": target_language, "max_iterations": max_iterations}
+            })
 
         project_root = Path(__file__).parent.parent
         kb_context: Dict[str, str] = self._get_kb_context(requirement, project_root, target_language)
@@ -414,6 +430,8 @@ class CodeQLComposeTool(BaseTool):
         # 添加详细的进度指示
         import time
         start_time = time.time()
+        final_result = None
+        is_success = False
         print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
         
 
@@ -452,11 +470,15 @@ class CodeQLComposeTool(BaseTool):
                     gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
                     if not gen_result.success:
-                        return f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
+                        is_success = False
+                        final_result = f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
+                        return final_result
 
                     current_ql = self._extract_codeql_from_response(gen_result.content)
                     if not current_ql:
-                        return f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
+                        is_success = False
+                        final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
+                        return final_result
                     
 
                     preflight_msg = self._preflight_validate_query(current_ql, target_language)
@@ -501,31 +523,39 @@ class CodeQLComposeTool(BaseTool):
                             )
                             if preview.strip():
                                 result += "Preview:\n\n```\n" + preview + "\n```"
+                            is_success = True
+                            final_result = result
                             return result
                         else:
                             print("codeql query:", current_ql)
-                            return self._format_success_result(
+                            is_success = True
+                            final_result = self._format_success_result(
                                 query=current_ql,
                                 round_index=round_index,
                                 execution=execution_result,
                             )
+                            return final_result
 
                     # 如果语法检查通过但执行失败，继续纠错循环
                     if round_index >= max_iterations:
                         error_info = self._format_error_info(exec_result.get('output', ''), round_index)
-                        return (
+                        is_success = False
+                        final_result = (
                             f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
                             f"Final error:\n{error_info}\n\n"
                             f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
+                        return final_result
 
                     if round_index >= max_iterations:
                         error_info = self._format_error_info(exec_result.get('output', ''), round_index)
-                        return (
+                        is_success = False
+                        final_result = (
                             f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
                             f"Final error:\n{error_info}\n\n"
                             f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
+                        return final_result
                     error_prompt_base = error_agent.build_prompt(
                         error_log=exec_result.get('output', ''),
                         curr_ql_content=current_ql,
@@ -551,24 +581,41 @@ class CodeQLComposeTool(BaseTool):
                     error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
                     if not error_analysis.success:
-                        return (
+                        is_success = False
+                        final_result = (
                             f"Error in error analysis (Round {round_index}): "
                             f"{error_analysis.error or 'Unknown error'}"
                         )
+                        return final_result
 
                     prev_original_ql = current_ql
                     prev_fix_suggestions = error_analysis.content
                     round_index += 1
 
         except RuntimeError as runtime_error:
-            return f"Error: {runtime_error}"
+            final_result = f"Error: {runtime_error}"
+            is_success = False
         except Exception as exc:
-            return f"Error during CodeQL composition: {exc}"
+            final_result = f"Error during CodeQL composition: {exc}"
+            is_success = False
         finally:
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL查询生成与验证{'成功' if is_success else '失败'}",
+                    "data": {"success": is_success, "language": target_language}
+                })
+            
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
             lsp_service.stop()
 
+        if final_result is not None:
+            return final_result
         return f"Unexpected end of iteration loop after {max_iterations} rounds"
 
 

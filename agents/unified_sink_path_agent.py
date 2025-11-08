@@ -34,17 +34,19 @@ class UnifiedSinkPathAgent:
         """构建针对不同语言的提示词。"""
         return build_sink_prompt(language, cve_analysis, source_path, diff_path)
 
-    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True, event_callback=None) -> "AgentResult":
+    async def analyze_paths(self, language: str, cve_analysis: str, diff_path: str = "", show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> "AgentResult":
         """统一的分析方法，根据语言类型执行相应的分析。"""
         try:
-            # Phase 2.5: 推送 AGENT_START 事件
+            _agent_name = agent_name or "Sink Path Analysis Agent"
+            _agent_type = agent_type or "sink_analysis"
+            
             if event_callback:
                 from datetime import datetime
                 await event_callback({
                     "type": "agent_start",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "Sink Path Analysis Agent",
-                    "agent_type": "sink_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": f"开始{language}语言Sink路径分析",
                     "data": {"language": language, "diff_path": diff_path}
                 })
@@ -123,14 +125,13 @@ class UnifiedSinkPathAgent:
             prompt = self.build_prompt(language, cve_analysis, source_prompt_path, diff_prompt_path)
             result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
             
-            # Phase 2.5: 推送 AGENT_COMPLETE 事件
             if event_callback:
                 from datetime import datetime
                 await event_callback({
                     "type": "agent_complete",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "Sink Path Analysis Agent",
-                    "agent_type": "sink_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": f"{language}语言Sink路径分析完成",
                     "data": {"success": result.success}
                 })
@@ -138,14 +139,13 @@ class UnifiedSinkPathAgent:
             return result
 
         except Exception as exc:
-            # 推送错误事件
             if event_callback:
                 from datetime import datetime
                 await event_callback({
                     "type": "error",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "Sink Path Analysis Agent",
-                    "agent_type": "sink_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": f"Sink路径分析失败: {str(exc)}",
                     "data": {"error": str(exc)}
                 })

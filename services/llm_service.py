@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
- 
+
 
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 
@@ -46,11 +46,11 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
         # 清理输出，移除可能的tool_call_id等元数据
         cleaned_text = text.split("' name=")[0] if "' name=" in text else text
         cleaned_text = cleaned_text.strip().strip("'\"")
-        
+
         # 检查是否是 "No matches found" 的情况
         if "no matches found" in cleaned_text.lower() or cleaned_text.lower() == "no matches found":
             return "未找到匹配"
-        
+
         lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
         count = len(lines)
         if count == 0:
@@ -78,34 +78,34 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
     """打印工具输出的详细内容。"""
     import json
     import re
-    
+
     # 如果输出为 None 或空字符串，跳过详细显示（空列表会显示"空目录"）
     if output is None or output == "":
         return
-    
+
     # 检查是否是目录列表工具
     is_list_dir = (
-        tool_name == "list_directory" or 
-        "list_directory" in tool_name or 
+        tool_name == "list_directory" or
+        "list_directory" in tool_name or
         "listDirectory" in tool_name or
         tool_name == "directory_tree"
     )
-    
+
     # 检查是否是文件读取工具
     is_read_file = (
         tool_name == "read_text_file" or
         tool_name == "read_file" or
-        "read_file" in tool_name or 
+        "read_file" in tool_name or
         "readFile" in tool_name or
         "read_text_file" in tool_name
     )
-    
+
     if is_list_dir:
         # 目录列表操作：解析JSON并格式化显示
         try:
             # 处理可能包含 content='...' 格式的字符串
             output_str = str(output)
-            
+
             # 尝试提取 content='...' 中的内容（处理转义的单引号）
             # 匹配 content='...' 格式，支持转义的单引号
             content_match = re.search(r"content='((?:[^'\\]|\\.)*)'", output_str)
@@ -114,7 +114,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                 # 处理转义的换行符和其他转义字符
                 content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
                 output_str = content
-            
+
             # 尝试解析JSON格式
             try:
                 dir_data = json.loads(output_str)
@@ -132,16 +132,16 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                         elif line.startswith('[FILE]'):
                             name = line[6:].strip()
                             items.append({'name': name, 'type': 'file'})
-                    
+
                     if items:
                         dir_data = items
                     else:
                         raise ValueError("无法解析目录列表")
                 else:
                     dir_data = output
-            
+
             print("📁 目录列表:")
-            
+
             if isinstance(dir_data, list):
                 if len(dir_data) == 0:
                     print("   (空目录)")
@@ -203,13 +203,13 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                 for line in lines:
                     if line.strip():
                         print(f"   📄 {line.strip()}")
-    
+
     elif is_read_file:
         # 文件读取操作：格式化显示文件内容（显示前N行）
         MAX_PREVIEW_LINES = 30  # 最多显示30行
-        
+
         output_str = str(output)
-        
+
         # 处理可能包含 content='...' 格式的字符串（处理转义的单引号）
         content_match = re.search(r"content='((?:[^'\\]|\\.)*)'", output_str)
         if content_match:
@@ -217,25 +217,25 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
             # 处理转义的换行符和其他转义字符
             content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
             output_str = content
-        
+
         # 处理可能包含转义字符的字符串
         if '\\n' in output_str and '\n' not in output_str:
             output_str = output_str.replace('\\n', '\n')
-        
+
         lines = output_str.split('\n')
         total_lines = len(lines)
-        
+
         print(f"📖 文件内容 (共 {total_lines} 行):")
         print("-" * 60)
-        
+
         # 显示前N行
         preview_lines = lines[:MAX_PREVIEW_LINES]
         for i, line in enumerate(preview_lines, 1):
             print(f"{i:4d} | {line}")
-        
+
         if total_lines > MAX_PREVIEW_LINES:
             print(f"... (还有 {total_lines - MAX_PREVIEW_LINES} 行未显示)")
-        
+
         print("-" * 60)
 
 
@@ -286,7 +286,7 @@ class MultiAgentAnalyzer:
 
             agent = create_agent(self.llm, self.tools)
             content_parts = []
-            
+
             # 跟踪工具执行状态
             current_tool = None
             tool_start_time = {}
@@ -297,7 +297,7 @@ class MultiAgentAnalyzer:
                 {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
             ):
                 event_name = event.get("event")
-                
+
                 # Phase 3.2: 推送 AGENT_THINKING 事件（当检测到思考标记）
                 if event_callback and event_name == "on_agent_action":
                     from datetime import datetime
@@ -315,7 +315,7 @@ class MultiAgentAnalyzer:
                                 "tool_input": action.tool_input if hasattr(action, "tool_input") else None
                             }
                         })
-                
+
                 if event_callback and event_name == "on_tool_start":
                     from datetime import datetime
                     tool_name = event.get("name", "")
@@ -354,7 +354,7 @@ class MultiAgentAnalyzer:
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", "")
                         output_preview = _format_tool_output(tool_name, output)
-                        
+
                         # 根据输出内容决定显示标识
                         if "未找到" in output_preview or "no matches found" in str(output).lower():
                             # 未找到结果时显示 ⚠️
@@ -362,7 +362,7 @@ class MultiAgentAnalyzer:
                         else:
                             # 成功时显示 ✅
                             print(f"✅ {output_preview}")
-                        
+
                         # 显示详细内容（针对特定工具）
                         _print_detailed_tool_output(tool_name, output)
                         current_tool = None
@@ -386,7 +386,7 @@ class MultiAgentAnalyzer:
                             text = str(chunk.content)
                         if text:
                             content_parts.append(text)
-                            
+
                             if event_callback:
                                 from datetime import datetime
                                 await event_callback({
@@ -397,7 +397,7 @@ class MultiAgentAnalyzer:
                                     "message": text,
                                     "data": {"stream_chunk": text}
                                 })
-                            
+
                             if show_thinking:
                                 # 第一次输出时添加分隔符
                                 if not output_started:

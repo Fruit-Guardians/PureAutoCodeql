@@ -80,17 +80,23 @@ class CVEAnalysisAgent:
         intel_prompt: Optional[str] = None,
         show_thinking: bool = True,
         event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
     ) -> "AgentResult":
         """分析CVE JSON文件并返回Markdown报告。"""
         try:
+            # Phase 4.4: 使用传入的agent_name和agent_type，若无则使用默认值
+            _agent_name = agent_name or "CVE Analysis Agent"
+            _agent_type = agent_type or "cve_analysis"
+            
             # Phase 2.2: 推送 AGENT_START 事件
             if event_callback:
                 from datetime import datetime
                 await event_callback({
                     "type": "agent_start",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "CVE Analysis Agent",
-                    "agent_type": "cve_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": "开始CVE分析",
                     "data": {"json_path": str(json_path)}
                 })
@@ -105,8 +111,8 @@ class CVEAnalysisAgent:
                 await event_callback({
                     "type": "agent_complete",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "CVE Analysis Agent",
-                    "agent_type": "cve_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": "CVE分析完成",
                     "data": {"success": result.success}
                 })
@@ -119,8 +125,8 @@ class CVEAnalysisAgent:
                 await event_callback({
                     "type": "error",
                     "timestamp": datetime.now().isoformat(),
-                    "agent_name": "CVE Analysis Agent",
-                    "agent_type": "cve_analysis",
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
                     "message": f"CVE分析失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
