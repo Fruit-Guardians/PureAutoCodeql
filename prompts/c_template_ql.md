@@ -1,89 +1,86 @@
 /**
- * @name [Vulnerability Name]
- * @description [Vulnerability Description]
+ * @name [漏洞名称 / CVE]
+ * @description [用 2~3 句话说明漏洞成因、补丁逻辑与本查询给出的路径语义]
  * @kind path-problem
- * @id cpp/[unique-id]
+ * @id cpp/[自定义的唯一 ID]
  * @problem.severity [error|warning|recommendation]
  * @security-severity [0.0-10.0]
  * @precision [high|medium|low]
  * @tags security
- *       external/cwe/cwe-[CWE ID]
- *       external/cve/cve-[CVE ID]
+ *       vulnerability
+ *       external/cwe/cwe-[CWE-ID]
+ *       external/cve/cve-[CVE-ID]
  */
 
 import cpp
-// Choose one of the following data flow analysis libraries
-import semmle.code.cpp.dataflow.new.DataFlow
-import semmle.code.cpp.dataflow.new.TaintTracking
-import semmle.code.cpp.controlflow.Guards
+import semmle.code.cpp.dataflow.new.TaintTracking  // 若需要精细控制，可改为 DataFlow
+// import semmle.code.cpp.dataflow.new.DataFlow
+// import semmle.code.cpp.controlflow.Guards
 
-// Import the path graph module to be able to select paths
-import DataFlow::PathGraph
+// --- 目标范围（可选） --------------------------------------------------------
 
-// --- Define Sources and Sinks ---
+/** 仅匹配受影响的函数或文件，避免全库误报。 */
+predicate inTarget(Function f) {
+  f.hasGlobalName("[受影响函数名]") or
+  f.getFile().getRelativePath().regexpMatch(".*[受影响文件]$")
+}
 
-/**
- * A class or predicate to identify the source of the data flow.
- * This is typically user-controlled input or data from an untrusted source.
- */
-// class MySource extends DataFlow::Node {
-//   MySource() {
-//     // For example, a function parameter of a specific function
-//     exists(Function f, Parameter p |
-//       f.hasGlobalName("vulnerable_function") and
-//       p = f.getAParameter() and
-//       this.asParameter() = p
-//     )
-//   }
-// }
+// --- Source / Sink 定义 -----------------------------------------------------
 
-/**
- * A class or predicate to identify the sink of the data flow.
- * This is where the tainted data is used in a dangerous way.
- */
-// class MySink extends DataFlow::Node {
-//   MySink() {
-//     // For example, the first argument to a `strcpy` call
-//     exists(FunctionCall fc |
-//       fc.getTarget().hasGlobalName("strcpy") and
-//       this.asExpr() = fc.getArgument(0)
-//     )
-//   }
-// }
+/** Source：外部可控或缺乏上界约束的表达式。 */
+predicate isSourceExpr(Expr expr) {
+  exists(FunctionCall fc |
+    fc.getTarget().hasGlobalName("[source-API]") and
+    expr = fc
+  )
+  or
+  exists(VariableAccess va |
+    va.getTarget() instanceof Parameter and
+    inTarget(va.getTarget().(Parameter).getFunction()) and
+    va.getTarget().getName() = "[参数名]"
+  )
+}
 
+/** Sink：危险调用的关键参数（例如 memcpy 第三个参数、vsprintf 目标缓冲等）。 */
+predicate isSinkExpr(Expr expr) {
+  exists(FunctionCall call |
+    call.getTarget().hasGlobalName("[sink-API]") and
+    expr = call.getArgument([索引])
+  )
+}
 
-// --- DataFlow/TaintTracking Configuration ---
+// --- 数据流配置 -------------------------------------------------------------
 
-/**
- * A configuration for the data flow analysis.
- */
-module MyDataFlowConfig implements DataFlow::ConfigSig {
+module VulnConfig implements TaintTracking::ConfigSig {
   predicate isSource(DataFlow::Node source) {
-    // Use the source definition from above
-    // exists(MySource s | source = s)
-    none() // Placeholder
+    exists(Expr e | isSourceExpr(e) and source.asExpr() = e)
   }
 
   predicate isSink(DataFlow::Node sink) {
-    // Use the sink definition from above
-    // exists(MySink s | sink = s)
-    none() // Placeholder
+    exists(Expr e | isSinkExpr(e) and sink.asExpr() = e)
   }
 
-  /**
-   * Optional: Define additional steps for the data flow.
-   */
-  // predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
-  //   // For example, flow through a specific data structure
+  /** 可选：补充 memcpy 第三个参数等特殊流转，或字段别名。 */
+  // predicate isAdditionalFlowStep(DataFlow::Node n1, DataFlow::Node n2) {
+  //   exists(FieldAccess fa1, FieldAccess fa2 |
+  //     n1.asExpr() = fa1 and
+  //     n2.asExpr() = fa2 and
+  //     fa1.getTarget() = fa2.getTarget()
+  //   )
   // }
 }
 
-// --- Instantiate the DataFlow Analysis ---
+module VulnFlow = TaintTracking::Global<VulnConfig>;
+import VulnFlow::PathGraph
 
-module MyDataFlow = DataFlow::Global<MyDataFlowConfig>;
+// --- 查询输出 ---------------------------------------------------------------
 
-// --- Query ---
-
-from MyDataFlow::PathNode source, MyDataFlow::PathNode sink
-where MyDataFlow::flowPath(source, sink)
-select sink.getNode(), source, sink, "Tainted data from $@ flows to here and is used in a dangerous way.", source.getNode(), "this source"
+from VulnFlow::PathNode src, VulnFlow::PathNode snk, Expr sinkExpr
+where
+  VulnFlow::flowPath(src, snk) and
+  sinkExpr = snk.getNode().asExpr()
+select sinkExpr,
+  src, snk,
+  "[一句话提示：$@（Source 描述） → 危险使用。建议的修复措施...]",
+  src.getNode(), "[Source 标签]",
+  snk.getNode(), "[Sink 标签]"

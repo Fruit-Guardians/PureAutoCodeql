@@ -219,6 +219,7 @@ output/
 temp/
 # 明确忽略所有queries目录，防止意外提交
 */queries/
+projects/
 # # /projects/CVE-2021-21985/db/db-java/default/cache/predicates
 # projects/CVE-2024-7099/
 # projects/CVE-2024-7099/db/
