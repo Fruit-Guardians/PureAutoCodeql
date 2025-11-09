@@ -104,6 +104,10 @@ class AnalysisConfig:
     # LLM配置
     llm_config: Optional[Any] = None
     llm_provider: Optional[str] = None  # 模型提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
+    think_model: Optional[str] = None  # 推理模型名称，如果指定则覆盖默认模型
+    chat_model: Optional[str] = None  # 对话模型名称，如果指定则覆盖默认模型
+    api_key: Optional[str] = None  # API Key，如果指定则覆盖环境变量
+    base_url: Optional[str] = None  # Base URL，如果指定则覆盖环境变量
 
     # LSP配置
     lsp_enabled: bool = True

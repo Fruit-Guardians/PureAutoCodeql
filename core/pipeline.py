@@ -15,6 +15,29 @@ from typing import Any, List, Optional
 from core.context import AnalysisContext, AnalysisConfig, AnalysisResult
 from services.llm_service import AgentResult, MultiAgentAnalyzer
 
+
+def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
+    """从上下文中获取LLM配置，支持配置中的模型、API Key和Base URL"""
+    config = getattr(context, '_config', None)
+    if not config:
+        from config import get_resilient_llm_config, LLMRole
+        return get_resilient_llm_config(role)
+    
+    from config import get_llm_config, LLMRole
+    # 从配置中获取参数
+    provider = config.llm_provider
+    model_name = config.think_model if role == LLMRole.THINK else config.chat_model
+    api_key = config.api_key
+    base_url = config.base_url
+    
+    return get_llm_config(
+        role,
+        provider_name=provider,
+        model_name=model_name,
+        api_key=api_key,
+        base_url=base_url
+    )
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -46,14 +69,9 @@ class CVEAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CVE分析。"""
-        # 从配置中获取提供商信息
-        provider = getattr(context, '_config', None) and context._config.llm_provider
-        if provider:
-            from config import get_llm_config_by_provider, LLMRole
-            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
-            analyzer = MultiAgentAnalyzer(llm_config)
-        else:
-            analyzer = MultiAgentAnalyzer()
+        from config import LLMRole
+        llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
+        analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize()
 
         cve_agent = CVEAnalysisAgent(analyzer)
@@ -86,14 +104,9 @@ class SinkAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Sink路径分析。"""
-        # 从配置中获取提供商信息
-        provider = getattr(context, '_config', None) and context._config.llm_provider
-        if provider:
-            from config import get_llm_config_by_provider, LLMRole
-            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
-            analyzer = MultiAgentAnalyzer(llm_config)
-        else:
-            analyzer = MultiAgentAnalyzer()
+        from config import LLMRole
+        llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
+        analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize()
 
         sink_agent = UnifiedSinkPathAgent(analyzer, context.case_paths.source_code)
@@ -126,14 +139,9 @@ class SourceAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Source分析。"""
-        # 从配置中获取提供商信息
-        provider = getattr(context, '_config', None) and context._config.llm_provider
-        if provider:
-            from config import get_llm_config_by_provider, LLMRole
-            llm_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
-            analyzer = MultiAgentAnalyzer(llm_config)
-        else:
-            analyzer = MultiAgentAnalyzer()
+        from config import LLMRole
+        llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
+        analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize()
 
         source_agent = UnifiedSourceAnalysisAgent(
@@ -185,15 +193,9 @@ class CodeQLGenerationStep(AnalysisStep):
         """
 
         # 使用推理模型
-        # 从配置中获取提供商信息
-        provider = getattr(context, '_config', None) and context._config.llm_provider
-        if provider:
-            from config import get_llm_config_by_provider, LLMRole
-            think_config = get_llm_config_by_provider(provider, LLMRole.THINK)
-            codeql_analyzer = MultiAgentAnalyzer(think_config)
-        else:
-            from config import get_think_config
-            codeql_analyzer = MultiAgentAnalyzer(get_think_config())
+        from config import LLMRole
+        think_config = _get_llm_config_from_context(context, LLMRole.THINK)
+        codeql_analyzer = MultiAgentAnalyzer(think_config)
         await codeql_analyzer.initialize()
 
         codeql_tool = CodeQLComposeTool(

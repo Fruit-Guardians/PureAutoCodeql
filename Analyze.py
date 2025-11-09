@@ -7,7 +7,7 @@ from core.context import AnalysisConfig
 from services.language_detector import LanguageDetector
 from utils.case import resolve_case, discover_cve_assets
 from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
-from config import list_available_providers, get_llm_config_by_provider, LLMRole
+from config import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -20,7 +20,11 @@ async def run_case_analysis(
     refresh_intel: bool = False,
     stream: bool = False,
     output_file: Optional[str] = None,
-    provider: Optional[str] = None
+    provider: Optional[str] = None,
+    think_model: Optional[str] = None,
+    chat_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None
 ) -> None:
     """
     运行完整的案例分析
@@ -30,32 +34,53 @@ async def run_case_analysis(
         refresh_intel: 是否强制刷新情报数据
         stream: 是否显示AI思考过程
         output_file: 自定义输出文件名
-        provider: 模型提供商名称（deepseek/siliconflow/zhipu）
+        provider: 模型提供商名称（deepseek/siliconflow/zhipu/kimi）
+        think_model: 推理模型名称（覆盖默认模型）
+        chat_model: 对话模型名称（覆盖默认模型）
+        api_key: API Key（覆盖环境变量）
+        base_url: Base URL（覆盖环境变量）
     """
     # 创建配置
     config = AnalysisConfig(
         show_thinking=stream,
         refresh_intel=refresh_intel,
         output_file=output_file,  # None 表示使用时间戳目录
-        llm_provider=provider
+        llm_provider=provider,
+        think_model=think_model,
+        chat_model=chat_model,
+        api_key=api_key,
+        base_url=base_url
     )
     
     # 显示模型提供商信息
-    if provider:
-        try:
-            chat_config = get_llm_config_by_provider(provider, LLMRole.CHAT)
-            print_user_info(f"🤖 使用模型提供商: {provider} ({chat_config.model})")
-            logger.info(f"使用模型提供商: {provider}, 模型: {chat_config.model}, Base URL: {chat_config.base_url}")
-        except Exception as e:
-            print_user_error(f"❌ 无法使用提供商 {provider}: {e}")
-            logger.error(f"提供商配置失败: {e}", exc_info=True)
-            return
-    else:
-        # 显示当前环境变量配置的提供商
-        from config import get_chat_config
-        chat_config = get_chat_config()
-        print_user_info(f"🤖 使用模型提供商: {chat_config.provider or '环境变量配置'} ({chat_config.model})")
-        logger.info(f"使用环境变量配置的模型提供商: {chat_config.provider}, 模型: {chat_config.model}")
+    try:
+        # 使用配置中的参数获取模型配置
+        chat_config = get_llm_config(
+            LLMRole.CHAT,
+            provider_name=provider,
+            model_name=chat_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        think_config = get_llm_config(
+            LLMRole.THINK,
+            provider_name=provider,
+            model_name=think_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        
+        provider_display = provider or chat_config.provider or "环境变量配置"
+        print_user_info(f"🤖 使用模型提供商: {provider_display}")
+        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"   💬 对话模型: {chat_config.model}")
+        if base_url:
+            print_user_info(f"   🔗 Base URL: {base_url}")
+        logger.info(f"使用模型提供商: {provider_display}, 推理模型: {think_config.model}, 对话模型: {chat_config.model}, Base URL: {chat_config.base_url}")
+    except Exception as e:
+        print_user_error(f"❌ 无法配置模型: {e}")
+        logger.error(f"模型配置失败: {e}", exc_info=True)
+        return
 
     # 创建并运行编排器
     orchestrator = AnalysisOrchestrator(config)
@@ -180,6 +205,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="列出所有可用的模型提供商及其状态"
     )
+    group.add_argument(
+        "--list-models",
+        action="store_true",
+        help="列出硅基流动的所有可用模型"
+    )
 
     # 可选参数
     parser.add_argument(
@@ -202,9 +232,43 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["deepseek", "siliconflow", "zhipu"],
+        choices=["deepseek", "siliconflow", "zhipu", "kimi"],
         metavar="PROVIDER",
-        help="指定模型提供商 (deepseek/siliconflow/zhipu)，覆盖环境变量 LLM_PROVIDER"
+        help="指定模型提供商 (deepseek/siliconflow/zhipu/kimi)，覆盖环境变量 LLM_PROVIDER"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        metavar="MODEL",
+        help="指定模型名称（同时用于推理和对话），覆盖默认模型和环境变量"
+    )
+    parser.add_argument(
+        "--think-model",
+        type=str,
+        metavar="MODEL",
+        dest="think_model",
+        help="指定推理模型名称，覆盖默认模型和环境变量"
+    )
+    parser.add_argument(
+        "--chat-model",
+        type=str,
+        metavar="MODEL",
+        dest="chat_model",
+        help="指定对话模型名称，覆盖默认模型和环境变量"
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        metavar="KEY",
+        dest="api_key",
+        help="指定API Key，覆盖环境变量"
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        metavar="URL",
+        dest="base_url",
+        help="指定Base URL，覆盖环境变量（例如: https://api.siliconflow.cn/v1）"
     )
 
     parser.set_defaults(stream=True)
@@ -243,6 +307,8 @@ async def main() -> None:
     try:
         if args.list_providers:
             list_providers()
+        elif args.list_models:
+            list_siliconflow_models()
         elif args.list:
             list_available_cases()
         elif args.validate:
@@ -257,12 +323,20 @@ async def main() -> None:
                 print(f"🤖 模型提供商: {args.provider} (命令行指定)")
             print("-" * 50)
 
+            # 如果指定了 --model，同时应用到 think_model 和 chat_model
+            think_model = args.think_model or args.model
+            chat_model = args.chat_model or args.model
+            
             await run_case_analysis(
                 case_id=args.case,
                 refresh_intel=args.refresh_intel,
                 stream=args.stream,
                 output_file=args.output,
-                provider=args.provider
+                provider=args.provider,
+                think_model=think_model,
+                chat_model=chat_model,
+                api_key=args.api_key,
+                base_url=args.base_url
             )
 
     except KeyboardInterrupt:

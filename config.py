@@ -17,6 +17,7 @@ class LLMProvider(Enum):
     DEEPSEEK = "deepseek"
     SILICONFLOW = "siliconflow"  # 硅基流动
     ZHIPU = "zhipu"  # GLM（智谱）
+    KIMI = "kimi"  # Kimi（月之暗面）
 
 
 @dataclass
@@ -39,12 +40,14 @@ def _default_base_url(provider: LLMProvider) -> str:
         return "https://api.siliconflow.cn/v1"
     if provider == LLMProvider.ZHIPU:
         return "https://open.bigmodel.cn/api/paas/v4/"
+    if provider == LLMProvider.KIMI:
+        return "https://api.moonshot.cn/v1"
     # 兜底：视为 DeepSeek
     return "https://api.deepseek.com/v1"
 
 
 def _read_env_provider() -> LLMProvider:
-    """读取默认服务商，默认 deepseek。通过 LLM_PROVIDER 指定：deepseek/siliconflow/zhipu"""
+    """读取默认服务商，默认 deepseek。通过 LLM_PROVIDER 指定：deepseek/siliconflow/zhipu/kimi"""
     raw = (os.getenv("LLM_PROVIDER") or "deepseek").strip().lower()
     for p in LLMProvider:
         if p.value == raw:
@@ -59,6 +62,7 @@ def _read_env_api_key(provider: LLMProvider) -> str:
         LLMProvider.DEEPSEEK: ["DEEPSEEK_API_KEY"],
         LLMProvider.SILICONFLOW: ["SILICONFLOW_API_KEY", "SF_API_KEY"],
         LLMProvider.ZHIPU: ["ZHIPU_API_KEY", "GLM_API_KEY"],
+        LLMProvider.KIMI: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
     }
     # 通用兜底
     generic_keys = ["OPENAI_API_KEY", "API_KEY"]
@@ -74,6 +78,7 @@ def _read_env_api_key(provider: LLMProvider) -> str:
         LLMProvider.SILICONFLOW: "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld",
         LLMProvider.DEEPSEEK: "sk-a2d1b4e295d6404694f45f45cb236c91",
         LLMProvider.ZHIPU: "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy",
+        LLMProvider.KIMI: "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny",
     }
     return dev_defaults.get(provider, "")
 
@@ -84,6 +89,7 @@ def _read_env_base_url(provider: LLMProvider) -> str:
         LLMProvider.DEEPSEEK: ["DEEPSEEK_BASE_URL"],
         LLMProvider.SILICONFLOW: ["SILICONFLOW_BASE_URL", "SF_BASE_URL"],
         LLMProvider.ZHIPU: ["ZHIPU_BASE_URL", "GLM_BASE_URL"],
+        LLMProvider.KIMI: ["KIMI_BASE_URL", "MOONSHOT_BASE_URL"],
     }
     generic_keys = ["OPENAI_BASE_URL", "BASE_URL"]
 
@@ -116,6 +122,18 @@ def get_siliconflow_models() -> list[str]:
     ]
 
 
+def list_siliconflow_models() -> None:
+    """列出硅基流动的所有可用模型"""
+    models = get_siliconflow_models()
+    print("\n" + "=" * 80)
+    print("📋 硅基流动 (SiliconFlow) 可用模型列表:")
+    print("=" * 80)
+    for i, model in enumerate(models, 1):
+        marker = "⭐" if "DeepSeek-R1" in model or "DeepSeek-V3.2" in model else "  "
+        print(f"{marker} {i}. {model}")
+    print("=" * 80 + "\n")
+
+
 def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
     """综合环境变量与默认映射，返回 (api_key, base_url, model)。"""
     provider = _read_env_provider()
@@ -135,9 +153,13 @@ def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
             "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp",
         },
         LLMProvider.ZHIPU: {
-            # GLM 系列：无“思考模型”，默认 think 与 chat 均使用 glm-4.6
+            # GLM 系列：无"思考模型"，默认 think 与 chat 均使用 glm-4.6
             "think": "glm-4.6",
             "chat": "glm-4.6",
+        },
+        LLMProvider.KIMI: {
+            "think": "kimi-k2-thinking",
+            "chat": "kimi-k2-0905-preview",
         },
     }
 
@@ -152,7 +174,7 @@ def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
 def _provider_priority(primary: LLMProvider) -> list[LLMProvider]:
     """将首选服务商置前，其余按固定顺序排在后面。"""
     ordered = [primary]
-    for p in [LLMProvider.DEEPSEEK, LLMProvider.SILICONFLOW, LLMProvider.ZHIPU]:
+    for p in [LLMProvider.DEEPSEEK, LLMProvider.SILICONFLOW, LLMProvider.ZHIPU, LLMProvider.KIMI]:
         if p not in ordered:
             ordered.append(p)
     return ordered
@@ -200,6 +222,7 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
             LLMProvider.DEEPSEEK: {"think": "deepseek-reasoner", "chat": "deepseek-chat"},
             LLMProvider.SILICONFLOW: {"think": "deepseek-ai/DeepSeek-R1", "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp"},
             LLMProvider.ZHIPU: {"think": "glm-4.6", "chat": "glm-4.6"},
+            LLMProvider.KIMI: {"think": "kimi-k2-thinking", "chat": "kimi-k2-0905-preview"},
         }
 
         model = env_think_model or defaults[provider]["think"] if role == LLMRole.THINK else env_chat_model or defaults[provider]["chat"]
@@ -230,12 +253,21 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
     )
 
 
-def get_llm_config(role: LLMRole, provider_name: Optional[str] = None) -> LLMConfig:
+def get_llm_config(
+    role: LLMRole, 
+    provider_name: Optional[str] = None,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None
+) -> LLMConfig:
     """根据角色获取 LLM 配置
 
     Args:
         role: LLM 角色（think 或 chat）
-        provider_name: 可选的提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
+        provider_name: 可选的提供商名称（deepseek/siliconflow/zhipu/kimi），如果指定则覆盖环境变量
+        model_name: 可选的模型名称，如果指定则覆盖默认模型和环境变量
+        api_key: 可选的API Key，如果指定则覆盖环境变量
+        base_url: 可选的Base URL，如果指定则覆盖环境变量
 
     Returns:
         LLMConfig: 对应的 LLM 配置
@@ -253,12 +285,12 @@ def get_llm_config(role: LLMRole, provider_name: Optional[str] = None) -> LLMCon
     else:
         provider = _read_env_provider()
 
-    # 获取该提供商的配置
-    api_key = _read_env_api_key(provider)
-    base_url = _read_env_base_url(provider)
+    # 获取该提供商的配置（如果未通过参数指定，则从环境变量读取）
+    final_api_key = api_key or _read_env_api_key(provider)
+    final_base_url = base_url or _read_env_base_url(provider)
     env_think_model, env_chat_model = _read_env_models()
 
-    # 每个服务商的合理默认模型（可被 THINK_MODEL/CHAT_MODEL 覆盖）
+    # 每个服务商的合理默认模型（可被 model_name 或 THINK_MODEL/CHAT_MODEL 覆盖）
     defaults = {
         LLMProvider.DEEPSEEK: {
             "think": "deepseek-reasoner",
@@ -272,20 +304,27 @@ def get_llm_config(role: LLMRole, provider_name: Optional[str] = None) -> LLMCon
             "think": "glm-4.6",
             "chat": "glm-4.6",
         },
+        LLMProvider.KIMI: {
+            "think": "kimi-k2-thinking",
+            "chat": "kimi-k2-0905-preview",
+        },
     }
 
-    if role == LLMRole.THINK:
-        model = env_think_model or defaults[provider]["think"]
+    # 优先级：model_name > 环境变量 > 默认值
+    if model_name:
+        final_model = model_name
+    elif role == LLMRole.THINK:
+        final_model = env_think_model or defaults[provider]["think"]
     else:
-        model = env_chat_model or defaults[provider]["chat"]
+        final_model = env_chat_model or defaults[provider]["chat"]
 
     if role not in (LLMRole.THINK, LLMRole.CHAT):
         raise ValueError(f"不支持的 LLM 角色: {role}")
 
     return LLMConfig(
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
+        model=final_model,
+        api_key=final_api_key,
+        base_url=final_base_url,
         temperature=0,
         streaming=True,
         max_tokens=None,
@@ -298,7 +337,7 @@ def get_llm_config_by_provider(provider_name: str, role: LLMRole) -> LLMConfig:
     """根据提供商名称和角色获取 LLM 配置（便捷函数）
 
     Args:
-        provider_name: 提供商名称（deepseek/siliconflow/zhipu）
+        provider_name: 提供商名称（deepseek/siliconflow/zhipu/kimi）
         role: LLM 角色（think 或 chat）
 
     Returns:
@@ -321,6 +360,7 @@ def list_available_providers() -> list[dict]:
             LLMProvider.DEEPSEEK: {"think": "deepseek-reasoner", "chat": "deepseek-chat"},
             LLMProvider.SILICONFLOW: {"think": "deepseek-ai/DeepSeek-R1", "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp"},
             LLMProvider.ZHIPU: {"think": "glm-4.6", "chat": "glm-4.6"},
+            LLMProvider.KIMI: {"think": "kimi-k2-thinking", "chat": "kimi-k2-0905-preview"},
         }
         
         # 检查可达性
@@ -333,6 +373,7 @@ def list_available_providers() -> list[dict]:
                 LLMProvider.DEEPSEEK: "DeepSeek",
                 LLMProvider.SILICONFLOW: "SiliconFlow (硅基流动)",
                 LLMProvider.ZHIPU: "智谱GLM",
+                LLMProvider.KIMI: "Kimi (月之暗面)",
             }.get(provider, provider.value),
             "think_model": defaults[provider]["think"],
             "chat_model": defaults[provider]["chat"],
