@@ -152,18 +152,23 @@
     "id": "case:cve-2024-10940",
     "cve": "CVE-2024-10940",
     "path": "resources/codeql/python/py/CVE-2024-10940/CVE-2024-10940.ql",
-    "summary": "Langchain ImagePromptTemplate: path taint flows into open(..., 'rb') file reads",
+    "summary": "Langchain ImagePromptTemplate: kwargs.get('path') in format() flows into open(..., 'rb') via image_to_data_url and encode_image",
     "vulnerability_type": "Path Traversal / Arbitrary File Read (CWE-22)",
     "status": "success",
     "key_patterns": [
-      "File read sink: open() with mode 'rb'",
-      "File-level scoping (image.py)",
-      "Path traversal detection"
+      "Precise source: kwargs.get('path') or formatted.get('path') in format() function",
+      "File read sink: open() with mode 'rb' in encode_image function",
+      "File-level scoping: image.py only",
+      "Function-level scoping: format and encode_image functions",
+      "Additional flow steps: path → image_to_data_url(path) → encode_image",
+      "Dictionary get() method as source pattern",
+      "String literal argument matching (call.getArg(0).asExpr().(StringLiteral).getText() = 'path')"
     ],
     "helpers": [
       "helper:callee-is-global-name",
-      "helper:in-target-file"
+      "helper:in-target-file",
+      "helper:in-target-function"
     ],
-    "tags": ["path-traversal", "file-read", "langchain", "cwe-22"]
+    "tags": ["path-traversal", "file-read", "langchain", "dictionary-get", "additional-flow", "cwe-22"]
   }
 ]

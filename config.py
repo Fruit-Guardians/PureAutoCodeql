@@ -101,6 +101,21 @@ def _read_env_models() -> tuple[Optional[str], Optional[str]]:
     return os.getenv("THINK_MODEL"), os.getenv("CHAT_MODEL")
 
 
+def get_siliconflow_models() -> list[str]:
+    """获取硅基流动可用的模型列表。
+    
+    Returns:
+        模型名称列表
+    """
+    return [
+        "deepseek-ai/DeepSeek-R1",  # 默认推理模型
+        "Pro/deepseek-ai/DeepSeek-V3.2-Exp",  # 默认对话模型
+        "MiniMaxAI/MiniMax-M2",
+        "moonshotai/Kimi-K2-Instruct-0905",
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    ]
+
+
 def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
     """综合环境变量与默认映射，返回 (api_key, base_url, model)。"""
     provider = _read_env_provider()
@@ -312,7 +327,7 @@ def list_available_providers() -> list[dict]:
         is_reachable = _is_reachable(base_url)
         has_api_key = bool(api_key)
         
-        providers_info.append({
+        provider_info = {
             "name": provider.value,
             "display_name": {
                 LLMProvider.DEEPSEEK: "DeepSeek",
@@ -325,7 +340,13 @@ def list_available_providers() -> list[dict]:
             "has_api_key": has_api_key,
             "is_reachable": is_reachable,
             "status": "✅ 可用" if (has_api_key and is_reachable) else ("⚠️  API Key缺失" if not has_api_key else "❌ 不可达"),
-        })
+        }
+        
+        # 为硅基流动添加可用模型列表
+        if provider == LLMProvider.SILICONFLOW:
+            provider_info["available_models"] = get_siliconflow_models()
+        
+        providers_info.append(provider_info)
     
     return providers_info
 
