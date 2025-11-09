@@ -76,7 +76,7 @@ def _read_env_api_key(provider: LLMProvider) -> str:
     # 开发环境：本地默认密钥（仅当未设置环境变量时启用）
     dev_defaults = {
         LLMProvider.SILICONFLOW: "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld",
-        LLMProvider.DEEPSEEK: "sk-a2d1b4e295d6404694f45f45cb236c91",
+        LLMProvider.DEEPSEEK: "sk-5f09a827bfeb4392acfae82fa32f973d",
         LLMProvider.ZHIPU: "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy",
         LLMProvider.KIMI: "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny",
     }
