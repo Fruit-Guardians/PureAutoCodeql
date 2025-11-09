@@ -8,6 +8,8 @@ from services.language_detector import LanguageDetector
 from utils.case import resolve_case, discover_cve_assets
 from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
 from config import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
+from tools.codeql_compose import CodeQLComposeTool
+from services.llm_service import MultiAgentAnalyzer
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -108,6 +110,144 @@ async def run_case_analysis(
         logger.error(f"案例分析失败: {result.error_message}")
 
 
+async def run_md_direct_codeql(
+    md_file_path: str,
+    stream: bool = False,
+    provider: Optional[str] = None,
+    think_model: Optional[str] = None,
+    chat_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    database_path: Optional[str] = None,
+    language: str = "java"
+) -> None:
+    """
+    从MD文件直接生成CodeQL查询
+
+    Args:
+        md_file_path: MD文件路径
+        stream: 是否显示AI思考过程
+        provider: 模型提供商名称
+        think_model: 推理模型名称
+        chat_model: 对话模型名称
+        api_key: API Key
+        base_url: Base URL
+        database_path: CodeQL数据库路径
+        language: 编程语言
+    """
+    # 验证MD文件存在性
+    md_path = Path(md_file_path)
+    if not md_path.exists():
+        print_user_error(f"❌ MD文件不存在: {md_file_path}")
+        logger.error(f"MD文件不存在: {md_file_path}")
+        return
+    
+    if not md_path.suffix.lower() == '.md':
+        print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
+        logger.error(f"文件格式错误: {md_file_path}")
+        return
+
+    # 读取MD文件内容
+    try:
+        md_content = md_path.read_text(encoding='utf-8')
+        print_user_info(f"📄 成功读取MD文件: {md_file_path}")
+        logger.info(f"读取MD文件: {md_file_path}, 内容长度: {len(md_content)}")
+    except Exception as e:
+        print_user_error(f"❌ 读取MD文件失败: {e}")
+        logger.error(f"读取MD文件失败: {e}", exc_info=True)
+        return
+
+    # 如果没有指定数据库路径，尝试从当前目录查找
+    if not database_path:
+        current_dir = Path.cwd()
+        for db_dir in current_dir.glob("*.db"):
+            database_path = str(db_dir)
+            break
+        if not database_path:
+            print_user_error("❌ 未找到CodeQL数据库，请使用 --database-path 参数指定")
+            logger.error("未找到CodeQL数据库")
+            return
+
+    # 显示模型配置信息
+    try:
+        chat_config = get_llm_config(
+            LLMRole.CHAT,
+            provider_name=provider,
+            model_name=chat_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        think_config = get_llm_config(
+            LLMRole.THINK,
+            provider_name=provider,
+            model_name=think_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        
+        provider_display = provider or chat_config.provider or "环境变量配置"
+        print_user_info(f"🤖 使用模型提供商: {provider_display}")
+        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"   💬 对话模型: {chat_config.model}")
+        if base_url:
+            print_user_info(f"   🔗 Base URL: {base_url}")
+    except Exception as e:
+        print_user_error(f"❌ 无法配置模型: {e}")
+        logger.error(f"模型配置失败: {e}", exc_info=True)
+        return
+
+    # 创建MultiAgentAnalyzer
+    try:
+        # 使用聊天模型配置作为主要配置
+        analyzer = MultiAgentAnalyzer(config=chat_config)
+        print_user_info(f"🔧 成功创建AI分析器")
+    except Exception as e:
+        print_user_error(f"❌ 创建AI分析器失败: {e}")
+        logger.error(f"创建AI分析器失败: {e}", exc_info=True)
+        return
+
+    # 创建CodeQLComposeTool
+    try:
+        codeql_tool = CodeQLComposeTool(
+            analyzer=analyzer,
+            database_path=database_path,
+            language=language,
+            max_rounds=5
+        )
+        print_user_info(f"🛠️  成功创建CodeQL生成工具")
+        print_user_info(f"   📁 数据库路径: {database_path}")
+        print_user_info(f"   💻 编程语言: {language}")
+    except Exception as e:
+        print_user_error(f"❌ 创建CodeQL工具失败: {e}")
+        logger.error(f"创建CodeQL工具失败: {e}", exc_info=True)
+        return
+
+    # 执行CodeQL生成
+    try:
+        print_user_info(f"🚀 开始从MD文件生成CodeQL查询...")
+        
+        # 使用MD文件内容作为需求描述
+        requirement = f"根据以下漏洞描述生成CodeQL查询:\n\n{md_content}"
+        
+        result = await codeql_tool._arun(
+            requirement=requirement,
+            exec_mode="analyze",
+            show_thinking=stream
+        )
+        
+        # 输出结果
+        print_user_success(f"\n🎉 CodeQL生成完成！")
+        print_user_info(f"📋 查询结果:")
+        print(result)
+        
+        logger.info(f"CodeQL生成成功完成")
+        
+    except Exception as e:
+        print_user_error(f"❌ CodeQL生成失败: {e}")
+        logger.error(f"CodeQL生成失败: {e}", exc_info=True)
+        return
+
+
 def list_available_cases() -> None:
     """列出所有可用的案例"""
     projects_dir = Path("projects")
@@ -177,6 +317,8 @@ def parse_arguments() -> argparse.Namespace:
 使用示例:
   %(prog)s --case CVE-2021-21985                    # 分析单个案例
   %(prog)s --case CVE-2021-21985 --stream          # 显示AI思考过程
+  %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
+  %(prog)s --md-file vulnerability.md --provider deepseek  # 指定模型提供商
   %(prog)s --list                                  # 列出所有可用案例
   %(prog)s --validate CVE-2021-21985               # 验证案例有效性
         """
@@ -188,6 +330,12 @@ def parse_arguments() -> argparse.Namespace:
         "--case",
         type=str,
         help="分析单个案例 (例如: CVE-2021-21985)"
+    )
+    group.add_argument(
+        "--md-file",
+        type=str,
+        metavar="FILE",
+        help="从指定的MD文件直接生成CodeQL查询 (例如: vulnerability.md)"
     )
     group.add_argument(
         "--list",
@@ -270,6 +418,21 @@ def parse_arguments() -> argparse.Namespace:
         dest="base_url",
         help="指定Base URL，覆盖环境变量（例如: https://api.siliconflow.cn/v1）"
     )
+    parser.add_argument(
+        "--database-path",
+        type=str,
+        metavar="PATH",
+        dest="database_path",
+        help="指定CodeQL数据库路径（用于--md-file模式）"
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        metavar="LANG",
+        dest="language",
+        default="java",
+        help="指定编程语言（用于--md-file模式，默认: java）"
+    )
 
     parser.set_defaults(stream=True)
 
@@ -337,6 +500,32 @@ async def main() -> None:
                 chat_model=chat_model,
                 api_key=args.api_key,
                 base_url=args.base_url
+            )
+        elif args.md_file:
+            print(f"🚀 PureAutoCodeQL 启动")
+            print(f"📄 MD文件: {args.md_file}")
+            print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
+            print(f"💻 编程语言: {args.language}")
+            if args.database_path:
+                print(f"📁 数据库路径: {args.database_path}")
+            if args.provider:
+                print(f"🤖 模型提供商: {args.provider} (命令行指定)")
+            print("-" * 50)
+
+            # 如果指定了 --model，同时应用到 think_model 和 chat_model
+            think_model = args.think_model or args.model
+            chat_model = args.chat_model or args.model
+            
+            await run_md_direct_codeql(
+                md_file_path=args.md_file,
+                stream=args.stream,
+                provider=args.provider,
+                think_model=think_model,
+                chat_model=chat_model,
+                api_key=args.api_key,
+                base_url=args.base_url,
+                database_path=args.database_path,
+                language=args.language
             )
 
     except KeyboardInterrupt:
