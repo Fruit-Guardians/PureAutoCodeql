@@ -178,5 +178,45 @@
     "example": "isAdditionalFlowStep(src, dst) { openToWriteFlowStep(src, dst) }",
     "source": "CVE-2025-54802",
     "tags": ["additional-flow", "file", "taint-propagation"]
+  },
+  {
+    "id": "helper:dict-get-call",
+    "name": "isDictGetCall",
+    "signature": "predicate isDictGetCall(DataFlow::CallCfgNode call, string keyName)",
+    "description": "Checks if a call is a dictionary .get() method call with a specific key name (string literal).",
+    "implementation": "exists(DataFlow::AttrRead attr | call.getFunction() = attr and attr.getAttributeName() = \"get\" and call.getArg(0).asExpr().(StringLiteral).getText() = keyName)",
+    "example": "isDictGetCall(call, \"path\") // matches kwargs.get('path') or dict.get('path')",
+    "source": "CVE-2024-10940",
+    "tags": ["dictionary", "get", "method-call", "langchain"]
+  },
+  {
+    "id": "helper:open-read-mode",
+    "name": "isOpenReadMode",
+    "signature": "predicate isOpenReadMode(DataFlow::CallCfgNode call, string mode)",
+    "description": "Checks if an open() call has a specific file mode (e.g., 'rb', 'r', 'rt').",
+    "implementation": "calleeIsGlobalName(call, \"open\") and call.getArg(1).asExpr().(StringLiteral).getText() = mode",
+    "example": "isOpenReadMode(call, \"rb\") // matches open(path, 'rb')",
+    "source": "CVE-2024-10940",
+    "tags": ["file", "open", "read-mode", "sink"]
+  },
+  {
+    "id": "helper:attr-call-with-name",
+    "name": "isAttrCallWithName",
+    "signature": "predicate isAttrCallWithName(DataFlow::CallCfgNode call, string attrName)",
+    "description": "Checks if a call is an attribute method call with a specific attribute name.",
+    "implementation": "call.getFunction() instanceof DataFlow::AttrRead and call.getFunction().(DataFlow::AttrRead).getAttributeName() = attrName",
+    "example": "isAttrCallWithName(call, \"image_to_data_url\") // matches obj.image_to_data_url(...)",
+    "source": "CVE-2024-10940",
+    "tags": ["attribute", "method-call", "additional-flow"]
+  },
+  {
+    "id": "helper:receiver-is-name",
+    "name": "receiverIsName",
+    "signature": "predicate receiverIsName(DataFlow::CallCfgNode call, string name)",
+    "description": "Checks if the receiver of an attribute call is a variable with a specific name (e.g., kwargs, formatted).",
+    "implementation": "exists(DataFlow::AttrRead attr | call.getFunction() = attr and attr.getObject().asExpr().(Name).getId() = name)",
+    "example": "receiverIsName(call, \"kwargs\") // matches kwargs.get(...)",
+    "source": "CVE-2024-10940",
+    "tags": ["receiver", "variable-name", "dictionary", "langchain"]
   }
 ]

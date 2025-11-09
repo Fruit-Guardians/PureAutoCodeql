@@ -29,6 +29,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -235,6 +236,10 @@ projects/CVE-2024-7099/
 projects/CVE-2025-54802/
 projects/CVE-2022-22817/
 projects/CVE-2024-10940/
+projects/CVE-2025-47789/
+projects/CVE-2025-46725/
+projects/CVE-2024-8412/
+projects/CVE-2025-54381/
 # 忽略所有 zip 文件，避免超过 GitHub 100MB 限制
 *.zip
 projects/*.zip

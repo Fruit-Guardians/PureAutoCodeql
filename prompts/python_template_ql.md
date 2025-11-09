@@ -37,6 +37,9 @@
 - ✅ **作用域检查**：**必须**使用 `source.getScope() = f` 和 `call.getScope() = f`（参考CVE-2024-7099）
 - ✅ **Sink定义**：**通常**使用 `sink = call.getArg(0)` 获取调用的第一个参数（SQL查询字符串、文件路径、URL等）
 - ✅ **类型检查**：使用 `source instanceof DataFlow::ParameterNode` 或 `source instanceof RemoteFlowSource`
+- ✅ **Source灵活性**：对于SSRF等漏洞，使用 `source.asCfgNode().isLoad() or source instanceof RemoteFlowSource` 捕获变量读取操作（CVE-2025-54381）
+- ✅ **调用链追踪**：使用 `DataFlow::localFlow(clientCall, client)` 追踪复杂调用链（如 `httpx.AsyncClient().get()`）
+- ✅ **范围限定谨慎**：避免过度限定文件/函数范围，除非明确需要（过度限定会导致漏报）
 - ✅ **Select格式**：**必须**包含7个参数：`select sink.getNode(), src, sink, "message", src, "source", sink, "sink"` 或 `select sink.getNode(), src, sink, "message", src.getNode(), "source", sink.getNode(), "sink"`（两种格式都有效，推荐使用第一种）
 - ✅ **Import顺序**：先导入标准库，`import Flow::PathGraph` 在module定义**之后**
 - ✅ **注释风格**：使用 `/** ... */` 进行多行注释，`//` 进行单行注释
@@ -44,11 +47,34 @@
 - ❌ **禁止**：`pn.getEnclosingCallable() = f` 这种直接比较（会导致类型不兼容错误）
 - ❌ **禁止**：`MethodCall`, `ParameterNode`（无命名空间）、`getFile()`（直接调用）、旧 API
 - ❌ **禁止**：直接对 AST 类型做 instance 判断，必须先 `asCfgNode().getNode()`
+- ❌ **禁止**：在Source/Sink中过度使用文件/函数限定（会导致漏报），仅在必要时使用
 
 **RemoteFlowSource 使用规范：**
 - ✅ **正确用法**：`src instanceof RemoteFlowSource`
 - ❌ **错误用法**：`exists(RemoteFlowSource rfs | src = rfs.getSource())`
 - RemoteFlowSource 本身就是 DataFlow::Node，无需调用额外方法
+
+**SSRF 等漏洞的关键模式（CVE-2025-54381 成功案例）：**
+- ✅ **灵活的 Source**：`source.asCfgNode().isLoad() or source instanceof RemoteFlowSource`
+  - `isLoad()` 捕获变量读取操作（如从 `request.body()` 解码后的 `url` 变量）
+  - 不要过度限定文件和函数范围，除非明确需要
+- ✅ **复杂调用链的 Sink 追踪**：
+  ```ql
+  exists(DataFlow::CallCfgNode call, DataFlow::Node client, DataFlow::CallCfgNode clientCall |
+    // 检测 .get() 调用
+    call.getFunction() instanceof DataFlow::AttrRead and
+    call.getFunction().(DataFlow::AttrRead).getAttributeName() = "get" and
+    client = call.getFunction().(DataFlow::AttrRead).getObject() and
+    // 检测 AsyncClient() 实例化
+    clientCall.getFunction() instanceof DataFlow::AttrRead and
+    clientCall.getFunction().(DataFlow::AttrRead).getAttributeName() = "AsyncClient" and
+    // 使用本地数据流追踪实例传播
+    DataFlow::localFlow(clientCall, client) and
+    sink = call.getArg(0)
+  )
+  ```
+- ✅ **模块识别**：支持 `DataFlow::ModuleVariableNode` 和 `Name` 两种方式识别模块（如 `httpx`）
+- ❌ **避免**：不要在 Source/Sink 中同时限定 `inFile()` 和 `inFunction()`，会导致漏报
 
 ---
 
@@ -157,6 +183,25 @@ predicate isSource(DataFlow::Node source) {
 }
 ```
 
+#### 模式E：字典get()调用作为源（参考CVE-2024-10940）
+```ql
+predicate isSource(DataFlow::Node source) {
+  exists(DataFlow::CallCfgNode call, DataFlow::AttrRead attr |
+    call.getFunction() = attr and
+    attr.getAttributeName() = "get" and
+    call.getArg(0).asExpr().(StringLiteral).getText() = "path" and
+    (
+      attr.getObject().asExpr().(Name).getId() = "kwargs" or
+      attr.getObject().asExpr().(Name).getId() = "formatted"
+    ) and
+    source = call and
+    inRelevantFiles(source) and
+    inRelevantFunctions(source)
+  )
+}
+```
+**说明**：此模式用于检测字典 `.get()` 方法调用作为源，常见于模板格式化场景（如Langchain的 `ImagePromptTemplate.format()`）。
+
 ### 4.2 Sink 定义模式
 
 #### 模式A：属性方法调用（参考CVE-2024-7099）
@@ -216,8 +261,23 @@ predicate isSink(DataFlow::Node sink) {
 }
 ```
 
-### 4.3 isAdditionalFlowStep 模式（参考CVE-2025-54802）
+#### 模式E：文件读取sink（参考CVE-2024-10940）
+```ql
+predicate isSink(DataFlow::Node sink) {
+  exists(DataFlow::CallCfgNode call |
+    calleeIsGlobalName(call, "open") and
+    call.getArg(1).asExpr().(StringLiteral).getText() = "rb" and
+    sink = call.getArg(0) and
+    inRelevantFiles(sink) and
+    inRelevantFunctions(sink)
+  )
+}
+```
+**说明**：此模式用于检测 `open()` 文件读取操作，通过检查第二个参数（文件模式）来区分读取和写入操作。
 
+### 4.3 isAdditionalFlowStep 模式
+
+#### 模式A：open()返回值传播（参考CVE-2025-54802）
 ```ql
 predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
   // open(filename) 的 filename 参数 → open() 返回值
@@ -230,6 +290,27 @@ predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
   )
 }
 ```
+
+#### 模式B：通过属性方法调用传播（参考CVE-2024-10940）
+```ql
+predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
+  // from path to image_to_data_url(path)
+  exists(DataFlow::CallCfgNode call |
+    call.getFunction() instanceof DataFlow::AttrRead and
+    call.getFunction().(DataFlow::AttrRead).getAttributeName() = "image_to_data_url" and
+    src = call.getArg(0) and
+    dst = call
+  )
+  or
+  // from image_to_data_url to encode_image
+  exists(DataFlow::CallCfgNode call |
+    calleeIsGlobalName(call, "encode_image") and
+    src = call.getArg(0) and
+    dst = call
+  )
+}
+```
+**说明**：此模式用于跟踪通过方法调用链传播的污点，例如 `path → image_to_data_url(path) → encode_image(...)`。
 
 ### 4.4 isSanitizer 模式（参考CVE-2024-8412）
 
@@ -315,6 +396,35 @@ predicate attrReceiverIsLikelyEvalCarrier(DataFlow::CallCfgNode call) {
 }
 ```
 
+### 5.8 字典get()调用检查（参考CVE-2024-10940）
+```ql
+predicate isDictGetCall(DataFlow::CallCfgNode call, string keyName) {
+  exists(DataFlow::AttrRead attr |
+    call.getFunction() = attr and
+    attr.getAttributeName() = "get" and
+    call.getArg(0).asExpr().(StringLiteral).getText() = keyName
+  )
+}
+```
+
+### 5.9 接收者名称检查（参考CVE-2024-10940）
+```ql
+predicate receiverIsName(DataFlow::CallCfgNode call, string name) {
+  exists(DataFlow::AttrRead attr |
+    call.getFunction() = attr and
+    attr.getObject().asExpr().(Name).getId() = name
+  )
+}
+```
+
+### 5.10 open()文件模式检查（参考CVE-2024-10940）
+```ql
+predicate isOpenReadMode(DataFlow::CallCfgNode call, string mode) {
+  calleeIsGlobalName(call, "open") and
+  call.getArg(1).asExpr().(StringLiteral).getText() = mode
+}
+```
+
 ---
 
 ## 6. 成功案例参考
@@ -338,6 +448,15 @@ predicate attrReceiverIsLikelyEvalCarrier(DataFlow::CallCfgNode call) {
 - **Source**：`RemoteFlowSource` + 文件/函数限定
 - **Sink**：`open()` 的第一个参数或 `.write()` 的接收者
 - **特点**：使用 `isAdditionalFlowStep` 连接 `open` 和 `write`
+
+### CVE-2024-10940：Langchain文件读取
+- **Source**：字典 `.get('path')` 调用（`kwargs.get('path')` 或 `formatted.get('path')`）在 `format()` 函数中
+- **Sink**：`open(path, 'rb')` 的第一个参数在 `encode_image()` 函数中
+- **特点**：
+  - 使用文件级和函数级作用域限定（`image.py` 文件，`format` 和 `encode_image` 函数）
+  - 使用 `isAdditionalFlowStep` 跟踪通过 `image_to_data_url()` 和 `encode_image()` 的流
+  - Source 模式：通过 `call.getArg(0).asExpr().(StringLiteral).getText() = "path"` 匹配字典键
+  - Sink 模式：通过 `call.getArg(1).asExpr().(StringLiteral).getText() = "rb"` 匹配文件模式
 
 ---
 

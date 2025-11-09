@@ -23,11 +23,12 @@ class LanguageDetector:
     def detect_language(self, case_paths: CasePaths) -> str:
         """检测案例使用的编程语言。"""
         # 检查数据库目录中的语言子目录
-        if (case_paths.db / "java").exists():
+        # 支持两种格式：db/<language> 和 db/db-<language>
+        if (case_paths.db / "java").exists() or (case_paths.db / "db-java").exists():
             return "java"
-        elif (case_paths.db / "python").exists():
+        elif (case_paths.db / "python").exists() or (case_paths.db / "db-python").exists():
             return "python"
-        elif (case_paths.db / "cpp").exists():
+        elif (case_paths.db / "cpp").exists() or (case_paths.db / "db-cpp").exists():
             return "cpp"
 
         # 检查源码目录中的文件类型
