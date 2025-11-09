@@ -18,6 +18,7 @@ class LLMProvider(Enum):
     SILICONFLOW = "siliconflow"  # 硅基流动
     ZHIPU = "zhipu"  # GLM（智谱）
     KIMI = "kimi"  # Kimi（月之暗面）
+    GEMINI = "gemini"  # Google Gemini
 
 
 @dataclass
@@ -42,12 +43,14 @@ def _default_base_url(provider: LLMProvider) -> str:
         return "https://open.bigmodel.cn/api/paas/v4/"
     if provider == LLMProvider.KIMI:
         return "https://api.moonshot.cn/v1"
+    if provider == LLMProvider.GEMINI:
+        return "https://generativelanguage.googleapis.com/v1beta/openai"
     # 兜底：视为 DeepSeek
     return "https://api.deepseek.com/v1"
 
 
 def _read_env_provider() -> LLMProvider:
-    """读取默认服务商，默认 deepseek。通过 LLM_PROVIDER 指定：deepseek/siliconflow/zhipu/kimi"""
+    """读取默认服务商，默认 deepseek。通过 LLM_PROVIDER 指定：deepseek/siliconflow/zhipu/kimi/gemini"""
     raw = (os.getenv("LLM_PROVIDER") or "deepseek").strip().lower()
     for p in LLMProvider:
         if p.value == raw:
@@ -63,6 +66,7 @@ def _read_env_api_key(provider: LLMProvider) -> str:
         LLMProvider.SILICONFLOW: ["SILICONFLOW_API_KEY", "SF_API_KEY"],
         LLMProvider.ZHIPU: ["ZHIPU_API_KEY", "GLM_API_KEY"],
         LLMProvider.KIMI: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
+        LLMProvider.GEMINI: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     }
     # 通用兜底
     generic_keys = ["OPENAI_API_KEY", "API_KEY"]
@@ -79,6 +83,7 @@ def _read_env_api_key(provider: LLMProvider) -> str:
         LLMProvider.DEEPSEEK: "sk-a2d1b4e295d6404694f45f45cb236c91",
         LLMProvider.ZHIPU: "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy",
         LLMProvider.KIMI: "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny",
+        LLMProvider.GEMINI: "AIzaSyDS-Moyzuf1sUdAUsw9bkr1z_cZMVdyvpc",
     }
     return dev_defaults.get(provider, "")
 
@@ -90,6 +95,7 @@ def _read_env_base_url(provider: LLMProvider) -> str:
         LLMProvider.SILICONFLOW: ["SILICONFLOW_BASE_URL", "SF_BASE_URL"],
         LLMProvider.ZHIPU: ["ZHIPU_BASE_URL", "GLM_BASE_URL"],
         LLMProvider.KIMI: ["KIMI_BASE_URL", "MOONSHOT_BASE_URL"],
+        LLMProvider.GEMINI: ["GEMINI_BASE_URL", "GOOGLE_BASE_URL"],
     }
     generic_keys = ["OPENAI_BASE_URL", "BASE_URL"]
 
@@ -161,6 +167,10 @@ def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
             "think": "kimi-k2-thinking",
             "chat": "kimi-k2-0905-preview",
         },
+        LLMProvider.GEMINI: {
+            "think": "gemini-2.5-pro",
+            "chat": "gemini-2.5-pro",
+        },
     }
 
     if role == LLMRole.THINK:
@@ -174,7 +184,7 @@ def _get_env_config(role: LLMRole) -> tuple[str, str, str]:
 def _provider_priority(primary: LLMProvider) -> list[LLMProvider]:
     """将首选服务商置前，其余按固定顺序排在后面。"""
     ordered = [primary]
-    for p in [LLMProvider.DEEPSEEK, LLMProvider.SILICONFLOW, LLMProvider.ZHIPU, LLMProvider.KIMI]:
+    for p in [LLMProvider.DEEPSEEK, LLMProvider.SILICONFLOW, LLMProvider.ZHIPU, LLMProvider.KIMI, LLMProvider.GEMINI]:
         if p not in ordered:
             ordered.append(p)
     return ordered
@@ -223,6 +233,7 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
             LLMProvider.SILICONFLOW: {"think": "deepseek-ai/DeepSeek-R1", "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp"},
             LLMProvider.ZHIPU: {"think": "glm-4.6", "chat": "glm-4.6"},
             LLMProvider.KIMI: {"think": "kimi-k2-thinking", "chat": "kimi-k2-0905-preview"},
+            LLMProvider.GEMINI: {"think": "gemini-2.5-pro", "chat": "gemini-2.5-pro"},
         }
 
         model = env_think_model or defaults[provider]["think"] if role == LLMRole.THINK else env_chat_model or defaults[provider]["chat"]
@@ -264,7 +275,7 @@ def get_llm_config(
 
     Args:
         role: LLM 角色（think 或 chat）
-        provider_name: 可选的提供商名称（deepseek/siliconflow/zhipu/kimi），如果指定则覆盖环境变量
+        provider_name: 可选的提供商名称（deepseek/siliconflow/zhipu/kimi/gemini），如果指定则覆盖环境变量
         model_name: 可选的模型名称，如果指定则覆盖默认模型和环境变量
         api_key: 可选的API Key，如果指定则覆盖环境变量
         base_url: 可选的Base URL，如果指定则覆盖环境变量
@@ -308,6 +319,10 @@ def get_llm_config(
             "think": "kimi-k2-thinking",
             "chat": "kimi-k2-0905-preview",
         },
+        LLMProvider.GEMINI: {
+            "think": "gemini-2.5-pro",
+            "chat": "gemini-2.5-pro",
+        },
     }
 
     # 优先级：model_name > 环境变量 > 默认值
@@ -337,7 +352,7 @@ def get_llm_config_by_provider(provider_name: str, role: LLMRole) -> LLMConfig:
     """根据提供商名称和角色获取 LLM 配置（便捷函数）
 
     Args:
-        provider_name: 提供商名称（deepseek/siliconflow/zhipu/kimi）
+        provider_name: 提供商名称（deepseek/siliconflow/zhipu/kimi/gemini）
         role: LLM 角色（think 或 chat）
 
     Returns:
@@ -361,6 +376,7 @@ def list_available_providers() -> list[dict]:
             LLMProvider.SILICONFLOW: {"think": "deepseek-ai/DeepSeek-R1", "chat": "Pro/deepseek-ai/DeepSeek-V3.2-Exp"},
             LLMProvider.ZHIPU: {"think": "glm-4.6", "chat": "glm-4.6"},
             LLMProvider.KIMI: {"think": "kimi-k2-thinking", "chat": "kimi-k2-0905-preview"},
+            LLMProvider.GEMINI: {"think": "gemini-2.5-pro", "chat": "gemini-2.5-pro"},
         }
         
         # 检查可达性
@@ -374,6 +390,7 @@ def list_available_providers() -> list[dict]:
                 LLMProvider.SILICONFLOW: "SiliconFlow (硅基流动)",
                 LLMProvider.ZHIPU: "智谱GLM",
                 LLMProvider.KIMI: "Kimi (月之暗面)",
+                LLMProvider.GEMINI: "Google Gemini",
             }.get(provider, provider.value),
             "think_model": defaults[provider]["think"],
             "chat_model": defaults[provider]["chat"],
