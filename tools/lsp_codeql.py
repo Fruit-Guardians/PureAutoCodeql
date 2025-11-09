@@ -349,7 +349,7 @@ def main():
 
     # start engine
     engine = HotCodeQL(codeql=args.codeql, pack_root=pack_root, synchronous=args.synchronous,
-                       init_timeout=25.0, quiet_logs=args.quiet_logs, query_file=query_file)
+                       init_timeout=60.0, quiet_logs=args.quiet_logs, query_file=query_file)
     try:
         engine.start()
     except Exception as e:
