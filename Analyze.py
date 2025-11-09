@@ -34,7 +34,7 @@ async def run_case_analysis(
         refresh_intel: 是否强制刷新情报数据
         stream: 是否显示AI思考过程
         output_file: 自定义输出文件名
-        provider: 模型提供商名称（deepseek/siliconflow/zhipu/kimi）
+        provider: 模型提供商名称（deepseek/siliconflow/zhipu/kimi/gemini）
         think_model: 推理模型名称（覆盖默认模型）
         chat_model: 对话模型名称（覆盖默认模型）
         api_key: API Key（覆盖环境变量）
@@ -232,9 +232,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["deepseek", "siliconflow", "zhipu", "kimi"],
+        choices=["deepseek", "siliconflow", "zhipu", "kimi", "gemini"],
         metavar="PROVIDER",
-        help="指定模型提供商 (deepseek/siliconflow/zhipu/kimi)，覆盖环境变量 LLM_PROVIDER"
+        help="指定模型提供商 (deepseek/siliconflow/zhipu/kimi/gemini)，覆盖环境变量 LLM_PROVIDER"
     )
     parser.add_argument(
         "--model",
