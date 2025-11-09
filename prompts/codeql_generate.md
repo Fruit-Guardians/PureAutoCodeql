@@ -33,6 +33,7 @@
 1. **分析需求 (Analyze Requirement):**
 
    * 解析 `[REQUIREMENT]`，准确识别 **Source（污染源）**、**Sink（汇聚点）** 和 **Sanitizer（净化函数）**。
+   * 若 diff/补丁中出现明确的修复逻辑（例如新增 `len = MIN(s, e->size)`），必须将这些符号映射成特定的 Source/Sink/约束谓词（如 `sComputedFromFormat`、`vulnerableMemcpy`），禁止生成“任意输入”或“任意 memcpy”这类泛化定义。
 2. **导入库 (Import Libraries):**
 
    * 根据 `[LANGUAGE]` 导入正确的标准CodeQL库 (e.g., `import java`, `import go`, `import python`)。
