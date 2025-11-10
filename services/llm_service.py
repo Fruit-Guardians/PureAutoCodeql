@@ -3,17 +3,354 @@
 提供大语言模型的服务封装，包括Agent管理和执行。
 """
 
+import asyncio
 import json
+import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 
-
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
+
+
+class APIErrorClassifier:
+    """API错误分类器，用于判断错误是否可重试"""
+    NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 422, 404}
+    RETRYABLE_SERVER_ERRORS = {429, 500, 502, 503, 504}
+    NETWORK_EXCEPTIONS = (
+        ConnectionError,
+        TimeoutError,
+        OSError,
+    )
+
+    OPENAI_EXCEPTIONS = (
+        'openai.RateLimitError',
+        'openai.APIConnectionError',
+        'openai.APITimeoutError',
+        'openai.InternalServerError',
+    )
+
+    @classmethod
+    def is_retryable_error(cls, error: Exception) -> bool:
+        """判断错误是否可重试"""
+        if hasattr(error, 'status_code'):
+            status_code = error.status_code
+            if status_code in cls.NON_RETRYABLE_STATUS_CODES:
+                return False
+            if status_code in cls.RETRYABLE_SERVER_ERRORS:
+                return True
+
+        if isinstance(error, cls.NETWORK_EXCEPTIONS):
+            return True
+
+        error_full_name = f"{type(error).__module__}.{type(error).__name__}"
+        if error_full_name in cls.OPENAI_EXCEPTIONS:
+            return True
+
+        error_str = str(error).lower()
+        retryable_keywords = [
+            'connection', 'timeout', 'network', 'dns', 'unreachable',
+            'rate limit', 'too many requests', 'service unavailable',
+            'bad gateway', 'gateway timeout', 'internal server error'
+        ]
+        non_retryable_keywords = [
+            'invalid api key', 'authentication', 'authorization',
+            'permission denied', 'forbidden', 'invalid request'
+        ]
+
+        if any(keyword in error_str for keyword in retryable_keywords):
+            return True
+
+        if any(keyword in error_str for keyword in non_retryable_keywords):
+            return False
+
+        return False
+
+    @classmethod
+    def get_error_context(cls, error: Exception) -> dict:
+        """获取错误的详细上下文信息"""
+        context = {
+            'error_type': type(error).__name__,
+            'error_message': str(error),
+            'is_retryable': cls.is_retryable_error(error),
+            'status_code': None,
+            'error_category': 'unknown'
+        }
+
+        if hasattr(error, 'status_code'):
+            context['status_code'] = error.status_code
+            if error.status_code in cls.NON_RETRYABLE_STATUS_CODES:
+                context['error_category'] = 'authentication/permission'
+            elif error.status_code in cls.RETRYABLE_SERVER_ERRORS:
+                context['error_category'] = 'server_error'
+
+        if isinstance(error, cls.NETWORK_EXCEPTIONS):
+            context['error_category'] = 'network_error'
+
+        error_full_name = f"{type(error).__module__}.{type(error).__name__}"
+        if error_full_name in cls.OPENAI_EXCEPTIONS:
+            context['error_category'] = 'openai_error'
+
+        return context
+
+
+def llm_retry_decorator(config: LLMConfig):
+    """LLM API重试装饰器"""
+    def decorator(func: Callable) -> Callable:
+        async def async_wrapper(*args, **kwargs):
+            last_error = None
+
+            for attempt in range(config.max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as error:
+                    last_error = error
+
+                    error_context = APIErrorClassifier.get_error_context(error)
+
+                    if not error_context['is_retryable']:
+                        raise error
+
+                    if attempt == config.max_retries:
+                        print(f"❌ 重试失败 ({attempt + 1}/{config.max_retries + 1}): {error}")
+                        raise error
+                    
+                    delay = config.retry_base_delay * (config.retry_backoff_factor ** attempt)
+                    if config.retry_jitter:
+                        delay *= (0.5 + random.random() * 0.5)  # 50%-100%的随机抖动
+
+                    print(f"🔄 重试 ({attempt + 1}/{config.max_retries + 1})")
+
+                    await asyncio.sleep(delay)
+
+            raise last_error
+
+        return async_wrapper
+    return decorator
+
+
+class AgentRetryTracker:
+    """Agent重试状态跟踪器"""
+
+    def __init__(self):
+        self.retry_attempts = {}
+        self.retry_logs = []
+
+    def start_retry_session(self, session_id: str, agent_name: str = None):
+        """开始重试会话"""
+        self.retry_attempts[session_id] = {
+            "agent_name": agent_name,
+            "start_time": time.time(),
+            "attempts": 0,
+            "errors": [],
+            "error_categories": []
+        }
+
+    def log_retry_attempt(self, session_id: str, error: Exception, attempt: int, delay: float = None):
+        """记录重试尝试"""
+        if session_id not in self.retry_attempts:
+            return
+
+        error_context = APIErrorClassifier.get_error_context(error)
+
+        self.retry_attempts[session_id]["attempts"] = attempt
+        self.retry_attempts[session_id]["errors"].append({
+            "attempt": attempt,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "timestamp": time.time(),
+            "delay_before_retry": delay,
+            "error_context": error_context
+        })
+
+        if error_context['error_category'] not in self.retry_attempts[session_id]["error_categories"]:
+            self.retry_attempts[session_id]["error_categories"].append(error_context['error_category'])
+
+        log_entry = {
+            "session_id": session_id,
+            "agent_name": self.retry_attempts[session_id]["agent_name"],
+            "attempt": attempt,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "timestamp": time.time(),
+            "delay_before_retry": delay,
+            "error_context": error_context
+        }
+        self.retry_logs.append(log_entry)
+
+    def end_retry_session(self, session_id: str, success: bool = False, final_error: Exception = None):
+        """结束重试会话"""
+        if session_id not in self.retry_attempts:
+            return
+
+        session = self.retry_attempts[session_id]
+        session["end_time"] = time.time()
+        session["duration"] = session["end_time"] - session["start_time"]
+        session["success"] = success
+
+        if final_error:
+            session["final_error"] = {
+                "error": str(final_error),
+                "error_type": type(final_error).__name__,
+                "error_context": APIErrorClassifier.get_error_context(final_error)
+            }
+
+        if not success and session.get("final_error"):
+            print(f"❌ 最终失败 ({session['attempts']}/{session['attempts']}): {session['final_error']['error']}")
+
+    def get_retry_summary(self, session_id: str) -> dict:
+        """获取重试会话摘要"""
+        return self.retry_attempts.get(session_id, {})
+
+    def get_all_retry_logs(self) -> List[dict]:
+        """获取所有重试日志"""
+        return self.retry_logs
+
+    def clear_old_logs(self, max_age_seconds: int = 3600):
+        """清理旧的重试日志"""
+        current_time = time.time()
+        self.retry_logs = [
+            log for log in self.retry_logs
+            if current_time - log["timestamp"] <= max_age_seconds
+        ]
+
+
+class RetryableChatOpenAI:
+    """带有重试机制的ChatOpenAI包装器"""
+
+    def __init__(self, config: LLMConfig, retry_tracker: AgentRetryTracker = None, event_callback=None):
+        self.config = config
+        self.retry_tracker = retry_tracker or AgentRetryTracker()
+        self.event_callback = event_callback
+        self._llm = ChatOpenAI(
+            model=config.model,
+            api_key=config.api_key,
+            base_url=config.base_url,
+            temperature=config.temperature,
+            streaming=config.streaming,
+            max_tokens=config.max_tokens,
+            max_retries=0,  # 我们自己控制重试
+        )
+
+    @llm_retry_decorator
+    async def astream_events(self, *args, **kwargs):
+        """带有重试机制的astream_events方法"""
+        # 创建会话ID用于跟踪
+        session_id = f"llm_session_{int(time.time() * 1000)}"
+        self.retry_tracker.start_retry_session(session_id)
+
+        # 发送重试会话开始事件
+        if self.event_callback:
+            from datetime import datetime
+            await self.event_callback({
+                "type": "retry_session_start",
+                "timestamp": datetime.now().isoformat(),
+                "session_id": session_id,
+                "max_retries": self.config.max_retries,
+                "data": {
+                    "base_delay": self.config.retry_base_delay,
+                    "backoff_factor": self.config.retry_backoff_factor,
+                    "jitter": self.config.retry_jitter
+                }
+            })
+
+        try:
+            # 创建一个包装的函数来跟踪重试
+            async def tracked_astream():
+                return self._llm.astream_events(*args, **kwargs)
+
+            # 使用装饰器包装的函数
+            async def retry_wrapper():
+                last_error = None
+
+                for attempt in range(self.config.max_retries + 1):
+                    try:
+                        return await tracked_astream()
+                    except Exception as error:
+                        last_error = error
+
+                        # 检查是否可重试
+                        if not APIErrorClassifier.is_retryable_error(error):
+                            self.retry_tracker.end_retry_session(session_id, False)
+                            raise error
+
+                        # 如果是最后一次尝试，直接抛出异常
+                        if attempt == self.config.max_retries:
+                            self.retry_tracker.end_retry_session(session_id, False)
+                            raise error
+
+                        # 计算延迟时间（指数退避 + 抖动）
+                        delay = self.config.retry_base_delay * (self.config.retry_backoff_factor ** attempt)
+                        if self.config.retry_jitter:
+                            delay *= (0.5 + random.random() * 0.5)
+
+                        # 记录重试尝试
+                        self.retry_tracker.log_retry_attempt(session_id, error, attempt + 1, delay)
+
+                        # 发送重试尝试事件
+                        if self.event_callback:
+                            from datetime import datetime
+                            await self.event_callback({
+                                "type": "retry_attempt",
+                                "timestamp": datetime.now().isoformat(),
+                                "session_id": session_id,
+                                "attempt": attempt + 1,
+                                "max_attempts": self.config.max_retries + 1,
+                                "error": str(error),
+                                "error_type": type(error).__name__,
+                                "delay_before_retry": delay,
+                                "data": {
+                                    "retryable": True,
+                                    "next_attempt_in": delay
+                                }
+                            })
+
+                        await asyncio.sleep(delay)
+
+            result = await retry_wrapper()
+            self.retry_tracker.end_retry_session(session_id, True)
+
+            # 发送重试会话成功事件
+            if self.event_callback:
+                from datetime import datetime
+                await self.event_callback({
+                    "type": "retry_session_end",
+                    "timestamp": datetime.now().isoformat(),
+                    "session_id": session_id,
+                    "success": True,
+                    "data": self.retry_tracker.get_retry_summary(session_id)
+                })
+
+            return result
+
+        except Exception as e:
+            self.retry_tracker.end_retry_session(session_id, False, e)
+
+            # 发送重试会话失败事件
+            if self.event_callback:
+                from datetime import datetime
+                error_context = APIErrorClassifier.get_error_context(e)
+                await self.event_callback({
+                    "type": "retry_session_end",
+                    "timestamp": datetime.now().isoformat(),
+                    "session_id": session_id,
+                    "success": False,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "error_context": error_context,
+                    "data": self.retry_tracker.get_retry_summary(session_id)
+                })
+
+            raise e
+
+    def __getattr__(self, name):
+        """代理其他方法到底层ChatOpenAI实例"""
+        return getattr(self._llm, name)
 
 
 @dataclass
@@ -261,18 +598,11 @@ class MultiAgentAnalyzer:
         self.llm = None
         self.mcp_client = None
         self.tools = None
+        self.retry_tracker = AgentRetryTracker()
 
-    async def initialize(self) -> None:
+    async def initialize(self, event_callback=None) -> None:
         """初始化LLM和MCP客户端以便在多个Agent之间复用。"""
-        self.llm = ChatOpenAI(
-            model=self.config.model,
-            api_key=self.config.api_key,
-            base_url=self.config.base_url,
-            temperature=self.config.temperature,
-            streaming=self.config.streaming,
-            max_tokens=self.config.max_tokens,
-            max_retries=self.config.max_retries,
-        )
+        self.llm = RetryableChatOpenAI(self.config, self.retry_tracker, event_callback)
 
         self.mcp_client = MultiServerMCPClient(
             {
@@ -311,7 +641,7 @@ class MultiAgentAnalyzer:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             if not self.llm or not self.tools:
-                await self.initialize()
+                await self.initialize(event_callback)
 
             agent = create_agent(self.llm, self.tools)
             content_parts = []
