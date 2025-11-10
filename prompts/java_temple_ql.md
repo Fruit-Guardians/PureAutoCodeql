@@ -1,3 +1,16 @@
+#### Java特殊注意事项
+🛡️ 防错检查清单
+类型存在性检查：确认使用的DataFlow子类型在Java库中存在
+AST节点转换：使用asExpr()、asParameter()正确转换节点类型
+方法调用处理：直接使用MethodCall而不是分离Method和CallNode
+导入语句：确保正确导入semmle.code.java.dataflow.DataFlow
+💡 记忆要点
+Java CodeQL中没有DataFlow::CallNode类型
+方法调用统一使用MethodCall AST类
+DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
+使用mc.getMethod()访问方法调用对应的方法
+
+
 #### 编写约束
 
 /**
@@ -37,7 +50,10 @@ module VulnConfig implements DataFlow::ConfigSig {
   }
 
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    // 可选: 定义额外的数据流步骤，如若不使用则默认为none()
+    // Handle data flow through ProxygenSerializer deserialization
+    exists(MethodCall mc |
+      ...........................
+    )
   }
 }
 

@@ -76,6 +76,82 @@ Rules:
    - 避免"在旧代码上打补丁"，必须重写
 4. **输出完整查询**：满足 python_template_ql.md 的骨架、`select` 仅 4 个参数、`Flow::PathGraph` 必须导入。
 
+### ✅ **使用这些模式**
+```ql
+// 正确的参数流步骤
+exists(MethodCall mc, Method m |
+  mc.getMethod() = m and
+  src.asExpr() = mc.getAnArgument() and
+  dst.asParameter() = m.getAParameter()
+)
+
+// 正确的 RemoteFlowSource 使用  
+src instanceof RemoteFlowSource
+
+// 路径问题的正确 select 语句
+select sink.getNode(), src, sink, "描述消息"
+```
+
+### ❌ **避免这些模式**
+```ql
+// 无效 - getAChildExpr() 不存在
+e = m.getBody().getAChildExpr()
+
+// 无效 - RemoteFlowSource 使用
+exists(RemoteFlowSource rfs | rfs.getSource() = src)
+
+// 无效 - 带路径参数的多行 select
+select sink.getNode(), src, sink,
+  "消息",
+  src, "source", sink, "sink"
+```
+
+## 常用 CodeQL 方法参考
+
+### 有效的 Body/Expression 方法
+- `m.getBody()` - 获取方法体
+- `body.getAStmt()` - 从方法体获取语句  
+- `stmt.getAChildExpr()` - 从语句获取子表达式
+- `expr.getAChildExpr()` - 从表达式获取子表达式
+
+### 有效的数据流模式
+- `src.asParameter()` - 将节点转换为参数
+- `src.asExpr()` - 将节点转换为表达式
+- `mc.getAnArgument()` - 获取方法调用参数
+- `m.getAParameter()` - 获取方法参数
+
+### 有效的类型检查
+- `src instanceof RemoteFlowSource` - 检查节点是否为远程流源
+- `src instanceof MethodCall` - 检查节点是否为方法调用
+
+## 测试建议
+
+1. **语法验证**: 生成后始终验证 CodeQL 语法
+2. **方法存在性**: 验证所有调用的方法在 CodeQL 标准库中存在
+3. **类型一致性**: 确保一致使用 `asParameter()`、`asExpr()` 转换
+4. **导入要求**: 确认所有必需模块已导入
+
+## 参考工作模式
+
+修正后的查询遵循这个经过验证的模式：
+```ql
+module VulnConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node src) { /* 简化逻辑 */ }
+  predicate isSink(DataFlow::Node sink) { /* 标准汇点检测 */ }  
+  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) { 
+    /* 方法调用到参数的流 */
+  }
+}
+
+module Flow = TaintTracking::Global<VulnConfig>;
+import Flow::PathGraph
+
+from Flow::PathNode src, Flow::PathNode sink
+where Flow::flowPath(src, sink)
+select sink.getNode(), src, sink, "描述"
+```
+
+
 ### 质量清单（提交前自检）
 - [ ] `module Flow = TaintTracking::Global<...>;`
 - [ ] `select sink.getNode(), source, sink, "message"`

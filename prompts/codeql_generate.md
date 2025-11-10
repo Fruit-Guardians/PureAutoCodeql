@@ -133,22 +133,6 @@
 将所有的 MethodAccess 替换为 MethodCall！！！
 现版本已将MethodAccess弃用
 
-注意参考的模板可以结合 [[PREV_FIX_SUGGESTIONS]] 的修复思路进行适当调整（若存在）。
-
----
-
-## 语言特定内容（通过占位符自动注入）
-
-**重要**：以下内容会根据 `[[LANGUAGE]]` 的值自动注入对应的语言特定内容：
-
-- **语言模板**：`[[QL_TEMPLATE]]` 占位符会被替换为对应语言的模板文件内容
-  - Python → `python_template_ql.md`（包含Python特定规范、知识库推荐等）
-  - Java → `java_temple_ql.md`
-  - C/C++ → `c_template_ql.md`
-
-- **知识库推荐**：如果语言支持知识库（如Python），会通过 `[[KB_*]]` 占位符注入相关内容
-  - 非Python语言时，这些占位符为空，不会显示
-
 **请严格遵循对应语言模板中的规范，不要混用不同语言的语法。**
 
 ---
