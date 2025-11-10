@@ -204,6 +204,11 @@ class LLMConfig:
     max_tokens: Optional[int] = None
     max_retries: int = 3
     provider: Optional[str] = None
+    
+    # 重试机制配置
+    retry_base_delay: float = 1.0  # 基础延迟时间（秒）
+    retry_backoff_factor: float = 2.0  # 退避因子
+    retry_jitter: bool = True  # 是否启用抖动算法
 
 
 # Sarif2JsonConfig 已移除 - 这不是LLM配置，应该在 utils/ 中
