@@ -20,6 +20,7 @@
 - ✅ **服务化组件** - 可复用的LLM、LSP、语言检测服务
 - ✅ **向后兼容** - 现有代码无需修改即可使用
 - ✅ **异步优化** - 更好的并发性能和资源利用
+- ✅ **额外输入文件支持** - 在 `inputs/` 目录添加额外信息文件增强分析 🆕
 
 ### 📊 **架构对比**
 
@@ -265,6 +266,26 @@ uv run python Analyze.py --validate CVE-2021-21985
 uv run python Analyze.py --list
 ```
 
+## 📁 额外输入文件支持 🆕
+
+现在可以在案例的 `inputs/` 目录中添加**任意额外文件**来增强分析！
+
+```bash
+# 文件名随意，格式随意
+echo "系统使用 Spring Boot 框架..." > projects/CVE-XXX/inputs/架构说明.md
+echo '{"version": "2.3.4"}' > projects/CVE-XXX/inputs/版本.json
+echo "关键发现: ..." > projects/CVE-XXX/inputs/分析笔记.txt
+```
+
+系统会自动：
+- 🔍 **发现文件** - 自动扫描 inputs 目录
+- 📋 **读取内容** - 作为补充上下文
+- 🤖 **提供给 Agent** - 用于更精准的分析
+
+**无需遵循特定命名规范**，任意文件名和格式都支持！
+
+**详细文档**：[额外输入文件功能说明](docs/extra_input_files_simple.md)
+
 ## 📖 详细文档
 
 | 文档 | 描述 |
@@ -274,6 +295,7 @@ uv run python Analyze.py --list
 | [📚 API参考](openspec/docs/api_reference.md) | 完整的API接口文档 |
 | [📝 项目规范](openspec/project.md) | 项目开发规范和流程 |
 | [📋 OpenSpec](openspec/README.md) | 项目规范和变更管理 |
+| [📂 额外输入文件](docs/extra_input_files_simple.md) | 额外输入文件功能使用指南 🆕 |
 
 ## 🔄 代码质量优化
 

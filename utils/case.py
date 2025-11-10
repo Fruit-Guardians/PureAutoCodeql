@@ -26,12 +26,45 @@ class CasePaths:
 
 
 @dataclass(frozen=True)
+class ExtraFile:
+    """额外输入文件的元数据。"""
+    
+    path: Path
+    
+    def read_text(self) -> str:
+        """读取文件内容为文本。"""
+        return self.path.read_text(encoding='utf-8')
+
+
+@dataclass(frozen=True)
 class CveAssets:
     """案例中单个CVE的本地工件。"""
 
     cve_id: str
     json_path: Path
     diff_path: Optional[Path]
+    extra_files: tuple[ExtraFile, ...] = ()  # 额外输入文件
+    
+    def has_extra_files(self) -> bool:
+        """检查是否有额外文件。"""
+        return len(self.extra_files) > 0
+    
+    def get_all_extra_content(self) -> str:
+        """获取所有额外文件的内容（用于分析上下文）。"""
+        if not self.extra_files:
+            return ""
+        
+        sections = [f"=== 额外输入文件 ({len(self.extra_files)} 个) ===\n"]
+        
+        for extra_file in self.extra_files:
+            sections.append(f"\n--- 文件: {extra_file.path.name} ---")
+            try:
+                content = extra_file.read_text()
+                sections.append(content)
+            except Exception as e:
+                sections.append(f"[无法读取文件: {e}]")
+        
+        return "\n".join(sections)
 
 
 def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePaths:
@@ -72,11 +105,46 @@ def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePath
     )
 
 
+def _discover_extra_files(inputs_dir: Path, cve_id: str) -> tuple[ExtraFile, ...]:
+    """
+    发现 inputs 目录中的额外文件。
+    
+    排除标准的 CVE JSON 和 diff 文件。
+    """
+    extra_files = []
+    
+    for file_path in inputs_dir.iterdir():
+        if not file_path.is_file():
+            continue
+        
+        # 排除标准 CVE 文件
+        if file_path.name.startswith('CVE-') and file_path.suffix in ('.json', '.diff'):
+            continue
+        
+        # 排除隐藏文件和临时文件
+        if file_path.name.startswith('.') or file_path.name.endswith('~'):
+            continue
+        
+        extra_file = ExtraFile(path=file_path)
+        extra_files.append(extra_file)
+    
+    # 按文件名排序
+    extra_files.sort(key=lambda f: f.path.name)
+    
+    if extra_files:
+        logger.info(f"📂 [额外文件] 发现 {len(extra_files)} 个额外输入文件:")
+        for extra_file in extra_files:
+            logger.info(f"   - {extra_file.path.name}")
+    
+    return tuple(extra_files)
+
+
 def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
     """
     在案例输入目录中定位CVE JSON/diff对，支持文件缺失时的回退机制。
 
     自动选择第一个可用的CVE进行，如果JSON文件缺失则从NVD API获取。
+    同时发现并分类额外的输入文件。
     """
 
     json_files = sorted(case_paths.inputs.glob("CVE-*.json"))
@@ -148,7 +216,15 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
     else:
         logger.info(f"⚠️  [文件缺失] 未找到 {cve_id} 的diff文件，将继续进行分析（无diff模式）")
 
-    return CveAssets(cve_id=cve_id, json_path=json_path, diff_path=diff_path)
+    # 发现额外输入文件
+    extra_files = _discover_extra_files(case_paths.inputs, cve_id)
+
+    return CveAssets(
+        cve_id=cve_id, 
+        json_path=json_path, 
+        diff_path=diff_path,
+        extra_files=extra_files
+    )
 
 
 def extract_cve_id(filename: str) -> Optional[str]:

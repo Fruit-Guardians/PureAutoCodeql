@@ -8,7 +8,8 @@
 2. **复制项目源码**：放入 `source_code/` 目录。
 3. **导入或创建 CodeQL 数据库**：在 `db/<语言>/` 目录下。
 4. **放置 CVE JSON / diff 文件**：放入 `inputs/` 目录。
-5. **保持 `intel/` 目录为空**：运行编排器后会自动填充。
+5. **（可选）添加额外信息文件**：放入 `inputs/` 目录，见下方说明。
+6. **保持 `intel/` 目录为空**：运行编排器后会自动填充。
 
 ## 目录结构
 
@@ -44,6 +45,63 @@ case-template/                    # Template directory
 ├── db/                          # CodeQL databases
 │   └── <language>/             # Language-specific databases
 ├── inputs/                     # CVE files and patches
+│   ├── CVE-*.json              # CVE information (required)
+│   ├── CVE-*.diff              # Patch file (optional)
+│   └── [extra files]           # Additional context files (optional)
 ├── intel/                      # Generated intelligence
 └── README.md                   # This file
 ```
+
+## 额外输入文件支持 (New Feature!)
+
+您现在可以在 `inputs/` 目录中添加额外的信息文件来增强分析效果！
+
+### 简单使用
+
+**添加任意文件，使用任意文件名：**
+
+```bash
+# 文件名随意，格式随意
+echo "系统使用 Spring Boot 2.3.4" > inputs/架构说明.txt
+echo "发现了注入漏洞" > inputs/分析笔记.md
+echo '{"version": "2.3.4"}' > inputs/versions.json
+```
+
+**运行分析，系统自动使用这些文件：**
+
+```bash
+python Analyze.py --case YOUR-CVE-ID
+```
+
+就这么简单！无需修改代码，无需遵循特定命名规范。
+
+### 使用示例
+
+#### 添加背景信息
+
+```bash
+cat > inputs/背景说明.md << 'EOF'
+# 系统信息
+- 框架: Spring Boot 2.3.4
+- 漏洞位置: API Gateway
+EOF
+```
+
+#### 添加版本信息
+
+```bash
+cat > inputs/版本.txt << 'EOF'
+Spring Boot: 2.3.4.RELEASE
+Java: 11
+EOF
+```
+
+#### 添加分析记录
+
+```bash
+cat > inputs/发现.md << 'EOF'
+发现了 SpEL 注入漏洞，需要进一步验证。
+EOF
+```
+
+详细文档：[额外输入文件功能说明](../../docs/extra_input_files_simple.md)
