@@ -247,7 +247,7 @@ class AnalysisPipeline:
             CVEAnalysisStep(),
             SinkAnalysisStep(),
             SourceAnalysisStep(),
-            #CodeQLGenerationStep(),
+            CodeQLGenerationStep(),
         ]
         return cls(steps)
 
