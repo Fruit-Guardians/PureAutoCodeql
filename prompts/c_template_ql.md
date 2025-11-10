@@ -31,40 +31,45 @@ predicate inTarget(Function f) {
 
 /**
  * 用类来封装危险调用，便于访问关键参数。
- * 例如 memcpy 第三参、vsprintf 目标缓冲等。
+ * ⚠️ 请使用 diff/案例情报中真实出现的危险 API 与参数索引（例如补丁强调的 memcpy 第三个参数 s）。
  */
 class VulnerableCall extends FunctionCall {
   VulnerableCall() {
-    this.getTarget().hasGlobalName("[危险 API 名]") and
+    this.getTarget().hasGlobalName("[补丁中的危险 API，例如 memcpy]") and
     inTarget(this.getEnclosingFunction())
   }
 
-  /** 数据源参数（可选） */
-  Expr getDataArg() { result = this.getArgument([索引]) }
+  /** 如需追踪源参数，可按 diff 指定的参数索引返回；无需求可移除本方法。 */
+  Expr getDataArg() { result = this.getArgument([根据 diff 指定的索引]) }
 
-  /** 长度或危险参数 */
-  Expr getDangerArg() { result = this.getArgument([索引]) }
+  /** 长度或危险参数，必须对应补丁指出的实参（如 memcpy 的第 2/3 参数）。 */
+  Expr getDangerArg() { result = this.getArgument([根据 diff 指定的索引]) }
 }
 
 // --- Source 定义 -------------------------------------------------------------
 
 /**
  * 外部可控或缺乏边界约束的表达式。
- * 参考补丁中的“产生未校验长度/数据”的函数或字段。
+ * ⚠️ 必须引用 diff/情报中的具体函数或变量（例如 exif_format_get_size、变量 s/len 等），禁止使用“任意输入”之类泛化符号。
  */
 predicate isSourceExpr(Expr expr) {
-  // 示例：函数调用返回值
+  // 例：补丁强调的函数调用（如 exif_format_get_size 返回值参与 s 计算）
   exists(FunctionCall fc |
-    fc.getTarget().hasGlobalName("[source-API]") and
+    fc.getTarget().hasGlobalName("[补丁中的 source 函数，如 exif_format_get_size]") and
     inTarget(fc.getEnclosingFunction()) and
     expr = fc
   )
   or
-  // 示例：关键局部变量或参数
+  // 例：补丁涉及的关键变量（如 s、len）
   exists(VariableAccess va |
-    va.getTarget() instanceof Parameter and
-    va.getTarget().getName() = "[变量名]" and
-    inTarget(va.getTarget().(Parameter).getFunction()) and
+    va.getTarget().getName() = "[补丁里的变量名，如 s]" and
+    (
+      va.getTarget() instanceof Parameter and
+      inTarget(va.getTarget().(Parameter).getFunction())
+      or
+      va.getTarget() instanceof LocalVariable and
+      inTarget(va.getTarget().getFunction())
+    ) and
     expr = va
   )
 }
@@ -78,7 +83,9 @@ module VulnConfig implements DataFlow::ConfigSig {
 
   predicate isSink(DataFlow::Node sink) {
     exists(VulnerableCall call |
-      sink.asExpr() = call.getDangerArg()
+      // ⚠️ 根据 diff/情报覆盖所有需要监控的参数，例如同时追踪缓冲区与长度参数
+      sink.asExpr() = call.getDangerArg() or
+      sink.asExpr() = call.getDataArg()
     )
   }
 
