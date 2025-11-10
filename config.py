@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -31,6 +31,17 @@ class LLMConfig:
     max_tokens: Optional[int] = None
     max_retries: int = 3
     provider: Optional[str] = None  # 仅做记录，兼容调用方
+
+    # 重试机制配置
+    retry_base_delay: float = 1.0  # 基础延迟时间（秒）
+    retry_backoff_factor: float = 2.0  # 退避因子
+    retry_jitter: bool = True  # 是否启用抖动算法
+    retryable_status_codes: List[int] = None  # 可重试的HTTP状态码
+
+    def __post_init__(self):
+        """初始化后处理，设置默认值"""
+        if self.retryable_status_codes is None:
+            self.retryable_status_codes = [404, 500, 502, 503, 504, 429]
 
 
 def _default_base_url(provider: LLMProvider) -> str:
@@ -115,7 +126,7 @@ def _read_env_models() -> tuple[Optional[str], Optional[str]]:
 
 def get_siliconflow_models() -> list[str]:
     """获取硅基流动可用的模型列表。
-    
+
     Returns:
         模型名称列表
     """
@@ -265,7 +276,7 @@ def get_resilient_llm_config(role: LLMRole) -> LLMConfig:
 
 
 def get_llm_config(
-    role: LLMRole, 
+    role: LLMRole,
     provider_name: Optional[str] = None,
     model_name: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -378,11 +389,11 @@ def list_available_providers() -> list[dict]:
             LLMProvider.KIMI: {"think": "kimi-k2-thinking", "chat": "kimi-k2-0905-preview"},
             LLMProvider.GEMINI: {"think": "gemini-2.5-pro", "chat": "gemini-2.5-pro"},
         }
-        
+
         # 检查可达性
         is_reachable = _is_reachable(base_url)
         has_api_key = bool(api_key)
-        
+
         provider_info = {
             "name": provider.value,
             "display_name": {
@@ -399,13 +410,13 @@ def list_available_providers() -> list[dict]:
             "is_reachable": is_reachable,
             "status": "✅ 可用" if (has_api_key and is_reachable) else ("⚠️  API Key缺失" if not has_api_key else "❌ 不可达"),
         }
-        
+
         # 为硅基流动添加可用模型列表
         if provider == LLMProvider.SILICONFLOW:
             provider_info["available_models"] = get_siliconflow_models()
-        
+
         providers_info.append(provider_info)
-    
+
     return providers_info
 
 
