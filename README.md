@@ -172,7 +172,16 @@ asyncio.run(batch_analysis())
 
 ## 🔧 LLM 配置
 
-本项目使用集中化的 LLM 配置系统（`config.py`），支持多种服务商，并提供**快捷切换**功能。
+本项目使用全新的 **统一配置系统** (`config.py`)，支持多种服务商、自定义服务商和美观的信息展示。
+
+### 🎯 新配置系统亮点 (v2.0)
+
+- ✅ **统一注册机制** - `ProviderRegistry` 管理所有服务商
+- ✅ **自定义服务商** - 支持 YAML 配置文件添加自定义服务商
+- ✅ **美观展示** - 使用 Rich 库提供专业的表格和面板展示
+- ✅ **命令行工具** - 完整的 CLI 工具 (`python config.py`)
+- ✅ **向后兼容** - 现有代码无需修改即可使用
+- ✅ **自动切换** - 服务商自动故障转移功能
 
 ### 支持的服务商
 
@@ -232,24 +241,74 @@ export THINK_MODEL=your_custom_reasoning_model
 export CHAT_MODEL=your_custom_chat_model
 ```
 
-### 提供商状态检查
+### 🔍 配置管理工具
 
-运行 `--list-providers` 可以查看：
-- ✅ 所有可用的提供商
-- 📊 每个提供商的状态（可用/API Key缺失/不可达）
-- 🤖 每个提供商使用的模型
-- 🔗 API 端点信息
+#### 查看服务商状态
 
-示例输出：
+```bash
+# 查看所有服务商状态（表格形式）
+python config.py list
+
+# 仅显示可用的服务商
+python config.py list --available-only
+
+# 查看单个服务商详情
+python config.py show siliconflow
+
+# 测试服务商连接
+python config.py test deepseek
+
+# 运行配置向导
+python config.py setup
 ```
-📋 可用的模型提供商:
-🔹 DeepSeek (deepseek)
-   状态: ✅ 可用
-   推理模型: deepseek-reasoner
-   对话模型: deepseek-chat
-   Base URL: https://api.deepseek.com/v1
-...
+
+#### 在分析时检查
+
+```bash
+# 在 Analyze.py 中查看服务商状态
+python Analyze.py --list-providers
 ```
+
+### 📦 自定义服务商
+
+支持添加自定义 LLM 服务商（如本地 Ollama、自定义 OpenAI 代理等）：
+
+1. **创建配置文件** `my_providers.yaml`:
+
+```yaml
+custom_providers:
+  - name: "my_openai"
+    display_name: "我的 OpenAI 代理"
+    base_url: "https://my-proxy.com/v1"
+    default_think_model: "gpt-4"
+    default_chat_model: "gpt-3.5-turbo"
+    env_keys:
+      - "MY_OPENAI_KEY"
+    env_base_urls:
+      - "MY_OPENAI_BASE_URL"
+    description: "通过代理访问 OpenAI API"
+```
+
+2. **注册服务商**:
+
+```bash
+python config.py register --file my_providers.yaml
+```
+
+3. **使用自定义服务商**:
+
+```bash
+python Analyze.py --case CVE-2021-21985 --provider my_openai
+```
+
+详见 [`providers.example.yaml`](providers.example.yaml) 和 [配置系统指南](docs/config_system_guide.md)。
+
+### 📚 配置文档
+
+- 📖 [配置系统完整指南](docs/config_system_guide.md) - 详细的使用文档
+- 🔄 [配置系统迁移指南](docs/config_migration_guide.md) - 从旧版本迁移
+- 💡 [配置示例](examples/config_demo.py) - 代码示例
+- 📝 [服务商配置模板](providers.example.yaml) - YAML 配置模板
 
 ## 🧪 测试和验证
 

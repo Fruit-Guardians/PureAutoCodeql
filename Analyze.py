@@ -567,9 +567,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["deepseek", "siliconflow", "zhipu", "kimi", "gemini"],
         metavar="PROVIDER",
-        help="指定模型提供商 (deepseek/siliconflow/zhipu/kimi/gemini)，覆盖环境变量 LLM_PROVIDER"
+        help="指定模型提供商 (deepseek/siliconflow/zhipu/kimi/gemini 或 keys.toml 中定义的自定义提供商)，覆盖环境变量 LLM_PROVIDER"
     )
     parser.add_argument(
         "--model",

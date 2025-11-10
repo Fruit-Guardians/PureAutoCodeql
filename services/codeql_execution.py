@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from config import get_sarif2json_config
+from utils.sarif_config import get_sarif2json_config
 from utils.sarif_utils import write_paths_json
 
 
