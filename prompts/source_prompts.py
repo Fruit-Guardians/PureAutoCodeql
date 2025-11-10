@@ -44,7 +44,7 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
 1. 理解不可信输入来源类型：网络/套接字、文件读取、管道/IPC、环境变量、标准输入、反序列化/二进制解析等。
 2. 结合路径列表，聚焦可能接收用户控制数据的函数或方法（{language_instructions}）。
 3. 给出每个候选的理由与置信度（high/medium/low）。
-4. 注意首先使用ripgrep进行快速搜索
+4. 注意首先使用文件工具读取Sink点所在的文件，然后用ripgrep进行有需要的搜索
 
 输出要求（必须严格遵守）：
 - 仅输出 JSON（不要输出除 JSON 以外的任何文字、Markdown 或代码块标记）。

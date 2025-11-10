@@ -315,7 +315,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         else:
                             return self._send_json({"error": f"LSP重启后仍然失败: {res['error']}"}, 500)
 
-                            
+
                     except Exception as restart_error:
                         return self._send_json({"error": f"LSP重启失败: {restart_error}"}, 500)
                 return self._send_json(res, 200)
@@ -341,7 +341,7 @@ def main():
 
     pack_root = Path(args.pack_root).resolve()
     query_file = Path(args.query_file).resolve()
-    
+
     if not pack_root.exists():
         print(f"[ERR] pack root not found: {pack_root}", file=sys.stderr); sys.exit(1)
     if not ((pack_root / "codeql-pack.yml").exists() or (pack_root / "qlpack.yml").exists()):

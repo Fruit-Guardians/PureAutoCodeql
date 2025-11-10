@@ -15,7 +15,7 @@ from .cpp_sink_prompt import build_cpp_sink_prompt
 
 class SinkPromptManager:
     """管理sink分析提示词的类。"""
-    
+
     def __init__(self):
         self.prompt_builders = {
             "java": build_java_sink_prompt,
@@ -23,11 +23,11 @@ class SinkPromptManager:
             "cpp": build_cpp_sink_prompt,
             "c++": build_cpp_sink_prompt,  # 支持c++作为cpp的别名
         }
-    
+
     def get_prompt_builder(self, language: str):
         """获取指定语言的提示词构建器。"""
         return self.prompt_builders.get(language.lower())
-    
+
     def build_prompt(self, language: str, cve_analysis: str, source_path: str, diff_path: str = "") -> str:
         """构建指定语言的提示词。"""
         builder = self.get_prompt_builder(language)
@@ -37,7 +37,7 @@ class SinkPromptManager:
             return builder(cve_analysis, source_path, diff_path_str)
         else:
             return f"未知语言: {language}"
-    
+
     def get_supported_languages(self) -> list:
         """获取支持的语言列表。"""
         return list(self.prompt_builders.keys())

@@ -59,43 +59,43 @@ class ProviderConfig:
     description: str = ""
     is_builtin: bool = True
     custom_params: dict[str, Any] = field(default_factory=dict)
-    
+
     def get_api_key(self) -> str:
         """获取 API Key，按优先级：环境变量 > keys.toml"""
         # 优先使用专属环境变量
         for env_name in self.env_keys:
             if os.getenv(env_name):
                 return os.getenv(env_name)  # type: ignore
-        
+
         # 通用兜底环境变量
         for env_name in ["OPENAI_API_KEY", "API_KEY"]:
             if os.getenv(env_name):
                 return os.getenv(env_name)  # type: ignore
-        
+
         # 从 keys.toml 读取（由 ProviderRegistry 设置）
         if hasattr(self, '_dev_key'):
             return self._dev_key
-        
+
         return ""
-    
+
     def get_base_url(self) -> str:
         """获取 Base URL，按优先级尝试环境变量"""
         # 优先使用专属环境变量
         for env_name in self.env_base_urls:
             if os.getenv(env_name):
                 return os.getenv(env_name)  # type: ignore
-        
+
         # 通用兜底
         for env_name in ["OPENAI_BASE_URL", "BASE_URL"]:
             if os.getenv(env_name):
                 return os.getenv(env_name)  # type: ignore
-        
+
         return self.base_url
-    
+
     def is_configured(self) -> bool:
         """检查是否已配置（有 API Key）"""
         return bool(self.get_api_key())
-    
+
     def is_reachable(self, timeout: float = 2.0) -> bool:
         """检查服务是否可达（基础网络检测）"""
         try:
@@ -106,32 +106,32 @@ class ProviderConfig:
             return True  # HTTP 错误说明服务可达
         except (URLError, Exception):
             return False
-    
+
     def validate_api_key(self) -> tuple[bool, str]:
         """真实调用API验证key是否有效
-        
+
         Returns:
             (is_valid, error_message)
         """
         api_key = self.get_api_key()
         if not api_key:
             return False, "API Key未配置"
-        
+
         try:
             import httpx
-            
+
             # 构造一个简单的API调用来验证
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
             }
-            
+
             # 尝试调用models列表接口（OpenAI兼容）
             url = f"{self.get_base_url()}/models"
-            
+
             with httpx.Client(timeout=5.0) as client:
                 response = client.get(url, headers=headers)
-                
+
                 if response.status_code == 200:
                     return True, "验证成功"
                 elif response.status_code == 401:
@@ -140,7 +140,7 @@ class ProviderConfig:
                     return False, "API Key无权限"
                 else:
                     return False, f"验证失败: {response.status_code}"
-        
+
         except Exception as e:
             # 如果/models接口不可用，尝试一个最小的chat请求
             try:
@@ -155,7 +155,7 @@ class ProviderConfig:
                         headers=headers,
                         json=test_data
                     )
-                    
+
                     if response.status_code in [200, 400]:  # 400可能是参数问题，但key有效
                         return True, "验证成功"
                     elif response.status_code == 401:
@@ -165,18 +165,18 @@ class ProviderConfig:
             except:
                 # 最后兜底：如果都失败，说明可能网络问题或API不标准
                 return False, f"无法验证: {str(e)}"
-    
+
     def get_status(self, validate_key: bool = False) -> tuple[str, str]:
         """获取状态标记和描述
-        
+
         Args:
             validate_key: 是否真实验证API Key（较慢但准确）
         """
         has_key = self.is_configured()
-        
+
         if not has_key:
             return ("⚠️", "API Key 缺失")
-        
+
         # 快速检查：网络可达性
         if not validate_key:
             reachable = self.is_reachable()
@@ -184,7 +184,7 @@ class ProviderConfig:
                 return ("✅", "已配置")
             else:
                 return ("❌", "不可达")
-        
+
         # 深度检查：真实API调用
         is_valid, error_msg = self.validate_api_key()
         if is_valid:
@@ -217,61 +217,61 @@ class ProviderRegistry:
     """服务商注册中心"""
     _providers: dict[str, ProviderConfig] = {}
     _keys_config: dict = {}
-    
+
     @classmethod
     def register(cls, config: ProviderConfig) -> None:
         """注册一个服务商"""
         cls._providers[config.name] = config
-    
+
     @classmethod
     def get(cls, name: str) -> Optional[ProviderConfig]:
         """获取服务商配置"""
         return cls._providers.get(name)
-    
+
     @classmethod
     def list_all(cls) -> list[ProviderConfig]:
         """列出所有已注册的服务商"""
         return list(cls._providers.values())
-    
+
     @classmethod
     def list_available(cls) -> list[ProviderConfig]:
         """列出所有已配置且可用的服务商"""
         return [p for p in cls._providers.values() if p.is_configured() and p.is_reachable()]
-    
+
     @classmethod
     def exists(cls, name: str) -> bool:
         """检查服务商是否已注册"""
         return name in cls._providers
-    
+
     @classmethod
     def load_keys_toml(cls, filepath: Optional[str] = None) -> None:
         """从 keys.toml 加载配置"""
         if filepath is None:
             # 默认路径：config/keys.toml
             filepath = Path(__file__).parent / "keys.toml"
-        
+
         filepath = Path(filepath)
         if not filepath.exists():
             return  # keys.toml 不存在，使用默认配置
-        
+
         try:
             with open(filepath, 'rb') as f:
                 cls._keys_config = tomllib.load(f)
-            
+
             # 1. 加载内置服务商的 API Keys
             builtin_keys = cls._keys_config.get('builtin_keys', {})
             for name, key in builtin_keys.items():
                 if key and name in cls._providers:
                     cls._providers[name]._dev_key = key
-            
+
             # 2. 注册自定义服务商
             custom_providers = cls._keys_config.get('custom_providers', [])
             for provider_data in custom_providers:
                 cls._register_custom_from_toml(provider_data)
-        
+
         except Exception as e:
             print(f"警告：加载 keys.toml 失败: {e}")
-    
+
     @classmethod
     def _register_custom_from_toml(cls, data: dict) -> None:
         """从 TOML 数据注册自定义服务商"""
@@ -291,13 +291,13 @@ class ProviderRegistry:
         if "api_key" in data:
             config._dev_key = data["api_key"]
         cls.register(config)
-    
+
     @classmethod
     def get_default_provider(cls) -> str:
         """获取默认服务商名称"""
         settings = cls._keys_config.get('settings', {})
         return settings.get('default_provider', os.getenv('LLM_PROVIDER', 'deepseek'))
-    
+
     @classmethod
     def get_default_models(cls) -> tuple[Optional[str], Optional[str]]:
         """获取默认模型（think_model, chat_model）"""
@@ -314,7 +314,7 @@ class ProviderRegistry:
 
 def register_builtin_providers() -> None:
     """注册所有内置服务商"""
-    
+
     # DeepSeek
     ProviderRegistry.register(ProviderConfig(
         name="deepseek",
@@ -327,7 +327,7 @@ def register_builtin_providers() -> None:
         description="DeepSeek 官方 API，提供高性能推理和对话模型",
         is_builtin=True,
     ))
-    
+
     # SiliconFlow
     ProviderRegistry.register(ProviderConfig(
         name="siliconflow",
@@ -347,7 +347,7 @@ def register_builtin_providers() -> None:
         description="硅基流动提供多种国产大模型 API 服务",
         is_builtin=True,
     ))
-    
+
     # 智谱 GLM
     ProviderRegistry.register(ProviderConfig(
         name="zhipu",
@@ -360,7 +360,7 @@ def register_builtin_providers() -> None:
         description="智谱 AI 的 GLM 系列模型",
         is_builtin=True,
     ))
-    
+
     # Kimi
     ProviderRegistry.register(ProviderConfig(
         name="kimi",
@@ -373,7 +373,7 @@ def register_builtin_providers() -> None:
         description="月之暗面 Kimi 智能助手 API",
         is_builtin=True,
     ))
-    
+
     # Google Gemini
     ProviderRegistry.register(ProviderConfig(
         name="gemini",
@@ -403,7 +403,7 @@ def get_llm_config(
     """根据角色获取 LLM 配置"""
     if role not in (LLMRole.THINK, LLMRole.CHAT):
         raise ValueError(f"不支持的 LLM 角色: {role}")
-    
+
     # 1. 确定使用哪个服务商
     if provider_name:
         target_provider = ProviderRegistry.get(provider_name)
@@ -416,28 +416,28 @@ def get_llm_config(
         target_provider = ProviderRegistry.get(default_name)
         if not target_provider:
             target_provider = ProviderRegistry.get("deepseek")
-    
+
     # 2. 自动切换
     if auto_fallback and target_provider:
         if not (target_provider.is_configured() and target_provider.is_reachable()):
             available_providers = ProviderRegistry.list_available()
             if available_providers:
                 target_provider = available_providers[0]
-    
+
     # 3. 确定 API Key 和 Base URL
     final_api_key = api_key or (target_provider.get_api_key() if target_provider else "")
     final_base_url = base_url or (target_provider.get_base_url() if target_provider else "")
-    
+
     # 4. 确定模型
     default_think, default_chat = ProviderRegistry.get_default_models()
-    
+
     if model_name:
         final_model = model_name
     elif role == LLMRole.THINK:
         final_model = default_think or (target_provider.default_think_model if target_provider else "")
     else:
         final_model = default_chat or (target_provider.default_chat_model if target_provider else "")
-    
+
     return LLMConfig(
         model=final_model,
         api_key=final_api_key,
@@ -473,4 +473,3 @@ ProviderRegistry.load_keys_toml()
 # 全局配置实例
 THINK_CONFIG = get_llm_config(LLMRole.THINK)
 CHAT_CONFIG = get_llm_config(LLMRole.CHAT)
-
