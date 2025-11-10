@@ -10,6 +10,7 @@ from utils.logger import setup_logging, get_logger, print_user_success, print_us
 from config import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
 from tools.codeql_compose import CodeQLComposeTool
 from services.llm_service import MultiAgentAnalyzer
+from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -247,6 +248,191 @@ async def run_md_direct_codeql(
         logger.error(f"CodeQL生成失败: {e}", exc_info=True)
         return
 
+# Debug功能
+async def run_md_source_analysis(
+    md_file_path: str,
+    src_path: str,
+    stream: bool = False,
+    provider: Optional[str] = None,
+    think_model: Optional[str] = None,
+    chat_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    language: Optional[str] = None,
+    output_file: Optional[str] = None
+) -> None:
+    """
+    从MD文件和源代码路径生成source点分析报告
+
+    Args:
+        md_file_path: MD文件路径
+        src_path: 源代码路径
+        stream: 是否显示AI思考过程
+        provider: 模型提供商名称
+        think_model: 推理模型名称
+        chat_model: 对话模型名称
+        api_key: API Key
+        base_url: Base URL
+        language: 编程语言（可选，不指定则自动检测）
+        output_file: 输出文件路径
+    """
+    # 验证MD文件存在性
+    md_path = Path(md_file_path)
+    if not md_path.exists():
+        print_user_error(f"❌ MD文件不存在: {md_file_path}")
+        logger.error(f"MD文件不存在: {md_file_path}")
+        return
+    
+    if not md_path.suffix.lower() == '.md':
+        print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
+        logger.error(f"文件格式错误: {md_file_path}")
+        return
+
+    # 验证源代码路径存在性
+    src_path_obj = Path(src_path)
+    if not src_path_obj.exists():
+        print_user_error(f"❌ 源代码路径不存在: {src_path}")
+        logger.error(f"源代码路径不存在: {src_path}")
+        return
+
+    # 读取MD文件内容
+    try:
+        md_content = md_path.read_text(encoding='utf-8')
+        print_user_info(f"📄 成功读取MD文件: {md_file_path}")
+        logger.info(f"读取MD文件: {md_file_path}, 内容长度: {len(md_content)}")
+    except Exception as e:
+        print_user_error(f"❌ 读取MD文件失败: {e}")
+        logger.error(f"读取MD文件失败: {e}", exc_info=True)
+        return
+
+    # 自动检测编程语言（如果未指定）
+    if not language:
+        try:
+            detector = LanguageDetector()
+            # 创建临时路径对象用于检测
+            temp_case_paths = type('CasePaths', (), {
+                'root': src_path_obj,
+                'source_dir': src_path_obj
+            })()
+            language = detector.detect_language(temp_case_paths)
+            print_user_info(f"🔍 自动检测编程语言: {language}")
+        except Exception as e:
+            print_user_warning(f"⚠️  无法自动检测语言，使用默认语言 'java': {e}")
+            language = "java"
+
+    # 显示模型配置信息
+    try:
+        chat_config = get_llm_config(
+            LLMRole.CHAT,
+            provider_name=provider,
+            model_name=chat_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        think_config = get_llm_config(
+            LLMRole.THINK,
+            provider_name=provider,
+            model_name=think_model,
+            api_key=api_key,
+            base_url=base_url
+        )
+        
+        provider_display = provider or chat_config.provider or "环境变量配置"
+        print_user_info(f"🤖 使用模型提供商: {provider_display}")
+        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"   💬 对话模型: {chat_config.model}")
+        if base_url:
+            print_user_info(f"   🔗 Base URL: {base_url}")
+    except Exception as e:
+        print_user_error(f"❌ 无法配置模型: {e}")
+        logger.error(f"模型配置失败: {e}", exc_info=True)
+        return
+
+    # 创建MultiAgentAnalyzer
+    try:
+        analyzer = MultiAgentAnalyzer(config=chat_config)
+        print_user_info(f"🔧 成功创建AI分析器")
+    except Exception as e:
+        print_user_error(f"❌ 创建AI分析器失败: {e}")
+        logger.error(f"创建AI分析器失败: {e}", exc_info=True)
+        return
+
+    # 创建UnifiedSourceAnalysisAgent
+    try:
+        source_agent = UnifiedSourceAnalysisAgent(
+            analyzer=analyzer,
+            source_root=src_path,
+            database_path=None  # 不需要CodeQL数据库
+        )
+        print_user_info(f"🔍 成功创建Source点分析工具")
+        print_user_info(f"   📁 源代码路径: {src_path}")
+        print_user_info(f"   💻 编程语言: {language}")
+    except Exception as e:
+        print_user_error(f"❌ 创建Source分析工具失败: {e}")
+        logger.error(f"创建Source分析工具失败: {e}", exc_info=True)
+        return
+
+    # 执行Source点分析
+    try:
+        print_user_info(f"🚀 开始从MD文件生成Source点分析报告...")
+        
+        # 使用MD文件内容作为sink分析结果（模拟）
+        sink_analysis = f"根据以下漏洞描述分析Source点:\n\n{md_content}"
+        
+        result = await source_agent.analyze_sources(
+            language=language,
+            sink_analysis=sink_analysis,
+            show_thinking=stream
+        )
+        
+        # 输出结果
+        if result.success:
+            print_user_success(f"\n🎉 Source点分析完成！")
+            
+            # 格式化输出报告
+            report_content = f"""# Source点分析报告
+
+## 分析配置
+- **MD文件**: {md_file_path}
+- **源代码路径**: {src_path}
+- **编程语言**: {language}
+- **分析时间**: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## 漏洞描述
+{md_content}
+
+## Source点分析结果
+{result.content}
+
+---
+*报告由 PureAutoCodeQL 自动生成*
+"""
+            
+            # 保存到文件
+            if output_file:
+                output_path = Path(output_file)
+            else:
+                timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_path = Path(f"source_analysis_report_{timestamp}.md")
+            
+            try:
+                output_path.write_text(report_content, encoding='utf-8')
+                print_user_info(f"📄 分析报告已保存到: {output_path}")
+            except Exception as e:
+                print_user_error(f"❌ 保存报告失败: {e}")
+                logger.error(f"保存报告失败: {e}", exc_info=True)
+                # 即使保存失败，也显示结果到控制台
+                print_user_info(f"📋 分析结果:")
+                print(report_content)
+        else:
+            print_user_error(f"\n❌ Source点分析失败: {result.error}")
+            logger.error(f"Source点分析失败: {result.error}")
+        
+    except Exception as e:
+        print_user_error(f"❌ Source点分析失败: {e}")
+        logger.error(f"Source点分析失败: {e}", exc_info=True)
+        return
+
 
 def list_available_cases() -> None:
     """列出所有可用的案例"""
@@ -318,6 +504,7 @@ def parse_arguments() -> argparse.Namespace:
   %(prog)s --case CVE-2021-21985                    # 分析单个案例
   %(prog)s --case CVE-2021-21985 --stream          # 显示AI思考过程
   %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
+  %(prog)s --md-file vulnerability.md --src-path /path/to/source  # 从MD文件生成source点分析报告
   %(prog)s --md-file vulnerability.md --provider deepseek  # 指定模型提供商
   %(prog)s --list                                  # 列出所有可用案例
   %(prog)s --validate CVE-2021-21985               # 验证案例有效性
@@ -433,6 +620,13 @@ def parse_arguments() -> argparse.Namespace:
         default="java",
         help="指定编程语言（用于--md-file模式，默认: java）"
     )
+    parser.add_argument(
+        "--src-path",
+        type=str,
+        metavar="PATH",
+        dest="src_path",
+        help="指定源代码路径（用于--md-file模式生成source点分析报告）"
+    )
 
     parser.set_defaults(stream=True)
 
@@ -505,28 +699,60 @@ async def main() -> None:
             print(f"🚀 PureAutoCodeQL 启动")
             print(f"📄 MD文件: {args.md_file}")
             print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
-            print(f"💻 编程语言: {args.language}")
-            if args.database_path:
-                print(f"📁 数据库路径: {args.database_path}")
-            if args.provider:
-                print(f"🤖 模型提供商: {args.provider} (命令行指定)")
-            print("-" * 50)
-
-            # 如果指定了 --model，同时应用到 think_model 和 chat_model
-            think_model = args.think_model or args.model
-            chat_model = args.chat_model or args.model
             
-            await run_md_direct_codeql(
-                md_file_path=args.md_file,
-                stream=args.stream,
-                provider=args.provider,
-                think_model=think_model,
-                chat_model=chat_model,
-                api_key=args.api_key,
-                base_url=args.base_url,
-                database_path=args.database_path,
-                language=args.language
-            )
+            # 检查是否同时指定了 --src-path，如果是则使用source分析模式
+            if args.src_path:
+                print(f"📁 源代码路径: {args.src_path}")
+                print(f"🔍 运行模式: Source点分析报告生成")
+                if args.language:
+                    print(f"💻 编程语言: {args.language}")
+                if args.provider:
+                    print(f"🤖 模型提供商: {args.provider} (命令行指定)")
+                if args.output:
+                    print(f"📄 输出文件: {args.output}")
+                print("-" * 50)
+
+                # 如果指定了 --model，同时应用到 think_model 和 chat_model
+                think_model = args.think_model or args.model
+                chat_model = args.chat_model or args.model
+                
+                await run_md_source_analysis(
+                    md_file_path=args.md_file,
+                    src_path=args.src_path,
+                    stream=args.stream,
+                    provider=args.provider,
+                    think_model=think_model,
+                    chat_model=chat_model,
+                    api_key=args.api_key,
+                    base_url=args.base_url,
+                    language=args.language,
+                    output_file=args.output
+                )
+            else:
+                # 原有的CodeQL生成模式
+                print(f"🔍 运行模式: CodeQL查询生成")
+                print(f"💻 编程语言: {args.language}")
+                if args.database_path:
+                    print(f"📁 数据库路径: {args.database_path}")
+                if args.provider:
+                    print(f"🤖 模型提供商: {args.provider} (命令行指定)")
+                print("-" * 50)
+
+                # 如果指定了 --model，同时应用到 think_model 和 chat_model
+                think_model = args.think_model or args.model
+                chat_model = args.chat_model or args.model
+                
+                await run_md_direct_codeql(
+                    md_file_path=args.md_file,
+                    stream=args.stream,
+                    provider=args.provider,
+                    think_model=think_model,
+                    chat_model=chat_model,
+                    api_key=args.api_key,
+                    base_url=args.base_url,
+                    database_path=args.database_path,
+                    language=args.language
+                )
 
     except KeyboardInterrupt:
         print_user_warning("\n⚠️  分析被用户中断")
