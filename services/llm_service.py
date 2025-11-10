@@ -65,6 +65,27 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
         else:
             return f"找到 {count} 个文件"
 
+    if tool_name == "ripgrep":
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        line_count = len(lines)
+        if "no matches found" in text.lower() or text.lower() == "no matches found" or line_count == 0:
+            return "未找到匹配"
+        elif line_count > 2000:
+            first_part = lines[:1000]
+            last_part = lines[-1000:]
+            truncated_output = '\n'.join(first_part) + '\n...\n' + '\n'.join(last_part)
+
+            feedback = f"搜索结果共{line_count}行，已截断显示前1000行和后1000行。\n"
+            feedback += "建议：使用更精确的搜索参数（如 -m 限制匹配数、更具体的关键词）来获取更少的结果。\n\n"
+            feedback += truncated_output
+
+            return feedback
+        else:
+            if line_count == 1:
+                return f"找到1个匹配: {lines[0]}"
+            else:
+                return f"找到{line_count}个匹配:\n" + '\n'.join(lines[:10]) + (f"\n... 还有{line_count-10}个匹配" if line_count > 10 else "")
+
     if tool_name == "read_text_file":
         return "读取文件"
 
@@ -101,27 +122,18 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
     )
 
     if is_list_dir:
-        # 目录列表操作：解析JSON并格式化显示
         try:
-            # 处理可能包含 content='...' 格式的字符串
             output_str = str(output)
-
-            # 尝试提取 content='...' 中的内容（处理转义的单引号）
-            # 匹配 content='...' 格式，支持转义的单引号
             content_match = re.search(r"content='((?:[^'\\]|\\.)*)'", output_str)
             if content_match:
                 content = content_match.group(1)
-                # 处理转义的换行符和其他转义字符
                 content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
                 output_str = content
 
-            # 尝试解析JSON格式
             try:
                 dir_data = json.loads(output_str)
             except (json.JSONDecodeError, ValueError):
-                # 如果不是JSON，尝试解析为列表格式 [DIR] 或 [FILE]
                 if isinstance(output_str, str):
-                    # 解析 [DIR] 和 [FILE] 格式
                     lines = output_str.strip().split('\n')
                     items = []
                     for line in lines:
