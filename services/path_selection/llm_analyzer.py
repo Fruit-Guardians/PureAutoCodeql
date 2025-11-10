@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
+import sys
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field, ValidationError
@@ -151,14 +153,52 @@ class LLMPathAnalyzer:
         return "\n".join(parts)
 
     async def _call_llm(self, prompt: str) -> str:
+        """调用LLM生成响应"""
+        # 先尝试自定义客户端接口（可能接受纯字符串prompt）
         if hasattr(self.llm, "chat"):
-            return await self.llm.chat(prompt)
-        if hasattr(self.llm, "generate"):
-            return await self.llm.generate(prompt)
-        from langchain.schema import HumanMessage  # type: ignore
+            result = self.llm.chat(prompt)
+            if inspect.isawaitable(result):
+                result = await result
+            return self._normalize_llm_response(result)
 
-        response = await self.llm.agenerate([[HumanMessage(content=prompt)]])
-        return response.generations[0][0].text
+        message = self._make_human_message(prompt)
+
+        stream_method = getattr(self.llm, "astream", None)
+        if stream_method:
+            streamed = await self._try_stream(stream_method, prompt, message)
+            if streamed is not None:
+                return streamed
+
+        if hasattr(self.llm, "ainvoke"):
+            response = await self.llm.ainvoke([message])
+            return self._normalize_llm_response(response)
+
+        if hasattr(self.llm, "agenerate"):
+            response = await self.llm.agenerate([[message]])
+            return self._normalize_llm_response(response)
+
+        if hasattr(self.llm, "generate"):
+            response = self.llm.generate([[message]])
+            if inspect.isawaitable(response):
+                response = await response
+            return self._normalize_llm_response(response)
+
+        if hasattr(self.llm, "invoke"):
+            response = self.llm.invoke([message])
+            if inspect.isawaitable(response):
+                response = await response
+            return self._normalize_llm_response(response)
+
+        # 最终回退到 ainvoke（若可用）或直接字符串转换
+        if hasattr(self.llm, "ainvoke"):
+            response = await self.llm.ainvoke([message])
+            return self._normalize_llm_response(response)
+
+        # 无法识别的客户端，直接尝试调用并转换
+        response = self.llm(prompt)
+        if inspect.isawaitable(response):
+            response = await response
+        return self._normalize_llm_response(response)
 
     def _parse_response(self, response: str, top_k: int) -> AnalyzerResponseModel:
         json_str = self._extract_json(response)
@@ -236,6 +276,144 @@ class LLMPathAnalyzer:
             "source_types": sorted(set(sources)),
             "dangerous_apis": sorted(set(apis)),
         }
+
+    async def _try_stream(self, stream_method, prompt: str, message: Any) -> str | None:
+        """尝试使用流式接口获取响应，成功则返回完整文本，失败返回None"""
+        try:
+            stream = None
+            try:
+                stream = stream_method([message])
+            except TypeError:
+                stream = stream_method(prompt)
+
+            if inspect.isawaitable(stream):
+                stream = await stream
+
+            if stream is None:
+                return ""
+
+            if hasattr(stream, "__aiter__"):
+                chunks: List[str] = []
+                display_buffer: List[str] = []
+                flush_count = 0
+                chunk_index = 0
+                self._stream_display_started = False
+                async for chunk in stream:
+                    text = self._normalize_llm_response(chunk)
+                    if text:
+                        chunks.append(text)
+                        display_buffer.append(text)
+                        chunk_index += 1
+                        if self._should_flush_stream(display_buffer, text):
+                            flush_count += 1
+                            self._emit_stream_output(
+                                "".join(display_buffer),
+                                flush_count,
+                                final=False,
+                            )
+                            display_buffer.clear()
+
+                if display_buffer:
+                    flush_count += 1
+                    self._emit_stream_output(
+                        "".join(display_buffer),
+                        flush_count,
+                        final=True,
+                    )
+                elif chunks:
+                    # 如果没有残留缓存，仍然输出一次总览
+                    self._emit_stream_output("".join(chunks), chunk_index, final=True)
+                return "".join(chunks)
+
+            # 如果流式调用返回的是最终结果，直接归一化
+            return self._normalize_llm_response(stream)
+
+        except Exception as exc:
+            logger.debug("LLM流式输出失败，回退到非流式接口: %s", exc, exc_info=True)
+        return None
+
+    def _emit_stream_output(self, text: str, index: int, *, final: bool) -> None:
+        """将流式输出直接打印至控制台，贴近对话体验。"""
+        if not text:
+            return
+
+        if not getattr(self, "_stream_display_started", False):
+            sys.stdout.write("\nLLM: ")
+            sys.stdout.flush()
+            self._stream_display_started = True
+
+        sys.stdout.write(text)
+        if final:
+            sys.stdout.write("\n\n")
+            self._stream_display_started = False
+        sys.stdout.flush()
+
+    def _should_flush_stream(self, buffer: List[str], latest_text: str) -> bool:
+        """判断是否需要输出缓存."""
+        joined = "".join(buffer)
+        if len(joined.strip()) >= 120:
+            return True
+        # 若最近一次包含句号/逗号/换行，优先输出
+        return any(punc in latest_text for punc in {"。", "！", "？", "!", "?", "\n", "，", ","})
+
+    def _make_human_message(self, prompt: str):
+        """构造 LangChain HumanMessage，兼容旧版导入路径"""
+        try:
+            from langchain_core.messages import HumanMessage
+        except ImportError:
+            try:
+                from langchain.schema import HumanMessage  # type: ignore
+            except ImportError:
+                raise ImportError(
+                    "无法导入 HumanMessage，请安装 langchain-core 或 langchain"
+                )
+        return HumanMessage(content=prompt)
+
+    def _normalize_llm_response(self, response: Any) -> str:
+        """统一转换不同LLM响应结构为字符串"""
+        if response is None:
+            return ""
+
+        if isinstance(response, str):
+            return response
+
+        content = getattr(response, "content", None)
+        if content is not None:
+            if isinstance(content, list):
+                parts = []
+                for chunk in content:
+                    if isinstance(chunk, dict):
+                        parts.append(
+                            chunk.get("text")
+                            or chunk.get("value")
+                            or chunk.get("content")
+                            or ""
+                        )
+                    else:
+                        parts.append(str(chunk))
+                return "".join(parts)
+            return str(content)
+
+        message = getattr(response, "message", None)
+        if message is not None:
+            return self._normalize_llm_response(message)
+
+        generations = getattr(response, "generations", None)
+        if generations:
+            texts = []
+            for generation in generations:
+                texts.append(self._normalize_llm_response(getattr(generation, "message", generation)))
+            return "\n".join(filter(None, texts))
+
+        if isinstance(response, dict):
+            for key in ("content", "text", "message"):
+                if key in response and response[key] is not None:
+                    value = response[key]
+                    if isinstance(value, list):
+                        return "".join(str(item) for item in value)
+                    return str(value)
+
+        return str(response)
 
 
 __all__ = ["LLMPathAnalyzer"]

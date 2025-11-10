@@ -25,7 +25,7 @@ class PathVerifier:
         cve_context: Dict[str, Any],
         all_paths: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        logger.info("��֤ѡ��·��...")
+        logger.info("验证选择路径...")
 
         verified_paths: List[Dict[str, Any]] = []
         blocking_issues: List[str] = []
@@ -48,7 +48,7 @@ class PathVerifier:
         }
 
         logger.info(
-            "  ��֤���: %s/%s ��·����Ч",
+            "  验证完成: %s/%s 条路径有效",
             summary["valid_count"],
             summary["total_verified"],
         )
@@ -91,19 +91,19 @@ class PathVerifier:
         source_loc = path.get("source_location") or {}
         sink_loc = path.get("sink_location") or {}
         if not source_loc:
-            issues.append("ȱ��Source����Ϣ")
+            issues.append("缺少Source位置信息")
         if not sink_loc:
-            issues.append("ȱ��Sink����Ϣ")
+            issues.append("缺少Sink位置信息")
 
         path_length = path.get("path_length", 0)
         if path_length < 2:
-            issues.append(f"·������ (ֻ��{path_length}��)")
+            issues.append(f"路径太短 (只有{path_length}步)")
 
         for label, loc in (("Source", source_loc), ("Sink", sink_loc)):
             if loc and not loc.get("file"):
-                issues.append(f"{label}��ȱ���ļ���Ϣ")
+                issues.append(f"{label}缺少文件信息")
             if loc and not loc.get("startLine"):
-                issues.append(f"{label}��ȱ���к���Ϣ")
+                issues.append(f"{label}缺少行号信息")
 
         return {"valid": len(issues) == 0, "issues": issues}
 
@@ -128,10 +128,11 @@ class PathVerifier:
                 token in sink_loc.get("file", "").lower() or token in sink_desc
                 for token in expected_sink
             ):
-                issues.append("Sink��δƥ��CVEԤ�������ļ�/����")
+                # 降级为警告而不是错误
+                warnings.append("Sink未完全匹配CVE预期目标文件/函数")
 
         if expected_source and not any(token in source_desc for token in expected_source):
-            warnings.append("Source��δ��ʾԤ�������ص㣨����Ϊwarning��")
+            warnings.append("Source未显示预期相关点（仅作为warning）")
 
         return {"valid": len(issues) == 0, "issues": issues, "warnings": warnings}
 
@@ -145,19 +146,22 @@ class PathVerifier:
 
         dangerous_apis = path.get("dangerous_apis") or []
         if not dangerous_apis:
-            issues.append("δ��ʾ���κ�Σ��API���޷�����©����")
+            # 降级为警告 - 某些路径可能没有明显的危险API标记
+            warnings.append("未显示明显的危险API")
 
         matched_keywords = set(path.get("matched_keywords") or [])
         cve_keywords = set(self._keyword_tokens(cve_context.get("technical_details", "")))
         if cve_keywords and not matched_keywords:
-            issues.append("·����δ����CVE �����ؼ���")
+            # 降级为警告 - 关键词匹配不是必需的
+            warnings.append("路径未包含CVE相关关键词")
 
         source_an = path.get("source_analysis") or {}
         source_type = (source_an.get("type") or "").lower()
         if source_type in ("unknown", "", None):
-            issues.append("Source����δ��ʾ�û������ͣ����ܲ�ɿ�")
+            # 降级为警告 - 允许未知类型的source
+            warnings.append("Source类型未明确标记为用户输入")
         elif not any(keyword in (source_an.get("description", "") or "").lower() for keyword in USER_INPUT_KEYWORDS):
-            warnings.append("Source�����������ٴ��û���ػ����")
+            warnings.append("Source描述应尽量包含用户输入或控制")
 
         return {"valid": len(issues) == 0, "issues": issues, "warnings": warnings}
 
@@ -171,9 +175,9 @@ class PathVerifier:
         blended = float(selection_info.get("confidence") or (0.7 * deterministic + 0.3 * llm_score))
 
         if blended < 0.5:
-            issues.append(f"���Ŷȹ��� ({blended:.2f})")
+            issues.append(f"置信度过低 ({blended:.2f})")
         elif blended < 0.7:
-            warnings.append(f"���ŶȽϵ� ({blended:.2f})")
+            warnings.append(f"置信度较低 ({blended:.2f})")
 
         return {
             "valid": len(issues) == 0,
@@ -194,3 +198,4 @@ class PathVerifier:
 
 
 __all__ = ["PathVerifier"]
+

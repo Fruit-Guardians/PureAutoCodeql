@@ -5,19 +5,19 @@ LLM 精排、验证与报告输出。
 """
 
 from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
-
+from langchain_openai import ChatOpenAI
 from .context_extractor import CVEContextExtractor
 from .path_feature_extractor import PathFeatureExtractor
 from .path_ranker import PathRanker
 from .selection_formatter import score_to_payload
 from .llm_analyzer import LLMPathAnalyzer
 from .path_verifier import PathVerifier
+from .path_enricher import PathEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +98,31 @@ class PathSelectionService:
     """路径选择服务."""
 
     def __init__(self, llm_client, language: str):
+        """初始化路径选择服务
+        
+        Args:
+            llm_client: 可以是 LLMConfig 配置对象或已实例化的 LLM 客户端
+            language: 编程语言
+        """
         self.language = (language or "").lower()
+        
+        # 如果传入的是 LLMConfig，则创建 ChatOpenAI 实例
+        if hasattr(llm_client, 'model') and hasattr(llm_client, 'api_key'):
+            # 这是一个 LLMConfig 对象
+            llm_client = ChatOpenAI(
+                model=llm_client.model,
+                api_key=llm_client.api_key,
+                base_url=llm_client.base_url,
+                temperature=getattr(llm_client, 'temperature', 0),
+                max_tokens=getattr(llm_client, 'max_tokens', None),
+            )
+        
         self.context_extractor = CVEContextExtractor()
         self.feature_extractor = PathFeatureExtractor(language=self.language)
         self.path_ranker = PathRanker(language=self.language)
         self.llm_analyzer = LLMPathAnalyzer(llm_client, language=self.language)
         self.path_verifier = PathVerifier(language=self.language)
+        self.path_enricher = PathEnricher(language=self.language)
 
         logger.info("PathSelectionService initialized, language=%s", self.language)
 
@@ -215,3 +234,4 @@ class PathSelectionService:
 
 
 __all__ = ["PathSelectionService", "PathSelectionResult"]
+

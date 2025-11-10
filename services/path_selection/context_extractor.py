@@ -110,3 +110,4 @@ class CVEContextExtractor:
         
         return None
 
+
