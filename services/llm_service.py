@@ -272,7 +272,12 @@ class MultiAgentAnalyzer:
                         str(Path.cwd() / "projects"),
                     ],
                     "transport": "stdio",
-                }
+                },
+                "ripgrep": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-ripgrep@latest"],
+                    "transport": "stdio",
+                },
             }
         )
 

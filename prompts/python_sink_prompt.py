@@ -29,6 +29,7 @@ def build_python_sink_prompt(cve_analysis: str, source_path: str, diff_path: str
 **可用工具:**
 
 * `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
+* `ripgrep`: 用于快速搜索文件内容，注意先调用这个查找到目标Sink文件。
 
 **输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 

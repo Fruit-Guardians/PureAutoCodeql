@@ -31,6 +31,7 @@ def build_cpp_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = 
 
 * `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
 * 工具参数约束：调用 `read_text_file` 时，不能同时指定 `head` 与 `tail`；如需同时查看文件顶部与底部，请分两次分别读取。
+* `ripgrep`: 用于快速搜索文件内容，注意先调用这个查找到目标Sink文件。
 
 **输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 

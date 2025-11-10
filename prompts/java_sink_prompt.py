@@ -26,11 +26,12 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    ```
    * **作用**: 这是定位Sink的关键线索。通过分析补丁前后的代码变化，找出sink点所在的具体位置，再根据{source_path}找到具体文件（尽量少地去看文件）去分析出sink点的具体信息。
 
-3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`。所有工具访问的文件路径必须在该目录内，且以此为基准的相对路径。
+3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`。所有工具访问的文件路径必须在该目录内，且以此为基准的相对路径，注意先调用`ripgrep`查找到目标Sink文件。
 
 **可用工具:**
 
 * `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
+* `ripgrep`: 用于快速搜索文件内容，注意先调用这个查找到目标Sink文件。
 
 **输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 
