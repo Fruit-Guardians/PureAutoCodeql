@@ -22,8 +22,8 @@ from utils.logger import get_logger
 
 class APIErrorClassifier:
     """API错误分类器，用于判断错误是否可重试"""
-    NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 422, 404}
-    RETRYABLE_SERVER_ERRORS = {429, 500, 502, 503, 504}
+    NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 422}
+    RETRYABLE_SERVER_ERRORS = {404, 429, 500, 502, 503, 504}
     NETWORK_EXCEPTIONS = (
         ConnectionError,
         TimeoutError,
