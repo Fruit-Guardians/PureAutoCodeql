@@ -66,29 +66,21 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
             return f"找到 {count} 个文件"
 
     if tool_name == "ripgrep":
-        # 处理ripgrep输出，实现智能截断机制
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         line_count = len(lines)
-
-        # 检查是否是 "No matches found" 的情况
         if "no matches found" in text.lower() or text.lower() == "no matches found" or line_count == 0:
             return "未找到匹配"
         elif line_count > 2000:
-            # 智能截断：保留前1000行和后1000行
             first_part = lines[:1000]
             last_part = lines[-1000:]
-
-            # 构建截断后的输出
             truncated_output = '\n'.join(first_part) + '\n...\n' + '\n'.join(last_part)
 
-            # 添加统计反馈信息和建议
             feedback = f"搜索结果共{line_count}行，已截断显示前1000行和后1000行。\n"
             feedback += "建议：使用更精确的搜索参数（如 -m 限制匹配数、更具体的关键词）来获取更少的结果。\n\n"
             feedback += truncated_output
 
             return feedback
         else:
-            # 少于2000行的结果按现有逻辑正常处理
             if line_count == 1:
                 return f"找到1个匹配: {lines[0]}"
             else:
