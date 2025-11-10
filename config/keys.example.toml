@@ -1,0 +1,97 @@
+# PureAutoCodeQL LLM 配置文件
+# 
+# 使用说明：
+# 1. 复制此文件为 keys.toml:  cp keys.example.toml keys.toml
+# 2. 填入你的 API Keys
+# 3. keys.toml 会被 .gitignore 忽略，不会提交到仓库
+#
+# 只需修改这个文件即可完成所有配置，无需修改代码！
+
+# ============================================================================
+# 内置服务商 API Keys
+# ============================================================================
+[builtin_keys]
+# DeepSeek 官方 API
+# 获取地址: https://platform.deepseek.com/api_keys
+deepseek = "your_deepseek_api_key_here"
+
+# 硅基流动 (推荐！提供多种免费模型)
+# 获取地址: https://cloud.siliconflow.cn/account/ak
+siliconflow = "your_siliconflow_api_key_here"
+
+# 智谱 GLM
+# 获取地址: https://open.bigmodel.cn/usercenter/apikeys
+zhipu = "your_zhipu_api_key_here"
+
+# Kimi (月之暗面)
+# 获取地址: https://platform.moonshot.cn/console/api-keys
+kimi = "your_kimi_api_key_here"
+
+# Google Gemini
+# 获取地址: https://makersuite.google.com/app/apikey
+gemini = "your_gemini_api_key_here"
+
+
+# ============================================================================
+# 自定义服务商（可选）
+# ============================================================================
+# 取消注释并修改以下配置来添加自定义服务商
+# 支持任何 OpenAI 兼容的 API（本地 Ollama、自定义代理、云服务等）
+#
+# 快速上手：
+# 1. 取消注释下面的示例（删除开头的 #）
+# 2. 修改 name, api_key, base_url, 模型名称
+# 3. 运行：python Analyze.py --case CVE-XXX --provider your_name
+#
+# 验证配置：python -m config list
+
+# 示例 1: OpenAI 官方或代理
+# [[custom_providers]]
+# name = "openai"
+# display_name = "OpenAI 官方"
+# api_key = "sk-xxxxxxxxxxxxxxxx"
+# base_url = "https://api.openai.com/v1"
+# think_model = "gpt-4"
+# chat_model = "gpt-3.5-turbo"
+# description = "OpenAI 官方 API"
+
+# 示例 2: 本地 Ollama
+# [[custom_providers]]
+# name = "ollama"
+# display_name = "本地 Ollama"
+# api_key = "ollama"  # Ollama 不需要真实 key
+# base_url = "http://localhost:11434/v1"
+# think_model = "deepseek-r1:latest"
+# chat_model = "qwen2.5:latest"
+# description = "本地运行的 Ollama 模型"
+# available_models = [
+#     "deepseek-r1:latest",
+#     "qwen2.5:latest",
+#     "llama3:latest"
+# ]
+
+# 示例 3: 自定义代理服务
+# [[custom_providers]]
+# name = "my_proxy"
+# display_name = "我的代理"
+# api_key = "your_proxy_key"
+# base_url = "https://your-proxy.com/v1"
+# think_model = "custom-think-model"
+# chat_model = "custom-chat-model"
+# description = "自定义的 LLM 代理服务"
+
+
+# ============================================================================
+# 全局设置（可选）
+# ============================================================================
+[settings]
+# 默认使用的服务商（不设置则使用 deepseek）
+# 可选值: deepseek, siliconflow, zhipu, kimi, gemini, 或自定义服务商名称
+# default_provider = "siliconflow"
+
+# 覆盖默认推理模型（不设置则使用服务商默认）
+# default_think_model = "deepseek-ai/DeepSeek-R1"
+
+# 覆盖默认对话模型（不设置则使用服务商默认）
+# default_chat_model = "Pro/deepseek-ai/DeepSeek-V3.2-Exp"
+

@@ -1,0 +1,43 @@
+# PureAutoCodeQL LLM 配置文件
+# 只需修改这个文件即可完成所有配置，无需修改代码！
+
+# ============================================================================
+# 内置服务商 API Keys
+# ============================================================================
+[builtin_keys]
+deepseek = "sk-5f09a827bfeb4392acfae82fa32f973d"
+siliconflow = "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld"
+zhipu = "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy"
+kimi = "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny"
+gemini = "AIzaSyDS-Moyzuf1sUdAUsw9bkr1z_cZMVdyvpc"
+
+
+# ============================================================================
+# 自定义服务商（可选）
+# ============================================================================
+[[custom_providers]]
+name = "my_ollama"
+display_name = "本地 Ollama 示例"
+api_key = "ollama"
+base_url = "http://localhost:11434/v1"
+think_model = "deepseek-r1:latest"
+chat_model = "qwen2.5:latest"
+description = "这是一个示例自定义提供商，演示如何配置本地 Ollama 模型"
+
+# 你的自定义 API 服务
+[[custom_providers]]
+name = "my_gemini"
+display_name = "我的自定义 API"
+api_key = "sk-XkDIFNs9X3Edm604fMwI9KZffQtedAkfRaqMTKaKM35qIbdW"
+base_url = "http://27.106.110.32:2052/v1"
+think_model = "gemini-2.5-pro"             
+chat_model = "gemini-2.5-pro"         
+description = "自定义 API 服务"
+
+
+# ============================================================================
+# 全局设置（可选）
+# ============================================================================
+[settings]
+# default_provider = "siliconflow"
+
