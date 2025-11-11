@@ -8,8 +8,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 from langchain_openai import ChatOpenAI
 from .context_extractor import CVEContextExtractor
 from .path_feature_extractor import PathFeatureExtractor
@@ -22,6 +23,9 @@ from .path_enricher import PathEnricher
 logger = logging.getLogger(__name__)
 
 
+EventCallback = Callable[[Dict[str, Any]], Awaitable[None]]
+
+
 @dataclass
 class PathSelectionResult:
     """路径选择结果."""
@@ -32,6 +36,7 @@ class PathSelectionResult:
     coverage_analysis: Dict[str, Any]
     all_paths_count: int
     language: str
+    cve_id: str | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -41,12 +46,14 @@ class PathSelectionResult:
             "coverage_analysis": self.coverage_analysis,
             "all_paths_count": self.all_paths_count,
             "language": self.language,
+            "cve_id": self.cve_id,
         }
 
     def to_markdown(self) -> str:
         lines = [
             "# 路径选择报告\n",
             "## 概述",
+            f"- CVE: {self.cve_id or 'N/A'}",
             f"- 语言: {self.language}",
             f"- 总路径数: {self.all_paths_count}",
             f"- 选中路径数: {len(self.selected_paths)}\n",
@@ -93,6 +100,45 @@ class PathSelectionResult:
 
         return "\n".join(lines)
 
+    def to_dataflow_json(self) -> Dict[str, Any]:
+        """导出符合 CodeQL dataFlowPath 结构的 JSON."""
+
+        def normalize_thread_flows(path: Dict[str, Any]) -> List[Dict[str, Any]]:
+            original = path.get("original_path") or {}
+            thread_flows = (
+                original.get("threadFlows")
+                or path.get("threadFlows")
+                or []
+            )
+            normalized: List[Dict[str, Any]] = []
+            for flow in thread_flows:
+                steps = flow.get("steps") or []
+                step_payload: List[Dict[str, Any]] = []
+                for idx, step in enumerate(steps, start=1):
+                    location = step.get("location") or {}
+                    step_payload.append(
+                        {
+                            "stepNumber": step.get("stepNumber", idx),
+                            "location": {
+                                "file": location.get("file"),
+                                "startLine": location.get("startLine"),
+                                "startColumn": location.get("startColumn"),
+                                "endColumn": location.get("endColumn"),
+                                "description": location.get("description"),
+                                "nodeType": location.get("nodeType") or step.get("nodeType"),
+                            },
+                        }
+                    )
+                normalized.append({"steps": step_payload})
+            return normalized
+
+        data_flow_paths = [
+            {"threadFlows": normalize_thread_flows(path)}
+            for path in self.selected_paths
+        ]
+
+        return {"dataFlowPath": data_flow_paths}
+
 
 class PathSelectionService:
     """路径选择服务."""
@@ -115,6 +161,7 @@ class PathSelectionService:
                 base_url=llm_client.base_url,
                 temperature=getattr(llm_client, 'temperature', 0),
                 max_tokens=getattr(llm_client, 'max_tokens', None),
+                streaming=getattr(llm_client, 'streaming', True),
             )
         
         self.context_extractor = CVEContextExtractor()
@@ -133,6 +180,7 @@ class PathSelectionService:
         source_root: str | Path,
         top_k: int = 3,
         enable_clustering: bool = True,  # 兼容旧接口，当前已由 ranker 处理
+        event_callback: Optional[EventCallback] = None,
     ) -> PathSelectionResult:
         del enable_clustering
 
@@ -142,6 +190,8 @@ class PathSelectionService:
 
         cve_context = await self._extract_cve_context(output_md_path)
         logger.info("  · 漏洞类型=%s", cve_context.get("vulnerability_type", "N/A"))
+        self._log_cve_context(cve_context)
+
 
         all_paths = self._load_paths(result_json_path)
         logger.info("  · 总路径数=%s", len(all_paths))
@@ -153,6 +203,8 @@ class PathSelectionService:
             all_paths, source_root, cve_context
         )
         logger.info("  · PathFeatures=%s", len(path_features))
+        self._log_feature_previews(path_features)
+
         if not path_features:
             logger.warning("未能创建PathFeatures, 返回空结果")
             return self._empty_result()
@@ -161,15 +213,33 @@ class PathSelectionService:
         candidate_pool_size = max(top_k * 2, 6)
         candidate_scores = rank_result.ordered[:candidate_pool_size]
         logger.info(
-            "  · 确定性筛选=%s coverage=%s",
+            "  · 确定性筛选候选=%s coverage=%s",
             len(candidate_scores),
             rank_result.coverage,
+        )
+        self._log_candidate_overview(candidate_scores)
+
+        await self._emit_event(
+            event_callback,
+            event_type="agent_start",
+            message="开始执行 LLM 点读精排",
+            data={
+                "total_candidates": len(candidate_scores),
+                "top_k": top_k,
+                "coverage": rank_result.coverage,
+            },
         )
 
         llm_result = await self.llm_analyzer.analyze_and_select(
             cve_context=cve_context,
             candidate_scores=candidate_scores,
             top_k=top_k,
+            event_callback=event_callback,
+            stream_meta={
+                "agent_name": "PathSelection",
+                "step_name": "LLM 点读精排",
+                "cve_id": cve_context.get("cve_id"),
+            },
         )
         selected_paths = llm_result.get("selected_paths", []) or []
         selection_reasoning = llm_result.get("reasoning", "")
@@ -189,6 +259,18 @@ class PathSelectionService:
             cve_context,
             all_paths,
         )
+        self._log_selected_paths(verification["paths"])
+
+        await self._emit_event(
+            event_callback,
+            event_type="agent_complete",
+            message="LLM 点读精排完成",
+            data={
+                "selected_count": len(verification["paths"]),
+                "invalid_paths": verification["summary"].get("invalid_count"),
+                "coverage": coverage_analysis,
+            },
+        )
 
         result = PathSelectionResult(
             selected_paths=verification["paths"],
@@ -197,6 +279,7 @@ class PathSelectionService:
             coverage_analysis=coverage_analysis,
             all_paths_count=len(all_paths),
             language=self.language,
+            cve_id=cve_context.get("cve_id"),
         )
 
         logger.info("=" * 60)
@@ -231,6 +314,87 @@ class PathSelectionService:
             all_paths_count=0,
             language=self.language,
         )
+
+
+    async def _emit_event(
+        self,
+        event_callback: Optional[EventCallback],
+        *,
+        event_type: str,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not event_callback:
+            return
+        payload = {
+            "type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "agent_name": "PathSelection",
+            "agent_type": "path_selection",
+            "step_name": "path_selection_llm",
+            "message": message,
+            "data": data or {},
+        }
+        try:
+            await event_callback(payload)
+        except Exception:
+            logger.debug("event_callback 推送失败", exc_info=True)
+
+    def _log_cve_context(self, cve_context: Dict[str, Any]) -> None:
+        if not cve_context:
+            logger.debug("CVE 上下文为空")
+            return
+        logger.debug("CVE 关键信息:")
+        for key in ("cve_id", "vulnerability_type", "expected_sink", "expected_source"):
+            if cve_context.get(key):
+                logger.debug("  - %s: %s", key, cve_context.get(key))
+
+    def _log_feature_previews(self, features: Sequence[Any], limit: int = 3) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        for feature in list(features)[:limit]:
+            logger.debug(
+                "  · Feature[%s]: %s dangerous=%s keywords=%s",
+                feature.index,
+                feature.flow_summary,
+                feature.dangerous_apis,
+                feature.matched_keywords,
+            )
+
+    def _log_candidate_overview(
+        self, candidate_scores: Sequence[Any], limit: int = 6
+    ) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug("候选路径预览:")
+        for score in list(candidate_scores)[:limit]:
+            feature = score.feature
+            logger.debug(
+                "  - #%s det=%.3f flow=%s danger=%s",
+                getattr(feature, "index", "?"),
+                score.total,
+                feature.flow_summary,
+                ", ".join(feature.dangerous_apis) or "无",
+            )
+
+    def _log_selected_paths(self, paths: Sequence[Dict[str, Any]], limit: int = 3) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug("最终选择路径预览:")
+        for idx, path in enumerate(list(paths)[:limit], start=1):
+            src = path.get("source_location", {})
+            sink = path.get("sink_location", {})
+            info = path.get("selection_info", {})
+            logger.debug(
+                "  · Path%s confidence=%s source=%s:%s sink=%s:%s reason=%s",
+                idx,
+                info.get("confidence"),
+                src.get("file"),
+                src.get("startLine"),
+                sink.get("file"),
+                sink.get("startLine"),
+                info.get("reason"),
+            )
 
 
 __all__ = ["PathSelectionService", "PathSelectionResult"]
