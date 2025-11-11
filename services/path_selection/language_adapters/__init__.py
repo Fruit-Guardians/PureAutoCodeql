@@ -42,11 +42,3 @@ __all__ = [
     "CAdapter",
     "get_language_adapter"
 ]
-
-
-
-
-
-
-
-

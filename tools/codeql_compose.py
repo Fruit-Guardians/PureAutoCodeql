@@ -248,6 +248,15 @@ class CodeQLComposeTool(BaseTool):
                 code = code[1:]
             return code
 
+        # 兼容未使用代码块但以 `ql` 行开头的响应
+        if content:
+            stripped = content.strip()
+            lines = stripped.splitlines()
+            if lines and lines[0].strip().lower() == "ql":
+                remaining = "\n".join(lines[1:]).strip()
+                if remaining:
+                    return remaining
+
         return None
 
     @staticmethod

@@ -311,7 +311,7 @@ class AnalysisPipeline:
             from utils.io import write_analysis_output
             
             cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
-            cve_tag = self._sanitize_tag(cve_id or context.case_id or "UNKNOWN")
+            cve_tag = sanitize_tag(cve_id or context.case_id or "UNKNOWN")
             output_base = Path(config.output_base_dir)
             json_result_path: Optional[Path] = None
             
@@ -543,6 +543,10 @@ class AnalysisPipeline:
             return None
 
     def _sanitize_tag(self, value: str) -> str:
-        cleaned = (value or "UNKNOWN").strip().upper()
-        cleaned = re.sub(r"[^A-Z0-9_-]+", "_", cleaned)
-        return cleaned or "UNKNOWN"
+        return sanitize_tag(value)
+
+
+def sanitize_tag(value: str) -> str:
+    cleaned = (value or "UNKNOWN").strip().upper()
+    cleaned = re.sub(r"[^A-Z0-9_-]+", "_", cleaned)
+    return cleaned or "UNKNOWN"
