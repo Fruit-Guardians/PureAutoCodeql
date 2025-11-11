@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from services.llm_service import AgentResult
+from services.path_selection import PathSelectionResult
 from utils.case import CasePaths, CveAssets
 from utils.intel import IntelBundle
 
@@ -60,6 +61,7 @@ class AnalysisResult:
     source_result: Optional[AgentResult] = None
     codeql_result: Optional[AgentResult] = None
     codeql_execution_result: Optional[Any] = None
+    path_selection_result: Optional[PathSelectionResult] = None
 
     # 执行信息
     success: bool = True
@@ -75,7 +77,8 @@ class AnalysisResult:
             self.cve_result and self.cve_result.success,
             self.sink_result and self.sink_result.success,
             self.source_result and self.source_result.success,
-            self.codeql_result and self.codeql_result.success
+            self.codeql_result and self.codeql_result.success,
+            self.path_selection_result is not None,
         ])
 
     def get_summary(self) -> str:
