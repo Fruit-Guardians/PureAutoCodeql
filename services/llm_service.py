@@ -363,22 +363,22 @@ class AgentResult:
     error: Optional[str] = None
 
 
-def _limit_tool_output_tokens(output: Any, token_limit: int = 8000) -> Any:
+def _limit_tool_output_tokens(output: Any, token_limit: int = 10000) -> Any:
     """限制工具输出的Token数量，确保不超过指定限制。
-    
+
     支持两种返回格式：
     1. 单个值：直接返回截断后的字符串
     2. 元组 (content, artifact)：保持元组格式，只截断content部分
     """
     # 检查是否是 (content, artifact) 元组格式
     is_tuple_format = isinstance(output, tuple) and len(output) == 2
-    
+
     if is_tuple_format:
         content, artifact = output
         text = str(content)
     else:
         text = str(output)
-    
+
     try:
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
@@ -387,39 +387,39 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 8000) -> Any:
         token_count = len(text) // 4
         logger = get_logger(__name__)
         logger.debug(f"Token计数失败，使用估算: {e}")
-    
+
     if token_count <= token_limit:
         return output
-    
+
     # Log truncation
     logger = get_logger(__name__)
     logger.info(f"⚠️ 工具输出超过限制: {token_count} tokens > {token_limit} tokens，正在截断...")
-    
+
     try:
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
         tokens = encoding.encode(text)
-        
+
         first_token_count = int(token_limit * 0.4)
         last_token_count = int(token_limit * 0.6)
-        
+
         first_tokens = tokens[:first_token_count]
         last_tokens = tokens[-last_token_count:]
-        
+
         first_part = encoding.decode(first_tokens)
         last_part = encoding.decode(last_tokens)
-        
+
         truncated_text = f"[Token限制: 输出共{token_count}个Token，已截断至{token_limit}个Token]\n\n{first_part}\n\n...\n\n{last_part}"
     except Exception as e:
         logger.warning(f"Token截断失败，使用字符截断: {e}")
         char_limit = token_limit * 4
         first_char_count = int(char_limit * 0.4)
         last_char_count = int(char_limit * 0.6)
-        
+
         first_part = text[:first_char_count]
         last_part = text[-last_char_count:]
         truncated_text = f"[Token限制: 输出约{token_count}个Token，已截断]\n\n{first_part}\n\n...\n\n{last_part}"
-    
+
     # 如果原始输出是元组格式，保持元组格式返回
     if is_tuple_format:
         return (truncated_text, artifact)
@@ -677,7 +677,7 @@ class MultiAgentAnalyzer:
                     "args": [
                         "-y",
                         "@modelcontextprotocol/server-filesystem",
-                        str(Path.cwd() / "projects"),
+                        str(Path.cwd()),
                     ],
                     "transport": "stdio",
                 },
@@ -690,18 +690,18 @@ class MultiAgentAnalyzer:
         )
 
         self.tools = await self.mcp_client.get_tools()
-        
+
         # Wrap all tools with token limiting
         logger = get_logger(__name__)
         logger.info(f"正在包装 {len(self.tools)} 个MCP工具...")
-        
+
         for t in self.tools:
             tool_name = getattr(t, 'name', 'unknown')
-            
+
             # Wrap the _run and _arun methods (internal methods used by BaseTool)
             if hasattr(t, '_run') and callable(t._run):
                 original_run = t._run
-                
+
                 def create_wrapped_run(original_func, name):
                     @functools.wraps(original_func)
                     def wrapped_run(*args, **kwargs):
@@ -710,12 +710,12 @@ class MultiAgentAnalyzer:
                         result = original_func(*args, **kwargs)
                         return _limit_tool_output_tokens(result)
                     return wrapped_run
-                
+
                 t._run = create_wrapped_run(original_run, tool_name)
-            
+
             if hasattr(t, '_arun') and callable(t._arun):
                 original_arun = t._arun
-                
+
                 def create_wrapped_arun(original_func, name):
                     @functools.wraps(original_func)
                     async def wrapped_arun(*args, **kwargs):
@@ -724,10 +724,10 @@ class MultiAgentAnalyzer:
                         result = await original_func(*args, **kwargs)
                         return _limit_tool_output_tokens(result)
                     return wrapped_arun
-                
+
                 t._arun = create_wrapped_arun(original_arun, tool_name)
                 logger.debug(f"  ✓ 已包装工具: {tool_name}")
-            
+
             # Set error handling attributes
             try:
                 setattr(t, "handle_tool_error", True)
@@ -737,7 +737,7 @@ class MultiAgentAnalyzer:
                 setattr(t, "handle_validation_error", True)
             except Exception:
                 pass
-        
+
         logger.info(f"✓ 完成包装 {len(self.tools)} 个工具")
 
     async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> AgentResult:
