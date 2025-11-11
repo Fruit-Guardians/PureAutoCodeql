@@ -45,6 +45,7 @@ def score_to_payload(score: PathScore, language: str) -> Dict[str, Any]:
         "selection_info": {
             "deterministic_score": round(score.total, 4),
             "deterministic_metrics": score.metrics,
+            "deterministic_weights": score.weights,
             "deterministic_reasons": score.reasons,
         },
     }

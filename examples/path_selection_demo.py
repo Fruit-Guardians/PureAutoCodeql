@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict
@@ -41,26 +42,42 @@ class ConsoleStreamPrinter:
         if event_type == "info":
             if self._active:
                 self._finish_stream()
-            rank = data.get("candidate_rank")
-            det_score = data.get("deterministic_score")
-            flow_summary = data.get("flow_summary")
-            print()
-            header = f"📚 候选 {rank} 点读上下文 (det_score={det_score})" if det_score is not None else f"📚 候选 {rank} 点读上下文"
-            print(header)
-            if flow_summary:
-                print(format_bullet(f"流程: {flow_summary}", indent=2))
-            dangerous = data.get("dangerous_apis") or []
-            if dangerous:
-                print(format_bullet(f"危险API: {', '.join(dangerous)}", indent=2))
-            blocks = data.get("blocks") or []
-            for block in blocks:
-                role = block.get("role", "unknown")
-                location = block.get("location", "N/A")
-                print(f"\n  ▸ {role.upper()} @ {location}")
-                snippet = block.get("snippet") or "_未获取代码片段_"
-                for line in snippet.splitlines():
-                    print(f"      {line}")
-            return
+            if data.get("blocks"):
+                rank = data.get("candidate_rank")
+                det_score = data.get("deterministic_score")
+                flow_summary = data.get("flow_summary")
+                print()
+                header = f"📚 候选 {rank} 点读上下文 (det_score={det_score})" if det_score is not None else f"📚 候选 {rank} 点读上下文"
+                print(header)
+                if flow_summary:
+                    print(format_bullet(f"流程: {flow_summary}", indent=2))
+                dangerous = data.get("dangerous_apis") or []
+                if dangerous:
+                    print(format_bullet(f"危险API: {', '.join(dangerous)}", indent=2))
+                blocks = data.get("blocks") or []
+                for block in blocks:
+                    role = block.get("role", "unknown")
+                    location = block.get("location", "N/A")
+                    print(f"\n  ▸ {role.upper()} @ {location}")
+                    snippet = block.get("snippet") or "_未获取代码片段_"
+                    for line in snippet.splitlines():
+                        print(f"      {line}")
+                return
+            selection = data.get("selection")
+            if selection:
+                print("\n📊 LLM 精排总结")
+                for item in selection:
+                    print(
+                        format_bullet(
+                            f"- Path#{item.get('index')} rank={item.get('candidate_rank')} "
+                            f"confidence={item.get('confidence')} reason={item.get('reason')}",
+                            indent=2,
+                        )
+                    )
+                    steps = item.get("analysis_steps") or []
+                    for step in steps:
+                        print(format_bullet(f"  · {step}", indent=4))
+                return
 
         if event_type == "agent_thinking":
             chunk = message or data.get("stream_chunk", "")
@@ -150,6 +167,7 @@ async def demo_basic_usage():
         top_k=3,
         enable_clustering=True,
         event_callback=stream_printer,
+        debug=True,
     )
     print("✓ 路径选择完成")
 
@@ -214,13 +232,14 @@ async def demo_basic_usage():
             print()
 
     # 6. 保存Markdown报告
-    report_path = output_dir / "path_selection_report.md"
+    cve_tag = sanitize_tag(result.cve_id or "unknown")
+    report_path = output_dir / f"path_selection_report_{cve_tag}.md"
     with open(report_path, "w", encoding="utf-8") as handler:
         handler.write(result.to_markdown())
     print(f"\n✓ 报告已保存: {report_path}")
 
     # 7. 保存JSON结果
-    json_path = output_dir / "path_selection_result.json"
+    json_path = output_dir / f"path_selection_result_{cve_tag}.json"
     with open(json_path, "w", encoding="utf-8") as handler:
         json.dump(result.to_dict(), handler, ensure_ascii=False, indent=2)
     print(f"✓ JSON结果已保存: {json_path}")
@@ -230,7 +249,7 @@ async def demo_basic_usage():
     export_name = (result.cve_id or "CVE-UNKNOWN").upper()
     if not export_name.startswith("CVE-"):
         export_name = f"CVE-{export_name}"
-    export_path = output_dir / f"{export_name}.json"
+    export_path = output_dir / f"{sanitize_tag(export_name)}.json"
     with open(export_path, "w", encoding="utf-8") as handler:
         json.dump(export_payload, handler, ensure_ascii=False, indent=2)
     print(f"✓ dataFlowPath 导出: {export_path}")
@@ -283,6 +302,7 @@ async def demo_without_clustering():
         top_k=3,
         enable_clustering=False,  # 禁用聚类
         event_callback=stream_printer,
+        debug=True,
     )
 
     print(f"✓ 完成（处理了 {result.all_paths_count} 条路径）")
@@ -315,6 +335,12 @@ async def main():
         await demo_without_clustering()
     except Exception as exc:
         print(f"禁用聚类示例失败: {exc}")
+
+
+def sanitize_tag(value: str) -> str:
+    cleaned = (value or "unknown").strip()
+    cleaned = cleaned.upper()
+    return re.sub(r"[^A-Z0-9_-]+", "_", cleaned) or "UNKNOWN"
 
 
 if __name__ == "__main__":

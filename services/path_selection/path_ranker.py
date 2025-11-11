@@ -34,6 +34,7 @@ class PathScore:
     metrics: Dict[str, float]
     total: float
     reasons: List[str]
+    weights: Dict[str, float]
 
 
 @dataclass
@@ -135,7 +136,13 @@ class PathRanker:
         total = sum(metrics[key] * weights.get(key, 0) for key in metrics)
         reasons = [file_reason, sink_reason, src_reason, flow_reason, cov_reason]
 
-        return PathScore(feature=feature, metrics=metrics, total=total, reasons=reasons)
+        return PathScore(
+            feature=feature,
+            metrics=metrics,
+            total=total,
+            reasons=reasons,
+            weights=dict(weights),
+        )
 
     def _weights_for_context(self, cve_context: Dict[str, str]) -> Dict[str, float]:
         vul_type = (cve_context.get("vulnerability_type") or "").lower()

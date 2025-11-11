@@ -21,12 +21,21 @@ logger = logging.getLogger(__name__)
 StreamCallback = Callable[[Dict[str, Any]], Awaitable[None]]
 
 
+class EvidenceModel(BaseModel):
+    block_role: str = Field(description="点读块角色，如 source/sink/intermediate")
+    location: Optional[str] = None
+    snippet_excerpt: Optional[str] = None
+    insight: str
+
+
 class SelectedPathModel(BaseModel):
     candidate_rank: int = Field(ge=0)
     llm_alignment_score: float = Field(ge=0.0, le=1.0)
     reason: str
     coverage_tags: List[str] = []
     notes: str | None = None
+    analysis_steps: List[str] = []
+    evidence: List[EvidenceModel] = []
 
 
 class AnalyzerResponseModel(BaseModel):
@@ -86,6 +95,8 @@ class LLMPathAnalyzer:
                 info = item.setdefault("selection_info", {})
                 info["reason"] = "LLM fallback (exception)"
                 info["confidence"] = info.get("deterministic_score")
+                info.setdefault("analysis_steps", [])
+                info.setdefault("evidence", [])
             return {
                 "selected_paths": fallback,
                 "reasoning": "LLM fallback: 使用确定性评分的结果",
@@ -144,9 +155,14 @@ class LLMPathAnalyzer:
         parts.append("# 指令")
         parts.append(
             f"选择 **{top_k}** 个最相关的候选路径进行详细分析。 "
-            "应该考虑deterministic score, CVE 同步性以及代码实际可读性"
+            "必须引用上方点读块中的证据来解释判断。"
         )
-        parts.append("请以 JSON 格式回应:")
+        parts.append(
+            "- `analysis_steps` 用简短句子按顺序描述你的推理链路（最多 4 步）。\n"
+            "- `evidence` 列表中的每项需引用对应的 `role` 与 `location`，并给出 1 句 insight。\n"
+            "- `coverage_tags` 保持简洁，可包含 `sink:<file>`、`source:<type>`、`api:<name>` 等。"
+        )
+        parts.append("请以 JSON 格式回应，结构如下:")
         parts.append(
             json.dumps(
                 {
@@ -156,6 +172,23 @@ class LLMPathAnalyzer:
                             "llm_alignment_score": 0.85,
                             "reason": "从request.body 到 httpx.get(URL) 的路径匹配 SSRF",
                             "coverage_tags": ["sink:serde.py", "source:request"],
+                            "analysis_steps": [
+                                "确认 source 来自 request.body",
+                                "路径经过 decode 后直接进入 httpx.get",
+                                "未发现有效过滤，符合 SSRF",
+                            ],
+                            "evidence": [
+                                {
+                                    "block_role": "source",
+                                    "location": "src/app.py:120",
+                                    "insight": "request.body() 直接读取用户输入",
+                                },
+                                {
+                                    "block_role": "sink",
+                                    "location": "src/app.py:156",
+                                    "insight": "httpx.get() 使用未经约束的 url",
+                                },
+                            ],
                         }
                     ],
                     "overall_reasoning": "该路径包含...",
@@ -297,6 +330,8 @@ class LLMPathAnalyzer:
                     "reason": item.reason,
                     "coverage_tags": item.coverage_tags,
                     "notes": item.notes,
+                    "analysis_steps": list(item.analysis_steps or []),
+                    "evidence": [e.model_dump() for e in item.evidence] if item.evidence else [],
                     "confidence": round(blended, 4),
                 }
             )
@@ -305,10 +340,15 @@ class LLMPathAnalyzer:
         if not selected_payloads:
             # Fallback to deterministic top_k ordering
             logger.warning("LLM JSON输出未匹配任何候选, 使用确定性评分的结果")
-            return [
+            fallback_payloads = [
                 score_to_payload(bundle["score"], self.language)
                 for bundle in bundles[:top_k]
             ]
+            for payload in fallback_payloads:
+                info = payload.setdefault("selection_info", {})
+                info.setdefault("analysis_steps", [])
+                info.setdefault("evidence", [])
+            return fallback_payloads
 
         return selected_payloads[:top_k]
 

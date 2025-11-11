@@ -37,6 +37,7 @@ class PathSelectionResult:
     all_paths_count: int
     language: str
     cve_id: str | None = None
+    debug_info: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -47,6 +48,7 @@ class PathSelectionResult:
             "all_paths_count": self.all_paths_count,
             "language": self.language,
             "cve_id": self.cve_id,
+            "debug_info": self.debug_info,
         }
 
     def to_markdown(self) -> str:
@@ -81,6 +83,23 @@ class PathSelectionResult:
             lines.append(f"- 位置: {sink.get('location', 'N/A')}")
             lines.append(f"- 描述: {sink.get('description', 'N/A')}\n")
 
+            analysis_steps = selection_info.get("analysis_steps") or []
+            if analysis_steps:
+                lines.append("**思维链路:**")
+                for step in analysis_steps:
+                    lines.append(f"- {step}")
+                lines.append("")
+
+            evidence = selection_info.get("evidence") or []
+            if evidence:
+                lines.append("**证据引用:**")
+                for item in evidence:
+                    role = item.get("block_role", "N/A")
+                    location = item.get("location", "N/A")
+                    insight = item.get("insight", "")
+                    lines.append(f"- {role} @ {location}: {insight}")
+                lines.append("")
+
         lines.append("## 验证摘要")
         summary = self.verification_summary
         lines.append(f"- all_valid: {summary.get('all_valid')}")
@@ -97,6 +116,25 @@ class PathSelectionResult:
             lines.append(f"- Source类型: {', '.join(coverage['source_types'])}")
         if coverage.get("dangerous_apis"):
             lines.append(f"- 危险API: {', '.join(coverage['dangerous_apis'])}")
+
+        if self.debug_info:
+            lines.append("\n## 调试信息")
+            deterministic = self.debug_info.get("deterministic_scores") or []
+            if deterministic:
+                lines.append("### 确定性打分明细")
+                for item in deterministic:
+                    lines.append(
+                        f"- Path#{item['index']} total={item['total']:.4f} "
+                        f"metrics={item['metrics']} weights={item['weights']}"
+                    )
+            llm_section = self.debug_info.get("llm_selection") or []
+            if llm_section:
+                lines.append("\n### LLM 选择摘要")
+                for entry in llm_section:
+                    lines.append(
+                        f"- candidate_rank={entry['candidate_rank']} "
+                        f"confidence={entry['confidence']} reason={entry['reason']}"
+                    )
 
         return "\n".join(lines)
 
@@ -181,6 +219,7 @@ class PathSelectionService:
         top_k: int = 3,
         enable_clustering: bool = True,  # 兼容旧接口，当前已由 ranker 处理
         event_callback: Optional[EventCallback] = None,
+        debug: bool = False,
     ) -> PathSelectionResult:
         del enable_clustering
 
@@ -254,6 +293,28 @@ class PathSelectionService:
             selection_reasoning = "LLM fallback: 使用确定性打分排序的结果"
             coverage_analysis = rank_result.coverage
 
+        await self._emit_event(
+            event_callback,
+            event_type="info",
+            message="LLM 精排结论",
+            data={
+                "selection": [
+                    {
+                        "index": path.get("index"),
+                        "candidate_rank": path.get("selection_info", {}).get(
+                            "candidate_rank"
+                        ),
+                        "confidence": path.get("selection_info", {}).get("confidence"),
+                        "reason": path.get("selection_info", {}).get("reason"),
+                        "analysis_steps": path.get("selection_info", {}).get(
+                            "analysis_steps"
+                        ),
+                    }
+                    for path in selected_paths
+                ]
+            },
+        )
+
         verification = self.path_verifier.verify_paths(
             selected_paths,
             cve_context,
@@ -272,6 +333,16 @@ class PathSelectionService:
             },
         )
 
+        debug_info = None
+        if debug:
+            debug_info = self._build_debug_info(
+                candidate_scores=candidate_scores,
+                rank_result=rank_result,
+                selected_paths=verification["paths"],
+                verification=verification,
+            )
+            self._display_debug_info(debug_info)
+
         result = PathSelectionResult(
             selected_paths=verification["paths"],
             selection_reasoning=selection_reasoning,
@@ -280,6 +351,7 @@ class PathSelectionService:
             all_paths_count=len(all_paths),
             language=self.language,
             cve_id=cve_context.get("cve_id"),
+            debug_info=debug_info,
         )
 
         logger.info("=" * 60)
@@ -315,6 +387,70 @@ class PathSelectionService:
             language=self.language,
         )
 
+    def _build_debug_info(
+        self,
+        *,
+        candidate_scores: Sequence[Any],
+        rank_result: Any,
+        selected_paths: Sequence[Dict[str, Any]],
+        verification: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        deterministic = []
+        for score in candidate_scores:
+            deterministic.append(
+                {
+                    "index": getattr(score.feature, "index", None),
+                    "total": score.total,
+                    "flow_summary": score.feature.flow_summary,
+                    "metrics": {k: round(v, 4) for k, v in score.metrics.items()},
+                    "weights": {k: round(v, 4) for k, v in score.weights.items()},
+                    "reasons": score.reasons,
+                }
+            )
+
+        llm_selection = []
+        for path in selected_paths:
+            info = path.get("selection_info", {})
+            llm_selection.append(
+                {
+                    "candidate_rank": info.get("candidate_rank"),
+                    "index": path.get("index"),
+                    "confidence": info.get("confidence"),
+                    "reason": info.get("reason"),
+                    "llm_alignment_score": info.get("llm_alignment_score"),
+                    "analysis_steps": info.get("analysis_steps"),
+                    "evidence": info.get("evidence"),
+                }
+            )
+
+        return {
+            "deterministic_scores": deterministic,
+            "coverage_after_ranker": rank_result.coverage,
+            "llm_selection": llm_selection,
+            "verification": verification,
+        }
+
+    def _display_debug_info(self, debug_info: Dict[str, Any]) -> None:
+        if not debug_info:
+            return
+        logger.info("=== PathSelection Debug Info ===")
+        for item in debug_info.get("deterministic_scores", []):
+            logger.info(
+                "Path#%s total=%.4f metrics=%s weights=%s flow=%s",
+                item.get("index"),
+                item.get("total"),
+                item.get("metrics"),
+                item.get("weights"),
+                item.get("flow_summary"),
+            )
+        for entry in debug_info.get("llm_selection", []):
+            logger.info(
+                "Selected candidate=%s confidence=%s reason=%s",
+                entry.get("candidate_rank"),
+                entry.get("confidence"),
+                entry.get("reason"),
+            )
+        logger.info("Verification summary: %s", debug_info.get("verification", {}))
 
     async def _emit_event(
         self,
