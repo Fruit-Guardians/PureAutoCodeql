@@ -63,7 +63,7 @@
 
 ### 步骤4：使用 MCP 文件系统工具进行修复
 
-**你必须使用 `@modelcontextprotocol/server-filesystem` 工具的正则替换文件内容功能来修改文件。**
+**你必须使用 `@modelcontextprotocol/server-filesystem` 工具的editfile功能来修改文件。**
 
 **重要注意事项：**
 1. 文件路径使用占位符 `[[QL_FILE_PATH]]` 中提供的路径
