@@ -18,7 +18,6 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    ```
    {cve_analysis}
    ```
-   * **作用**: 这将帮助你理解漏洞的根本原因、类型（如：SQL注入、远程代码执行、反序列化等）以及它如何被利用。
 
 2. **代码差异文件路径**:
    ```
@@ -26,16 +25,19 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    {source_path}
    ```
 
-**任务列表：**
+**你的任务列表：**
    分析代码补丁 (Diff)
 
    目标：将其作为定位Sink点的关键线索。
 
    行动：分析补丁前后的代码变化，初步确定Sink点可能的位置。
 
-   定位目标文件
+   使用searchfile工具定位目标文件!!!
+   searchfile工具定位目标文件!!!
+   searchfile工具定位目标文件!!!
+   searchfile工具定位目标文件!!!
 
-   行动：根据 {source_path} 结合补丁分析，找到包含Sink点的具体源代码文件。
+   行动：根据 {source_path} 结合补丁分析，使用searchfile工具找到包含Sink点的具体源代码文件。
 
    优化：不允许查看无关文件或者其他文件。
 
@@ -56,10 +58,6 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    行动：立即开始撰写分析报告。
 
 3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`
-**可用工具:**
-
-* `server-filesystem`: 用于读取文件内容（重要限制：用于搜索文件，只读取sink点所在的文件，不额外读取其他文件）。
-**输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 
 ````markdown
 ### Sink点分析报告：[此处填写CVE编号]
