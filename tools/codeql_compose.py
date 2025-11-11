@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
 from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
+from agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
@@ -28,6 +29,7 @@ from utils.codeql import (
     run_query_and_decode_to_text,
     validate_codeql_database,
     is_database_error,
+    save_query_to_persistent_dir,
 )
 
 
@@ -64,6 +66,7 @@ class CodeQLComposeTool(BaseTool):
         *,
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
+        fix_inplace_agent_cls: Type[CodeQLFixInplaceAgent] = CodeQLFixInplaceAgent,
         syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
         **kwargs,
     ) -> None:
@@ -75,6 +78,7 @@ class CodeQLComposeTool(BaseTool):
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
+        self._fix_inplace_agent_cls = fix_inplace_agent_cls
         self._syntax_session_cls = syntax_session_cls
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
@@ -156,7 +160,7 @@ class CodeQLComposeTool(BaseTool):
                     end = range_info.get("end", {})
                     end_line = end.get("line", 0) + 1
                     end_character = end.get("character", 0) + 1
-                    
+
                     # 构建结构化错误信息
                     error_detail = {
                         "line": line,
@@ -168,12 +172,12 @@ class CodeQLComposeTool(BaseTool):
                         "source": error.get("source", ""),
                     }
                     error_details.append(error_detail)
-                    
+
                     # 同时保留可读格式
                     error_messages.append(f"Line {line}, Column {character}: {message}")
 
                 print(f"❌ [CodeQLComposeTool] 发现 {len(errors)} 个语法错误")
-                
+
                 # 返回完整的LSP诊断信息（JSON格式 + 可读格式）
                 lsp_error_output = {
                     "format": "lsp_diagnostics",
@@ -341,10 +345,16 @@ class CodeQLComposeTool(BaseTool):
 
         target_language = self.default_language
         max_iterations = self.default_max_rounds
-        
+
+        # 生成任务ID用于工作区管理和持久化
+        from datetime import datetime
+        import uuid
+        task_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        print(f"[CodeQLComposeTool] 任务ID: {task_id}")
+
         _agent_name = agent_name or "CodeQL Compose Tool"
         _agent_type = agent_type or "codeql_compose"
-        
+
         if event_callback:
             from datetime import datetime
             await event_callback({
@@ -361,13 +371,15 @@ class CodeQLComposeTool(BaseTool):
 
         gen_agent = self._gen_agent_cls(self.analyzer)
         error_agent = self._error_agent_cls(self.analyzer)
+        fix_inplace_agent = self._fix_inplace_agent_cls(self.analyzer)
 
         ql_template = self._load_ql_template(target_language)
         round_index = 1
         prev_original_ql = None
         prev_fix_suggestions = None
+        is_first_round = True  # Track if this is the first generation
 
-        query_file = create_temporary_qlpack("", language=target_language)
+        query_file = create_temporary_qlpack("", language=target_language, task_id=task_id)
         pack_root = query_file.parent
 
         # 启动LSP服务
@@ -375,14 +387,14 @@ class CodeQLComposeTool(BaseTool):
         print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
         print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
         lsp_service = CodeQLLSPService(pack_root, query_file)
-        
+
         # 添加详细的进度指示
         import time
         start_time = time.time()
         final_result = None
         is_success = False
         print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
-        
+
 
         # 调用start_server方法，它内部已经有30秒的重试机制
         if lsp_service.start():
@@ -395,40 +407,72 @@ class CodeQLComposeTool(BaseTool):
         try:
             with self._syntax_session_cls(pack_root):
                 while round_index <= max_iterations:
-                    gen_prompt_base = gen_agent.build_prompt(
-                        language=target_language,
-                        requirement=requirement,
-                        round_index=round_index,
-                        prev_original_ql=prev_original_ql,
-                        prev_fix_suggestions=prev_fix_suggestions,
-                    )
-                    gen_values = build_placeholder_map(
-                        language=target_language,
-                        requirement=requirement,
-                        round_index=round_index,
-                        prev_original_ql=prev_original_ql,
-                        prev_fix_suggestions=prev_fix_suggestions,
-                        ql_template=ql_template,
-                        kb_directory_index=kb_context.get("kb_directory_index"),
-                        kb_suggestions=kb_context.get("kb_suggestions"),
-                        kb_structured_context=kb_context.get("kb_structured_context"),
-                        kb_reference_snippets=kb_context.get("kb_reference_snippets"),
-                        relevant_tags=kb_context.get("relevant_tags"),
-                    )
-                    gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
-                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
+                    # Only use GenAgent for the first round
+                    if is_first_round:
+                        gen_prompt_base = gen_agent.build_prompt(
+                            language=target_language,
+                            requirement=requirement,
+                            round_index=round_index,
+                            prev_original_ql=prev_original_ql,
+                            prev_fix_suggestions=prev_fix_suggestions,
+                        )
+                        gen_values = build_placeholder_map(
+                            language=target_language,
+                            requirement=requirement,
+                            round_index=round_index,
+                            prev_original_ql=prev_original_ql,
+                            prev_fix_suggestions=prev_fix_suggestions,
+                            ql_template=ql_template,
+                            kb_directory_index=kb_context.get("kb_directory_index"),
+                            kb_suggestions=kb_context.get("kb_suggestions"),
+                            kb_structured_context=kb_context.get("kb_structured_context"),
+                            kb_reference_snippets=kb_context.get("kb_reference_snippets"),
+                            relevant_tags=kb_context.get("relevant_tags"),
+                        )
+                        gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
+                        gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
-                    if not gen_result.success:
-                        is_success = False
-                        final_result = f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
-                        return final_result
+                        if not gen_result.success:
+                            is_success = False
+                            final_result = f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
+                            return final_result
 
-                    current_ql = self._extract_codeql_from_response(gen_result.content)
-                    if not current_ql:
-                        is_success = False
-                        final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
-                        return final_result
-                    
+                        current_ql = self._extract_codeql_from_response(gen_result.content)
+                        if not current_ql:
+                            is_success = False
+                            final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
+                            return final_result
+
+                        # Save generated query to file immediately
+                        print(f"💾 [CodeQLComposeTool] 保存首次生成的查询到: {query_file}")
+                        query_file.write_text(current_ql, encoding='utf-8')
+                        
+                        # Also save to persistent directory
+                        metadata = {
+                            "task_id": task_id,
+                            "language": target_language,
+                            "requirement": requirement,
+                            "round": round_index,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        save_query_to_persistent_dir(
+                            query_content=current_ql,
+                            task_id=task_id,
+                            language=target_language,
+                            metadata=metadata
+                        )
+                        
+                        is_first_round = False
+                    else:
+                        # For subsequent rounds, read from file (modified by FixInplaceAgent)
+                        try:
+                            current_ql = query_file.read_text(encoding='utf-8')
+                            print(f"📖 [CodeQLComposeTool] 从文件读取修改后的查询: {query_file}")
+                        except Exception as e:
+                            is_success = False
+                            final_result = f"Error reading query file: {e}"
+                            return final_result
+
                     # 直接使用 LSP 进行语法检查和执行
                     exec_result = self._lsp_and_execute(
                         current_ql=current_ql,
@@ -440,7 +484,7 @@ class CodeQLComposeTool(BaseTool):
                     # Check execution result
                     if exec_result.get('success', False):
                         mode_now = (exec_mode or 'analyze').lower()
-                        
+
                         # 创建CodeQLExecutionResult对象
                         from services.codeql_execution import CodeQLExecutionResult
                         execution_result = CodeQLExecutionResult(
@@ -452,7 +496,7 @@ class CodeQLComposeTool(BaseTool):
                             result_file=exec_result.get('result_file'),
                             preview=exec_result.get('preview')
                         )
-                        
+
                         # 正常结果处理
                         if mode_now == 'run' and run_query_and_decode_to_text is not None:
                             result_file = exec_result.get('result_file')
@@ -491,6 +535,9 @@ class CodeQLComposeTool(BaseTool):
                             f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
                         return final_result
+                    
+                    # Step 1: Use ErrorAgent to analyze errors
+                    print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
                     error_prompt_base = error_agent.build_prompt(
                         error_log=exec_result.get('output', ''),
                         curr_ql_content=current_ql,
@@ -523,8 +570,31 @@ class CodeQLComposeTool(BaseTool):
                         )
                         return final_result
 
+                    # Step 2: Use FixInplaceAgent to modify the file
+                    print(f"🔧 [CodeQLComposeTool] 使用原地修复模式修改文件")
+                    ql_file_path_abs = str(query_file.resolve())
+                    
+                    fix_result = await fix_inplace_agent.fix(
+                        ql_file_path=ql_file_path_abs,
+                        curr_ql_content=current_ql,
+                        prev_fix_suggestions=error_analysis.content,
+                        prev_original_ql=prev_original_ql,
+                        round_index=round_index,
+                        show_thinking=show_thinking,
+                        event_callback=event_callback,
+                    )
+                    
+                    if not fix_result.success:
+                        is_success = False
+                        final_result = (
+                            f"Error in in-place fixing (Round {round_index}): "
+                            f"{fix_result.error or 'Unknown error'}"
+                        )
+                        return final_result
+                    
+                    print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+
                     prev_original_ql = current_ql
-                    prev_fix_suggestions = error_analysis.content
                     round_index += 1
 
         except RuntimeError as runtime_error:
@@ -544,7 +614,7 @@ class CodeQLComposeTool(BaseTool):
                     "message": f"CodeQL查询生成与验证{'成功' if is_success else '失败'}",
                     "data": {"success": is_success, "language": target_language}
                 })
-            
+
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
             lsp_service.stop()
@@ -552,5 +622,3 @@ class CodeQLComposeTool(BaseTool):
         if final_result is not None:
             return final_result
         return f"Unexpected end of iteration loop after {max_iterations} rounds"
-
-
