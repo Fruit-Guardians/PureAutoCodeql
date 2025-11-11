@@ -6,7 +6,8 @@ import inspect
 import json
 import logging
 import sys
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -15,6 +16,9 @@ from .path_ranker import PathScore
 from .selection_formatter import score_to_payload
 
 logger = logging.getLogger(__name__)
+
+
+StreamCallback = Callable[[Dict[str, Any]], Awaitable[None]]
 
 
 class SelectedPathModel(BaseModel):
@@ -44,6 +48,8 @@ class LLMPathAnalyzer:
         cve_context: Dict[str, Any],
         candidate_scores: List[PathScore],
         top_k: int = 3,
+        event_callback: Optional[StreamCallback] = None,
+        stream_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if not candidate_scores:
             return {"selected_paths": [], "reasoning": "", "coverage_analysis": {}}
@@ -52,7 +58,17 @@ class LLMPathAnalyzer:
         prompt = self._build_prompt(cve_context, bundles, top_k)
 
         try:
-            raw_response = await self._call_llm(prompt)
+            await self._emit_context_preview(
+                event_callback=event_callback,
+                stream_meta=stream_meta,
+                bundles=bundles,
+                limit=min(top_k, len(bundles)),
+            )
+            raw_response = await self._call_llm(
+                prompt,
+                event_callback=event_callback,
+                stream_meta=stream_meta,
+            )
             parsed = self._parse_response(raw_response, top_k)
             selected_payloads = self._merge_selection(parsed, bundles, top_k)
             coverage = parsed.coverage_analysis or self._infer_coverage(selected_payloads)
@@ -152,53 +168,100 @@ class LLMPathAnalyzer:
 
         return "\n".join(parts)
 
-    async def _call_llm(self, prompt: str) -> str:
+    async def _call_llm(
+        self,
+        prompt: str,
+        *,
+        event_callback: Optional[StreamCallback] = None,
+        stream_meta: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """调用LLM生成响应"""
+        stream_consumed = False
+        stream_meta = stream_meta or {}
+
         # 先尝试自定义客户端接口（可能接受纯字符串prompt）
         if hasattr(self.llm, "chat"):
             result = self.llm.chat(prompt)
             if inspect.isawaitable(result):
                 result = await result
-            return self._normalize_llm_response(result)
+            text = self._normalize_llm_response(result)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         message = self._make_human_message(prompt)
 
         stream_method = getattr(self.llm, "astream", None)
         if stream_method:
-            streamed = await self._try_stream(stream_method, prompt, message)
+            streamed, stream_consumed = await self._try_stream(
+                stream_method,
+                prompt,
+                message,
+                event_callback=event_callback,
+                stream_meta=stream_meta,
+            )
             if streamed is not None:
+                if not stream_consumed:
+                    await self._dispatch_non_stream_output(
+                        streamed, event_callback, stream_meta, stream_consumed
+                    )
                 return streamed
 
         if hasattr(self.llm, "ainvoke"):
             response = await self.llm.ainvoke([message])
-            return self._normalize_llm_response(response)
+            text = self._normalize_llm_response(response)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         if hasattr(self.llm, "agenerate"):
             response = await self.llm.agenerate([[message]])
-            return self._normalize_llm_response(response)
+            text = self._normalize_llm_response(response)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         if hasattr(self.llm, "generate"):
             response = self.llm.generate([[message]])
             if inspect.isawaitable(response):
                 response = await response
-            return self._normalize_llm_response(response)
+            text = self._normalize_llm_response(response)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         if hasattr(self.llm, "invoke"):
             response = self.llm.invoke([message])
             if inspect.isawaitable(response):
                 response = await response
-            return self._normalize_llm_response(response)
+            text = self._normalize_llm_response(response)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         # 最终回退到 ainvoke（若可用）或直接字符串转换
         if hasattr(self.llm, "ainvoke"):
             response = await self.llm.ainvoke([message])
-            return self._normalize_llm_response(response)
+            text = self._normalize_llm_response(response)
+            await self._dispatch_non_stream_output(
+                text, event_callback, stream_meta, stream_consumed
+            )
+            return text
 
         # 无法识别的客户端，直接尝试调用并转换
         response = self.llm(prompt)
         if inspect.isawaitable(response):
             response = await response
-        return self._normalize_llm_response(response)
+        text = self._normalize_llm_response(response)
+        await self._dispatch_non_stream_output(
+            text, event_callback, stream_meta, stream_consumed
+        )
+        return text
 
     def _parse_response(self, response: str, top_k: int) -> AnalyzerResponseModel:
         json_str = self._extract_json(response)
@@ -277,7 +340,15 @@ class LLMPathAnalyzer:
             "dangerous_apis": sorted(set(apis)),
         }
 
-    async def _try_stream(self, stream_method, prompt: str, message: Any) -> str | None:
+    async def _try_stream(
+        self,
+        stream_method,
+        prompt: str,
+        message: Any,
+        *,
+        event_callback: Optional[StreamCallback],
+        stream_meta: Dict[str, Any],
+    ) -> Tuple[Optional[str], bool]:
         """尝试使用流式接口获取响应，成功则返回完整文本，失败返回None"""
         try:
             stream = None
@@ -290,7 +361,7 @@ class LLMPathAnalyzer:
                 stream = await stream
 
             if stream is None:
-                return ""
+                return "", False
 
             if hasattr(stream, "__aiter__"):
                 chunks: List[str] = []
@@ -306,35 +377,74 @@ class LLMPathAnalyzer:
                         chunk_index += 1
                         if self._should_flush_stream(display_buffer, text):
                             flush_count += 1
-                            self._emit_stream_output(
+                            await self._emit_stream_output(
                                 "".join(display_buffer),
                                 flush_count,
                                 final=False,
+                                event_callback=event_callback,
+                                stream_meta=stream_meta,
                             )
                             display_buffer.clear()
 
                 if display_buffer:
                     flush_count += 1
-                    self._emit_stream_output(
+                    await self._emit_stream_output(
                         "".join(display_buffer),
                         flush_count,
                         final=True,
+                        event_callback=event_callback,
+                        stream_meta=stream_meta,
                     )
                 elif chunks:
                     # 如果没有残留缓存，仍然输出一次总览
-                    self._emit_stream_output("".join(chunks), chunk_index, final=True)
-                return "".join(chunks)
+                    await self._emit_stream_output(
+                        "".join(chunks),
+                        chunk_index,
+                        final=True,
+                        event_callback=event_callback,
+                        stream_meta=stream_meta,
+                    )
+                return "".join(chunks), True
 
             # 如果流式调用返回的是最终结果，直接归一化
-            return self._normalize_llm_response(stream)
+            normalized = self._normalize_llm_response(stream)
+            return normalized, False
 
         except Exception as exc:
             logger.debug("LLM流式输出失败，回退到非流式接口: %s", exc, exc_info=True)
-        return None
+        return None, False
 
-    def _emit_stream_output(self, text: str, index: int, *, final: bool) -> None:
+    async def _emit_stream_output(
+        self,
+        text: str,
+        index: int,
+        *,
+        final: bool,
+        event_callback: Optional[StreamCallback],
+        stream_meta: Dict[str, Any],
+    ) -> None:
         """将流式输出直接打印至控制台，贴近对话体验。"""
         if not text:
+            return
+
+        if event_callback:
+            payload = {
+                "type": "agent_thinking",
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": stream_meta.get("agent_name") or "PathSelection",
+                "agent_type": stream_meta.get("agent_type") or "path_selection",
+                "step_name": stream_meta.get("step_name") or "LLM 点读精排",
+                "message": text,
+                "data": {
+                    "stream_chunk": text,
+                    "is_final": final,
+                    "stream_index": index,
+                },
+            }
+            try:
+                await event_callback(payload)
+            except Exception:
+                logger.debug("event_callback 处理流式输出失败", exc_info=True)
             return
 
         if not getattr(self, "_stream_display_started", False):
@@ -414,6 +524,58 @@ class LLMPathAnalyzer:
                     return str(value)
 
         return str(response)
+
+    async def _emit_context_preview(
+        self,
+        *,
+        event_callback: Optional[StreamCallback],
+        stream_meta: Optional[Dict[str, Any]],
+        bundles: List[Dict[str, Any]],
+        limit: int,
+    ) -> None:
+        if not event_callback or not bundles or limit <= 0:
+            return
+        meta = stream_meta or {}
+        for bundle in bundles[:limit]:
+            score: PathScore = bundle["score"]
+            feature = score.feature
+            payload = {
+                "type": "info",
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": meta.get("agent_name") or "PathSelection",
+                "agent_type": meta.get("agent_type") or "path_selection",
+                "step_name": meta.get("step_name") or "LLM 点读精排",
+                "message": f"候选 {bundle['rank']} 点读上下文",
+                "data": {
+                    "candidate_rank": bundle["rank"],
+                    "deterministic_score": round(score.total, 4),
+                    "flow_summary": feature.flow_summary,
+                    "dangerous_apis": feature.dangerous_apis,
+                    "matched_keywords": feature.matched_keywords,
+                    "blocks": bundle["context_blocks"],
+                },
+            }
+            try:
+                await event_callback(payload)
+            except Exception:
+                logger.debug("event_callback 推送上下文失败", exc_info=True)
+
+    async def _dispatch_non_stream_output(
+        self,
+        text: str,
+        event_callback: Optional[StreamCallback],
+        stream_meta: Dict[str, Any],
+        stream_consumed: bool,
+    ) -> None:
+        if not text or stream_consumed or not event_callback:
+            return
+        await self._emit_stream_output(
+            text,
+            index=1,
+            final=True,
+            event_callback=event_callback,
+            stream_meta=stream_meta,
+        )
 
 
 __all__ = ["LLMPathAnalyzer"]
