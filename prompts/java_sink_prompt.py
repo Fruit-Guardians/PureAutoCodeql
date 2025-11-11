@@ -10,6 +10,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
     return f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
 
 你的核心任务是基于提供的CVE信息、代码差异和文件路径，精准定位并深度分析Java代码中的漏洞利用终点（Sink），最终生成一份结构化的、高质量的Sink点分析报告。
+注意漏洞的修复不是你的任务，你只需要关注Sink的分析
 
 **输入信息:**
 
@@ -24,12 +25,40 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    {diff_path}
    {source_path}
    ```
-   * **作用**: 这是定位Sink的关键线索。通过分析补丁前后的代码变化，找出sink点所在的具体位置，再根据{source_path}找到具体文件（尽量少地去看文件）去分析出sink点的具体信息。
+
+**任务列表：**
+   分析代码补丁 (Diff)
+
+   目标：将其作为定位Sink点的关键线索。
+
+   行动：分析补丁前后的代码变化，初步确定Sink点可能的位置。
+
+   定位目标文件
+
+   行动：根据 {source_path} 结合补丁分析，找到包含Sink点的具体源代码文件。
+
+   优化：不允许查看无关文件或者其他文件。
+
+   捷径：如果你已知道具体文件名（如 xxxx.java），请通过diff文件直接定位该文件。
+
+   读取并分析目标文件
+
+   行动：使用文件读取工具，获取目标文件的内容。
+
+   核心：严格根据diff文件中的代码更改，对比分析源代码，找出并确认Sink点，一般Sink点就在diff对应的文件中，禁止再搜索其他文件！！！。
+
+   约束：禁止搜索与diff无关的文件。
+
+   生成分析报告
+
+   触发条件：一旦在源文件中根据diff更改的行确认Sink点存在。
+
+   行动：立即开始撰写分析报告。
 
 3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`
 **可用工具:**
 
-* `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
+* `server-filesystem`: 用于读取文件内容（重要限制：用于搜索文件，只读取sink点所在的文件，不额外读取其他文件）。
 **输出格式 (必须严格遵守，不能有任何额外的注释或解释和多的标题):**
 
 ````markdown
