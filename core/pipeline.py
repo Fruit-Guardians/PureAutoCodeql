@@ -431,7 +431,8 @@ class AnalysisPipeline:
                     sarif_data = json.load(f)
                 
                 json_data = sarif_to_all_paths(sarif_data)
-                json_filename = f"{cve_tag}_{latest_sarif.stem}.json"
+                # 使用更清晰的命名：all_paths 表示这是所有原始路径
+                json_filename = f"{cve_tag}_all_paths_raw.json"
                 json_path = output_dir / json_filename
                 
                 with open(json_path, 'w', encoding=config.output_encoding) as f:
@@ -439,7 +440,7 @@ class AnalysisPipeline:
                 
                 # 验证JSON文件写入成功
                 if json_path.exists() and json_path.stat().st_size > 0:
-                    logger.info(f"✅ SARIF文件已转换为JSON: {json_filename}")
+                    logger.info(f"✅ SARIF文件已转换为JSON(所有原始路径): {json_filename}")
                 else:
                     logger.warning(f"⚠️ JSON文件写入可能失败: {json_filename}")
                     
@@ -524,19 +525,27 @@ class AnalysisPipeline:
             )
 
             report_path = output_dir / f"path_selection_report_{cve_tag}.md"
-            result_path = output_dir / f"path_selection_result_{cve_tag}.json"
+            detail_path = output_dir / f"path_selection_detail_{cve_tag}.json"
             export_name = (selection.cve_id or "CVE-UNKNOWN").upper()
             if not export_name.startswith("CVE-"):
                 export_name = f"CVE-{export_name}"
-            export_path = output_dir / f"{export_name}.json"
+            # 最终结果文件：简洁版本，只包含选择的路径
+            result_path = output_dir / f"{export_name}_result.json"
 
+            # 生成三个文件：
+            # 1. 可读报告（Markdown）
             report_path.write_text(selection.to_markdown(), encoding=config.output_encoding)
-            with open(result_path, "w", encoding=config.output_encoding) as handler:
+            # 2. 详细数据（包含所有元数据）
+            with open(detail_path, "w", encoding=config.output_encoding) as handler:
                 json.dump(selection.to_dict(), handler, ensure_ascii=False, indent=2)
-            with open(export_path, "w", encoding=config.output_encoding) as handler:
+            # 3. 最终简洁结果（只包含选择的路径）
+            with open(result_path, "w", encoding=config.output_encoding) as handler:
                 json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
 
-            logger.info("✅ 路径选择结果已输出: %s, %s, %s", report_path, result_path, export_path)
+            logger.info("✅ 路径选择结果已输出:")
+            logger.info("   📄 报告: %s", report_path.name)
+            logger.info("   📊 详细数据: %s", detail_path.name)
+            logger.info("   ✅ 最终结果: %s", result_path.name)
             return selection
         except Exception as exc:
             logger.exception("路径选择执行失败: %s", exc)
