@@ -40,6 +40,9 @@
 3. 直接基于这些LSP诊断信息进行分析，**不要猜测或推断**错误原因
 4. 在修复计划中明确引用具体的行号和错误消息
 
+参考模板
+[[QL_TEMPLATE]]
+
 
 ## 原地修复工作流程
 
@@ -70,5 +73,35 @@
 2. 确保修复后的内容保持正确的缩进和格式
 3. 保留文件中未出错的部分，只修改有问题的代码
 4. 使用精确的正则表达式匹配需要修改的部分
+
+## CodeQL生成规则 (CRITICAL)
+
+1. **类型名称规范:**
+
+   - ✅ 严格使用 `MethodCall` (正确)
+   - ❌ 禁止使用 `MethodAccess` (已弃用)
+   - ❌ 禁止使用 `MethodAccessExpr` (不存在)
+2. **接口实现规范（C/C++）:**
+
+   - 使用 `class Config extends DataFlow::Configuration`
+   - 必须实现: `isSource`, `isSink`
+   - 可选实现: `isAdditionalFlowStep`
+   - ❌ 不要实现 `isSanitizer`（不属于该接口）
+3. **必要导入（按语言区分）:**
+
+   - C/C++（稳定接口）：
+     - `import cpp`
+     - `import semmle.code.cpp.dataflow.DataFlow`
+     - `class Config extends DataFlow::Configuration`
+     - PathGraph 使用: `DataFlow::PathNode` + `cfg.hasFlowPath(source, sink)`
+     - ❌ 不要使用 `new.*` 模块或 `Flow::*` 别名
+   - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
+4. **Select语句格式:**
+
+   - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求
+   - Python：通常使用7个参数格式
+   - Java：通常使用7个参数格式
+   - C/C++：通常使用6个参数格式
+   - ❌ 不要混用不同语言的格式
 
 最终无须总结报告
