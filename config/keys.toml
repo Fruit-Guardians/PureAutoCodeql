@@ -34,6 +34,16 @@ think_model = "gemini-2.5-pro"
 chat_model = "gemini-2.5-pro"         
 description = "自定义 API 服务"
 
+# 你的自定义 API 服务
+[[custom_providers]]
+name = "kat"
+display_name = "我的自定义 API"
+api_key = "rOmnc36lCjC6bbUP5D9vdIG2issxRCcqM7KJzotZOGs"
+base_url = "https://wanqing.streamlakeapi.com/api/gateway/v1/endpoints/chat/completions"
+think_model = "KAT-Coder-Pro V1"             
+chat_model = "KAT-Coder-Pro V1"         
+description = "自定义 API 服务"
+
 
 # ============================================================================
 # 全局设置（可选）
