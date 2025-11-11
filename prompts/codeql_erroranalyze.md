@@ -164,3 +164,4 @@ select sink.getNode(), src, sink, "描述"
 </QL_TEMPLATE>
 
 请按照上述格式和要求输出你的结果。
+禁止输出完整的修改后的ql，保证结果整洁

@@ -39,10 +39,10 @@ def normalize_language(language: Optional[str]) -> str:
 def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
     """
     验证CodeQL数据库是否存在且有效。
-    
+
     Args:
         database_path: CodeQL数据库的路径
-        
+
     Returns:
         (is_valid, error_message) 元组：
         - is_valid: 数据库是否有效
@@ -50,23 +50,23 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
     """
     if not database_path:
         return False, "数据库路径为空。请提供有效的CodeQL数据库路径。"
-    
+
     db_path = Path(database_path)
-    
+
     # 检查路径是否存在
     if not db_path.exists():
         return False, (
             f"数据库路径不存在: {database_path}\n"
             f"请检查路径是否正确，或使用 'codeql database create' 创建数据库。"
         )
-    
+
     # 检查是否为目录
     if not db_path.is_dir():
         return False, (
             f"数据库路径不是目录: {database_path}\n"
             f"CodeQL数据库必须是一个目录。"
         )
-    
+
     # 检查关键文件/目录是否存在（CodeQL数据库的典型结构）
     # CodeQL数据库通常包含 codeql-database.yml 或 db-* 目录
     has_database_yml = (db_path / "codeql-database.yml").exists()
@@ -75,7 +75,7 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
         for subdir in db_path.iterdir()
         if subdir.is_dir()
     )
-    
+
     if not (has_database_yml or has_db_subdirs):
         # 尝试使用 codeql database info 命令验证
         try:
@@ -110,7 +110,7 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
                 f"数据库验证失败: {database_path}\n"
                 f"错误: {str(e)}"
             )
-    
+
     # 数据库看起来有效
     return True, ""
 
@@ -118,16 +118,16 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
 def is_database_error(error_output: str) -> bool:
     """
     检查错误输出是否与数据库相关。
-    
+
     Args:
         error_output: CodeQL命令的错误输出
-        
+
     Returns:
         如果是数据库相关错误，返回True；否则返回False
     """
     if not error_output:
         return False
-    
+
     error_lower = error_output.lower()
     database_error_patterns = [
         "not a recognized codeql database",
@@ -139,7 +139,7 @@ def is_database_error(error_output: str) -> bool:
         "无法识别",
         "不是有效的",
     ]
-    
+
     return any(pattern in error_lower for pattern in database_error_patterns)
 
 def gen_codeql_lock_yml(lang: str) -> str:
@@ -245,13 +245,21 @@ compiled: false
     else:
         return java_yml
 
-def create_temporary_qlpack(query_content: str, language: Optional[str] = None) -> Path:
+def create_temporary_qlpack(query_content: str, language: Optional[str] = None, task_id: Optional[str] = None) -> Path:
     print("创建被调用")
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     temp_base_dir = Path('./temp/codeql_temp')
     temp_base_dir.mkdir(parents=True, exist_ok=True)
-    pack_dir = temp_base_dir / timestamp
-    pack_dir.mkdir(parents=True, exist_ok=True)
+
+    if task_id:
+        # 使用固定的任务ID路径
+        pack_dir = temp_base_dir / task_id
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = task_id
+    else:
+        # 向后兼容: 使用时间戳路径
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        pack_dir = temp_base_dir / timestamp
+        pack_dir.mkdir(parents=True, exist_ok=True)
 
     lang = normalize_language(language or detect_language_from_query(query_content))
     if lang == 'cpp':
@@ -311,12 +319,12 @@ dependencies:
 def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None , query_file: Optional[Path] = None) -> Dict[str, Any]:
     """
     对指定的数据库执行CodeQL查询。
-    
+
     Args:
         query_content: 要执行的CodeQL查询字符串。
         database_path: CodeQL数据库的路径。
         language: 可选的显式语言（'java'、'python'、'c'）。如果省略，则从查询中自动检测。
-    
+
     Returns:
         包含以下内容的字典：
         - success (bool): 执行是否成功
@@ -333,7 +341,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             'results': [],
             'sarif_path': None,
         }
-    
+
     sarif_path: Optional[Path] = None
     try:
         open(query_file,'w').write(query_content)
@@ -350,7 +358,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         sarif_path = output_dir / f'result_{timestamp}.sarif'
 
         start_time = time.time()
-        
+
         # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出
         result = subprocess.run(
             [
@@ -365,7 +373,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             text=True,
             timeout=600
         )
-        
+
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
         print(f"✅ CodeQL查询执行完成! 用时: {execution_time:.2f}秒")
@@ -385,9 +393,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
                 error_output.append(result.stderr.strip())
             if result.stdout:
                 error_output.append(result.stdout.strip())
-            
+
             combined_error = '\n'.join(filter(None, error_output))
-            
+
             # 检查是否为数据库相关错误
             if is_database_error(combined_error):
                 enhanced_error = (
@@ -405,7 +413,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
                     'results': [],
                     'sarif_path': str(sarif_path) if sarif_path else None,
                 }
-            
+
             print(f"CodeQL execution failed with error: \n {combined_error}")
             return {
                 'success': False,
@@ -413,7 +421,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
                 'results': [],
                 'sarif_path': str(sarif_path) if sarif_path else None,
             }
-    
+
     except subprocess.TimeoutExpired:
         return {
             'success': False,
@@ -433,7 +441,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         error_msg = f'CodeQL execution failed: {str(e)}'
         if hasattr(e, '__cause__') and e.__cause__:
             error_msg += f'\nCause: {str(e.__cause__)}'
-        
+
         return {
             'success': False,
             'output': error_msg,
@@ -463,7 +471,7 @@ def run_query_and_decode_to_text(
             'output': f"数据库验证失败:\n{validation_error}",
             'result_file': None,
         }
-    
+
     query_file = None
     pack_dir = None
     try:
@@ -491,9 +499,9 @@ def run_query_and_decode_to_text(
                 parts.append(result.stderr.strip())
             if result.stdout:
                 parts.append(result.stdout.strip())
-            
+
             combined_error = '\n'.join(filter(None, parts)) or 'Unknown CodeQL run error'
-            
+
             # 检查是否为数据库相关错误
             if is_database_error(combined_error):
                 enhanced_error = (
@@ -509,7 +517,7 @@ def run_query_and_decode_to_text(
                     'output': enhanced_error,
                     'result_file': None,
                 }
-            
+
             return {
                 'success': False,
                 'output': combined_error,
@@ -576,19 +584,59 @@ def run_query_and_decode_to_text(
         }
 
 
+def save_query_to_persistent_dir(query_content: str, task_id: str, language: str, metadata: Optional[Dict[str, Any]] = None) -> Optional[Path]:
+    """
+    将生成的 CodeQL 查询保存到持久化目录（temp/ql_queries），每轮保存一个版本。
+
+    Args:
+        query_content: CodeQL 查询内容
+        task_id: 任务 ID
+        language: 查询语言
+        metadata: 可选的元数据字典（应包含 round 信息）
+
+    Returns:
+        保存的查询文件路径，如果失败则返回 None
+    """
+    try:
+        output_base_dir = Path('./temp/ql_queries')
+        output_base_dir.mkdir(parents=True, exist_ok=True)
+
+        task_dir = output_base_dir / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+
+        # 获取轮次信息，用于生成不同版本的文件名
+        round_num = metadata.get('round', 1) if metadata else 1
+
+        # 保存查询文件（每轮一个文件）
+        query_file = task_dir / f'query_round{round_num}.ql'
+        query_file.write_text(query_content, encoding='utf-8')
+
+        # 保存或更新元数据
+        if metadata:
+            metadata_file = task_dir / f'metadata_round{round_num}.json'
+            metadata_file.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        print(f"✅ [持久化] 查询已保存到: {query_file}")
+        return query_file
+
+    except Exception as e:
+        print(f"⚠️  [持久化] 保存查询失败: {e}")
+        return None
+
+
 def parse_codeql_results(result_output: str) -> List[Dict[str, Any]]:
     """
     将CodeQL查询输出解析为结构化数据。
-    
+
     Args:
         result_output: CodeQL查询执行的原始输出。
-    
+
     Returns:
         解析后的结果记录列表。如果没有结果或解析失败，则返回空列表。
     """
     if not result_output or not result_output.strip():
         return []
-    
+
     try:
         data = json.loads(result_output)
         if isinstance(data, dict) and 'runs' in data:
@@ -605,7 +653,7 @@ def parse_codeql_results(result_output: str) -> List[Dict[str, Any]]:
         lines = result_output.strip().split('\n')
         if not lines:
             return []
-        
+
         results = []
         for line in lines:
             line = line.strip()
