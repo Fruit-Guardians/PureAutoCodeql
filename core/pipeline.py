@@ -514,10 +514,23 @@ class AnalysisPipeline:
             llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
             service = PathSelectionService(llm_config, language=context.language)
 
+            # 诊断日志：打印源代码根目录信息
+            source_root = context.case_paths.source_code
+            logger.info("📍 路径选择诊断信息:")
+            logger.info("   - source_root: %s", source_root)
+            logger.info("   - source_root 存在: %s", source_root.exists())
+            if source_root.exists():
+                # 列出源根目录的前几个文件/目录
+                try:
+                    entries = list(source_root.iterdir())[:10]
+                    logger.info("   - source_root 内容样本: %s", [e.name for e in entries])
+                except Exception:
+                    pass
+
             selection = await service.select_best_paths(
                 output_md_path=output_md_path,
                 result_json_path=result_json_path,
-                source_root=context.case_paths.source_code,
+                source_root=source_root,
                 top_k=3,
                 enable_clustering=True,
                 event_callback=context.event_callback,

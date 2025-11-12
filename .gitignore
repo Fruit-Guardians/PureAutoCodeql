@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.trae/
 *.py[cod]
 *$py.class
 *.so

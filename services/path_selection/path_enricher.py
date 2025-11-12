@@ -26,6 +26,8 @@ class PathEnricher:
         """
         self.language = language.lower()
         self.adapter = get_language_adapter(self.language)
+        # 缓存路径解析结果，避免重复遍历文件树
+        self._resolved_path_cache: Dict[tuple[str, str], Optional[Path]] = {}
     
     async def enrich_paths(
         self,
@@ -132,10 +134,9 @@ class PathEnricher:
             return ""
         
         # 构建完整路径
-        full_path = source_root / file_path
+        full_path = self._resolve_file_path(file_path, source_root)
         
-        if not full_path.exists():
-            logger.debug(f"文件不存在: {full_path}")
+        if not full_path:
             return ""
         
         try:
@@ -158,6 +159,63 @@ class PathEnricher:
             logger.debug(f"读取文件失败 {full_path}: {e}")
             return ""
     
+    def _resolve_file_path(self, file_path: str, source_root: Path) -> Optional[Path]:
+        """尝试在源码目录中解析路径，兼容不同的相对路径前缀。"""
+
+        normalized_path = self._normalize_file_path(file_path)
+        if not normalized_path:
+            return None
+
+        cache_key = (str(source_root.resolve()), normalized_path)
+        if cache_key in self._resolved_path_cache:
+            return self._resolved_path_cache[cache_key]
+
+        candidate = source_root / normalized_path
+        if candidate.exists():
+            self._resolved_path_cache[cache_key] = candidate
+            return candidate
+
+        # 有些项目会有额外的多层目录，例如 source_root/<project>/<version>/...
+        # 我们尝试在第一层子目录中拼接再检查。
+        try:
+            for child in source_root.iterdir():
+                if not child.is_dir():
+                    continue
+                nested_candidate = child / normalized_path
+                if nested_candidate.exists():
+                    self._resolved_path_cache[cache_key] = nested_candidate
+                    return nested_candidate
+        except OSError:
+            # 某些情况下目录权限或文件数量过多可能触发异常，忽略继续尝试后续策略
+            pass
+
+        # 最后兜底：通过后缀匹配搜索整个源码树
+        target_suffix = normalized_path.replace("\\", "/")
+        try:
+            for match in source_root.rglob(Path(normalized_path).name):
+                if str(match.as_posix()).endswith(target_suffix):
+                    self._resolved_path_cache[cache_key] = match
+                    return match
+        except OSError as exc:
+            logger.debug(f"遍历源码目录时失败: {exc}")
+
+        logger.debug(f"无法解析路径: {file_path} (normalized={normalized_path})")
+        self._resolved_path_cache[cache_key] = None
+        return None
+
+    @staticmethod
+    def _normalize_file_path(file_path: str) -> str:
+        """标准化 CodeQL 输出的文件路径，去掉前缀并统一分隔符。"""
+
+        if not file_path:
+            return ""
+
+        cleaned = file_path.strip()
+        if cleaned.startswith("file://"):
+            cleaned = cleaned[7:]
+        cleaned = cleaned.replace("\\", "/")
+        return cleaned.lstrip("/")
+
     def _generate_flow_summary(self, steps: List[Dict[str, Any]]) -> str:
         """生成数据流摘要"""
         

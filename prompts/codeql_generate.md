@@ -62,21 +62,19 @@
    - ✅ 严格使用 `MethodCall` (正确)
    - ❌ 禁止使用 `MethodAccess` (已弃用)
    - ❌ 禁止使用 `MethodAccessExpr` (不存在)
-2. **接口实现规范（C/C++）:**
+2. **接口实现规范:**
 
-   - 使用 `class Config extends DataFlow::Configuration`
    - 必须实现: `isSource`, `isSink`
-   - 可选实现: `isAdditionalFlowStep`
-   - ❌ 不要实现 `isSanitizer`（不属于该接口）
-3. **必要导入（按语言区分）:**
+   - 可选实现: `isAdditionalFlowStep`, `isSanitizer`
+   - ⚠️ 不同语言有不同的API规范，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的接口实现规范
+3. **必要导入:**
 
-   - C/C++（稳定接口）：
-     - `import cpp`
-     - `import semmle.code.cpp.dataflow.DataFlow`
-     - `class Config extends DataFlow::Configuration`
-     - PathGraph 使用: `DataFlow::PathNode` + `cfg.hasFlowPath(source, sink)`
-     - ❌ 不要使用 `new.*` 模块或 `Flow::*` 别名
-   - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
+   - 根据 `[LANGUAGE]` 导入正确的标准CodeQL库和DataFlow/TaintTracking库
+   - ⚠️ **重要**：不同语言有不同的导入规范和API版本，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的导入规范
+   - 例如：
+     - Python: 参考 `python_template_ql.md`
+     - Java: 参考 `java_temple_ql.md`
+     - C/C++: 参考 `c_template_ql.md`
 4. **Select语句格式:**
 
    - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求
