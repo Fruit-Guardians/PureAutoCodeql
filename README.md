@@ -355,6 +355,27 @@ echo "关键发现: ..." > projects/CVE-XXX/inputs/分析笔记.txt
 
 **详细文档**：[额外输入文件功能说明](docs/extra_input_files_simple.md)
 
+## 🔁 Flow Break 检测与自动补边 🆕
+
+当生成的 CodeQL 查询执行成功但返回空结果时，系统会在进入传统“空结果重试”逻辑之前自动执行一次**断流检测 → 补边生成 → 带补边重跑**流程：
+
+- 🎯 **断流检测**：复用上一轮的 Source/Sink/isAdditionalFlowStep，构造固定 Source/Sink + ANY 交集查询，定位潜在断流点
+- 🧠 **补边生成**：依据断流节点位置和代码上下文，生成带限额的 `isAdditionalFlowStep` 子句，自动去重并记录来源
+- 🔁 **安全合并**：将新增子句合并回原查询，保留既有逻辑与注释，允许多轮迭代（默认最多 3 轮）
+- 📊 **遥测日志**：记录检测轮次、候选节点数、补边子句、耗时等信息，便于调试与后续优化
+
+可通过环境变量调整行为（均有合理默认值）：
+
+| 变量 | 默认值 | 说明 |
+|------|-------|------|
+| `ENABLE_FLOW_BREAK_DETECTION` | `true` | 是否启用断流检测流程 |
+| `MAX_FLOW_PATCH_ROUNDS` | `3` | 单次查询允许的补边迭代轮数 |
+| `MAX_FLOW_PATCH_CLAUSES_PER_ROUND` | `5` | 每轮最多新增的补边子句 |
+| `MAX_FLOW_PATCH_TOTAL_CLAUSES` | `12` | 整个流程允许新增的补边子句总数 |
+| `FLOW_BREAK_SOFT_LIMIT` / `FLOW_BREAK_CANDIDATE_CAP` | `200` / `50` | 断流候选节点的软上限与截断上限 |
+
+> 📌 **注意**：当断流检测失败或超过配置上限时，系统会自动降级回原有的空结果重试机制，保持向后兼容。
+
 ## 📖 详细文档
 
 | 文档 | 描述 |
@@ -365,11 +386,13 @@ echo "关键发现: ..." > projects/CVE-XXX/inputs/分析笔记.txt
 | [📝 项目规范](openspec/project.md) | 项目开发规范和流程 |
 | [📋 OpenSpec](openspec/README.md) | 项目规范和变更管理 |
 | [📂 额外输入文件](docs/extra_input_files_simple.md) | 额外输入文件功能使用指南 🆕 |
+| [🔁 Flow Break 检测](docs/flow_break_detection.md) | 断流检测与自动补边的开发/运维指南 🆕 |
 
 ## 🔄 代码质量优化
 
 ### 最新优化 (2025-01)
 
+- ✅ **Flow Break 自动补边**（2025-11）- 在空结果重试前自动执行断流检测与补边生成，可通过环境变量灵活配置
 - ✅ **模型提供商快捷切换** - 支持命令行参数快速切换模型提供商，无需修改环境变量
 - ✅ **统一日志系统** - 创建了统一的日志配置模块，区分用户交互和系统日志
 - ✅ **信息收集模块优化** - 修复了 NVD 信息获取中的代码重复问题

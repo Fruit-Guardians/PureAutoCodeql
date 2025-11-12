@@ -203,6 +203,7 @@ class CodeQLGenerationStep(AnalysisStep):
             analyzer=codeql_analyzer,
             database_path=str(context.case_paths.db),
             language=context.language,
+            source_root=str(context.case_paths.source_code),
         )
 
         print("=== CodeQL Query Generation ===")

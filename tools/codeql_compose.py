@@ -27,6 +27,10 @@ from services import (
     apply_placeholders,
     CodeQLSyntaxSession,
 )
+from services.flow_break_detection import (
+    FlowBreakDetectionConfig,
+    FlowBreakDetectionManager,
+)
 from utils.codeql import (
     create_temporary_qlpack,
     execute_codeql_query,
@@ -78,6 +82,8 @@ class CodeQLComposeTool(BaseTool):
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
         fix_inplace_agent_cls: Type[CodeQLFixInplaceAgent] = CodeQLFixInplaceAgent,
         syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
+        source_root: Optional[str] = None,
+        flow_break_config: Optional[FlowBreakDetectionConfig] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -92,6 +98,9 @@ class CodeQLComposeTool(BaseTool):
         self._syntax_session_cls = syntax_session_cls
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
+        self.source_root = Path(source_root).resolve() if source_root else None
+        self.flow_break_config = flow_break_config or FlowBreakDetectionConfig.from_environment()
+        self._flow_break_manager = FlowBreakDetectionManager(self.flow_break_config)
 
     def _get_kb_context(self, requirement: str, project_root: Path, language: str) -> Dict[str, str]:
         """Return structured KB context for the given language, if available."""
@@ -393,6 +402,8 @@ class CodeQLComposeTool(BaseTool):
         retry_count = 0  # 当前重试次数
         max_retries = 3  # 最大重试次数
         retry_history = []  # 记录重试历史（仅用于日志）
+        flow_break_rounds = 0
+        flow_break_clause_keys = set()
 
         query_file = create_temporary_qlpack("", language=target_language, task_id=task_id)
         pack_root = query_file.parent
@@ -518,6 +529,35 @@ class CodeQLComposeTool(BaseTool):
                     # 记录路径数量到日志
                     logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")
                     
+                    if is_result_empty:
+                        flow_break_applied = False
+                        if (
+                            self.flow_break_config.enable
+                            and flow_break_rounds < self.flow_break_config.max_rounds
+                        ):
+                            detection_result = self._flow_break_manager.try_patch(
+                                original_query=current_ql,
+                                language=target_language,
+                                database_path=self.default_database_path,
+                                pack_root=pack_root,
+                                source_root=self.source_root,
+                                existing_clause_keys=flow_break_clause_keys,
+                                total_clause_count=len(flow_break_clause_keys),
+                                round_index=flow_break_rounds + 1,
+                            )
+                            if detection_result.telemetry:
+                                logger.info("Flow break telemetry: %s", detection_result.telemetry)
+                            if detection_result.applied and detection_result.patched_query:
+                                flow_break_rounds += 1
+                                for clause in detection_result.clauses:
+                                    flow_break_clause_keys.add(clause.key)
+                                current_ql = detection_result.patched_query
+                                query_file.write_text(current_ql, encoding="utf-8")
+                                flow_break_applied = True
+                                print("♻️ [CodeQLComposeTool] Flow break detection applied,重试带补边查询...")
+                        if flow_break_applied:
+                            continue
+
                     # 如果结果为空且未达到最大重试次数，触发重试
                     if is_result_empty and retry_count < max_retries:
                         retry_count += 1
@@ -527,16 +567,16 @@ class CodeQLComposeTool(BaseTool):
                             "reason": "空结果",
                             "paths_count": paths_count
                         })
-                        
+
                         # 静默记录重试信息到日志
                         logger.info(f"[重试触发] 检测到空结果，开始第 {retry_count}/{max_retries} 次重试")
-                        
+
                         # 重置状态，准备重新生成查询
                         round_index = 1
                         is_first_round = True
                         prev_original_ql = None
                         prev_fix_suggestions = None
-                        
+
                         # 继续下一次迭代（重试）
                         continue
                     

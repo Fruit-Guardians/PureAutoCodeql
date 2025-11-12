@@ -158,6 +158,7 @@ class UnifiedSourceAnalysisAgent:
                     analyzer=self.analyzer,
                     database_path=self.database_path or config["database_path"],
                     language=config["language"],
+                    source_root=self.source_root,
                 )
             
             requirement = f"""
