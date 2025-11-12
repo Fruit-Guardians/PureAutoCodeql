@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import re
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Callable
+
+# 配置日志记录器（仅用于调试）
+logger = logging.getLogger(__name__)
 
 # Service
 from services.lsp_service import CodeQLLSPService
@@ -30,6 +34,12 @@ from utils.codeql import (
     validate_codeql_database,
     is_database_error,
     save_query_to_persistent_dir,
+    is_empty_result,
+    count_dataflow_paths,
+)
+from prompts.codeql_prompts import (
+    get_codeql_generation_prompt_suffix,
+    get_retry_strategy_description,
 )
 
 
@@ -378,6 +388,11 @@ class CodeQLComposeTool(BaseTool):
         prev_original_ql = None
         prev_fix_suggestions = None
         is_first_round = True  # Track if this is the first generation
+        
+        # 重试机制相关变量
+        retry_count = 0  # 当前重试次数
+        max_retries = 3  # 最大重试次数
+        retry_history = []  # 记录重试历史（仅用于日志）
 
         query_file = create_temporary_qlpack("", language=target_language, task_id=task_id)
         pack_root = query_file.parent
@@ -407,6 +422,14 @@ class CodeQLComposeTool(BaseTool):
             while round_index <= max_iterations:
                 # Only use GenAgent for the first round
                 if is_first_round:
+                    # 根据重试次数选择prompt策略
+                    strategy_suffix = get_codeql_generation_prompt_suffix(retry_count)
+                    strategy_desc = get_retry_strategy_description(retry_count)
+                    
+                    # 记录重试策略到日志（静默）
+                    if retry_count > 0:
+                        logger.info(f"[重试 {retry_count}/{max_retries}] 使用策略: {strategy_desc}")
+                    
                     gen_prompt_base = gen_agent.build_prompt(
                         language=target_language,
                         requirement=requirement,
@@ -414,6 +437,10 @@ class CodeQLComposeTool(BaseTool):
                         prev_original_ql=prev_original_ql,
                         prev_fix_suggestions=prev_fix_suggestions,
                     )
+                    
+                    # 将策略后缀添加到prompt中
+                    gen_prompt_base = gen_prompt_base + "\n\n" + strategy_suffix
+                    
                     gen_values = build_placeholder_map(
                         language=target_language,
                         requirement=requirement,
@@ -481,6 +508,47 @@ class CodeQLComposeTool(BaseTool):
 
                 # Check execution result
                 if exec_result.get('success', False):
+                    # 检查结果是否为空
+                    sarif_path = exec_result.get('sarif_path')
+                    json_path = exec_result.get('json_path')
+                    
+                    is_result_empty = is_empty_result(sarif_path)
+                    paths_count = count_dataflow_paths(sarif_path, json_path)
+                    
+                    # 记录路径数量到日志
+                    logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")
+                    
+                    # 如果结果为空且未达到最大重试次数，触发重试
+                    if is_result_empty and retry_count < max_retries:
+                        retry_count += 1
+                        retry_history.append({
+                            "retry": retry_count,
+                            "round": round_index,
+                            "reason": "空结果",
+                            "paths_count": paths_count
+                        })
+                        
+                        # 静默记录重试信息到日志
+                        logger.info(f"[重试触发] 检测到空结果，开始第 {retry_count}/{max_retries} 次重试")
+                        
+                        # 重置状态，准备重新生成查询
+                        round_index = 1
+                        is_first_round = True
+                        prev_original_ql = None
+                        prev_fix_suggestions = None
+                        
+                        # 继续下一次迭代（重试）
+                        continue
+                    
+                    # 如果结果为空但已达到最大重试次数
+                    if is_result_empty and retry_count >= max_retries:
+                        logger.warning(f"[重试结束] 已尝试 {retry_count} 次重试，仍未找到有效路径")
+                        retry_summary = f"\n\n⚠️ 已尝试{retry_count}次重试，仍未找到有效路径"
+                    else:
+                        retry_summary = ""
+                        if retry_count > 0:
+                            logger.info(f"[重试成功] 第 {retry_count} 次重试找到 {paths_count} 条路径")
+                    
                     mode_now = (exec_mode or 'analyze').lower()
 
                     # 创建CodeQLExecutionResult对象
@@ -488,9 +556,9 @@ class CodeQLComposeTool(BaseTool):
                     execution_result = CodeQLExecutionResult(
                         success=exec_result.get('success', False),
                         output=exec_result.get('output', ''),
-                        sarif_path=exec_result.get('sarif_path'),
-                        json_path=exec_result.get('json_path'),  # execute_codeql_query 不返回此字段，为 None
-                        paths_count=exec_result.get('paths_count'),  # execute_codeql_query 不返回此字段，为 None
+                        sarif_path=sarif_path,
+                        json_path=json_path,
+                        paths_count=paths_count,
                         result_file=exec_result.get('result_file'),
                         preview=exec_result.get('preview')
                     )
@@ -510,6 +578,7 @@ class CodeQLComposeTool(BaseTool):
                         )
                         if preview.strip():
                             result += "Preview:\n\n```\n" + preview + "\n```"
+                        result += retry_summary
                         is_success = True
                         final_result = result
                         return result
@@ -520,7 +589,7 @@ class CodeQLComposeTool(BaseTool):
                             query=current_ql,
                             round_index=round_index,
                             execution=execution_result,
-                        )
+                        ) + retry_summary
                         return final_result
 
                 # 如果语法检查通过但执行失败，继续纠错循环

@@ -36,6 +36,16 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
             - CVE描述**没有**提到"file upload", "file write", "arbitrary file"
             - 漏洞危害是"读取任意文件"或"访问受限目录"，而不是写入
         * **Sink定位:** diff文件中**添加路径验证**的位置就是Sink点
+- **sink点定义原则（重要）**：
+  - **必须优先定义Sink点分析报告中的sink点**
+  - **对于Java反射命令执行**：
+    - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
+    - **不要限制函数的包名**，因为报告不会指明具体调用了哪个包的同名函数
+    - 使用方法名 + 文件路径的组合来定位，而不是包名
+    - 禁止使用底层调用（如 `Runtime.exec()`, `java.lang` 包下的函数等）
+    - 示例结构：`(报告中的sink点条件)`
+    - 参考定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
+
         * **示例:**
             - `new ResourceAdaptor(File file)` 构造函数（如果diff在此添加验证）
             - `Resource.get(String path)` 方法（如果diff在此添加验证）

@@ -10,6 +10,18 @@ Java CodeQL中没有DataFlow::CallNode类型
 DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
 使用mc.getMethod()访问方法调用对应的方法
 
+- **sink点定义原则（重要）**：
+  - **必须优先定义Sink点分析报告中的sink点**
+  - **对于Java反射命令执行**：
+    - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
+    - **不要限制函数的包名**，因为报告不会指明具体调用了哪个包的同名函数
+    - 使用方法名 + 文件路径的组合来定位，而不是包名
+    - 禁止底层调用（如 `Runtime.exec()`, `java.lang` 包下的函数等
+    - 示例结构：`(报告中的sink点条件) or (底层调用条件)`
+    - 参考定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
+  - **注意**：Sink点报告中的sink点是必需的，底层调用是可选的
+  - 对于其他场景：sink点应该是明确的危险操作点
+- 确保查询逻辑严谨，避免误报
 
 #### 编写约束
 

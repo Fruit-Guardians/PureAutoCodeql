@@ -624,6 +624,91 @@ def save_query_to_persistent_dir(query_content: str, task_id: str, language: str
         return None
 
 
+def is_empty_result(sarif_path: Optional[str]) -> bool:
+    """
+    检测SARIF结果文件是否为空（无数据流路径）。
+
+    Args:
+        sarif_path: SARIF输出文件的路径
+
+    Returns:
+        如果结果为空返回True，否则返回False
+    """
+    if not sarif_path:
+        return True
+    
+    sarif_file = Path(sarif_path)
+    if not sarif_file.exists():
+        return True
+    
+    try:
+        with open(sarif_file, 'r', encoding='utf-8') as f:
+            sarif_data = json.load(f)
+        
+        # 检查SARIF格式的结果
+        if isinstance(sarif_data, dict) and 'runs' in sarif_data:
+            for run in sarif_data.get('runs', []):
+                results = run.get('results', [])
+                if results and len(results) > 0:
+                    return False
+            return True
+        
+        return True
+    except Exception as e:
+        print(f"⚠️  [is_empty_result] 解析SARIF文件失败: {e}")
+        return True
+
+
+def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[str] = None) -> int:
+    """
+    统计数据流路径数量。
+
+    Args:
+        sarif_path: SARIF输出文件的路径
+        json_path: JSON格式的路径输出文件
+
+    Returns:
+        数据流路径的数量
+    """
+    count = 0
+    
+    # 优先检查SARIF文件
+    if sarif_path:
+        sarif_file = Path(sarif_path)
+        if sarif_file.exists():
+            try:
+                with open(sarif_file, 'r', encoding='utf-8') as f:
+                    sarif_data = json.load(f)
+                
+                if isinstance(sarif_data, dict) and 'runs' in sarif_data:
+                    for run in sarif_data.get('runs', []):
+                        results = run.get('results', [])
+                        count += len(results)
+                    return count
+            except Exception as e:
+                print(f"⚠️  [count_dataflow_paths] 解析SARIF文件失败: {e}")
+    
+    # 检查JSON路径文件
+    if json_path:
+        json_file = Path(json_path)
+        if json_file.exists():
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                
+                if isinstance(json_data, list):
+                    count += len(json_data)
+                elif isinstance(json_data, dict):
+                    # 可能是包含paths键的字典
+                    paths = json_data.get('paths', [])
+                    count += len(paths)
+                return count
+            except Exception as e:
+                print(f"⚠️  [count_dataflow_paths] 解析JSON文件失败: {e}")
+    
+    return count
+
+
 def parse_codeql_results(result_output: str) -> List[Dict[str, Any]]:
     """
     将CodeQL查询输出解析为结构化数据。
