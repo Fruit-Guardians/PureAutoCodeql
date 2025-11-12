@@ -103,6 +103,12 @@ class HotCodeQL:
         self.uri = to_uri(self.query_file)
         self.version = 0
 
+        self.lock = threading.Lock()
+
+        
+
+
+
     def start(self):
         # check codeql
         subprocess.run([self.codeql, "version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -202,18 +208,9 @@ class HotCodeQL:
         write_msg(self.proc, {"jsonrpc":"2.0","method":"initialized","params":{}})
         write_msg(self.proc, {"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{}}})
 
-        # didOpen once
-        text = self.query_file.read_text(encoding="utf-8", errors="replace")
-        self.version = 1
-        write_msg(self.proc, {
-            "jsonrpc":"2.0","method":"textDocument/didOpen",
-            "params":{"textDocument":{"uri": self.uri, "languageId":"ql", "version": self.version, "text": text}}
-        })
+        # 不再持久打开文档；按需在 check_code 里 didOpen/didClose
 
-        # drain initial diagnostics
-        self._collect(tail=0.5)
-
-    def _collect(self, tail: float):
+    def _collect(self, tail: float, expected_version: int = None, target_uri: str = None):
         diags = []
         deadline = time.time() + tail
         while time.time() < deadline:
@@ -223,8 +220,11 @@ class HotCodeQL:
                 payload = self.q.get(timeout=0.2)
             except queue.Empty:
                 continue
+
             if not isinstance(payload, dict):
                 continue
+
+            # 处理配置/能力注册
             if payload.get("method") == "workspace/configuration" and "id" in payload:
                 items = payload.get("params", {}).get("items", [])
                 write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":[{} for _ in items]})
@@ -232,29 +232,69 @@ class HotCodeQL:
             if payload.get("method") == "client/registerCapability" and "id" in payload:
                 write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":None})
                 continue
+
+            # 只收本文档的诊断；如有 version 字段则匹配当前版本
             if payload.get("method") == "textDocument/publishDiagnostics":
                 params = payload.get("params", {})
-                if params.get("uri") == self.uri:
-                    diags = params.get("diagnostics", [])
-                    deadline = time.time() + 0.6
+                incoming_uri = params.get("uri", "")
+                # Windows 统一大小写比对，避免盘符/大小写差异造成"看不见自己的诊断"
+                if target_uri:
+                    if os.name == "nt" and (incoming_uri or "").lower() != target_uri.lower():
+                        continue
+                    elif os.name != "nt" and incoming_uri != target_uri:
+                        continue
+                else:
+                    # 兼容旧逻辑（如果没指定 target_uri 就按 self.uri）
+                    if os.name == "nt" and (incoming_uri or "").lower() != self.uri.lower():
+                        continue
+                    elif os.name != "nt" and incoming_uri != self.uri:
+                        continue
+                if expected_version is not None and "version" in params and params["version"] != expected_version:
+                    continue 
+                diags = params.get("diagnostics", [])
+                deadline = time.time() + 0.6  # 滑动窗口，收集同一波后续更新
+
         return diags
 
-    def check_code(self, code_text: str, wait_secs: float = 8.0):
-        # update local file (可选：也能直接只发 didChange，不写盘；为稳妥这里仍写盘)
+
+    def _drain_queue(self):
         try:
-            self.query_file.write_text(code_text, encoding="utf-8")
-        except Exception:
+            while True:
+                self.q.get_nowait()
+        except queue.Empty:
             pass
-        self.version += 1
-        write_msg(self.proc, {
-            "jsonrpc":"2.0","method":"textDocument/didChange",
-            "params":{
-                "textDocument":{"uri": self.uri, "version": self.version},
-                "contentChanges":[{"text": code_text}]
-            }
-        })
-        diags = self._collect(tail=wait_secs)
-        return {"diagnostics": diags, "summary": summarize(diags)}
+
+    def check_code(self, code_text: str, wait_secs: float = 8.0):
+        with self.lock:
+            self._drain_queue()
+            # 为当前请求生成一个"虚拟文件"的 URI（放在 pack-root 下，确保在工作区里）
+            virt_path = (self.pack_root / ".lsp-virtual" / f"__q_{int(time.time()*1000)}.ql")
+            virt_uri = to_uri(virt_path)
+            version = 1
+
+            # didOpen：一次性文档直接带全文
+            write_msg(self.proc, {
+                "jsonrpc":"2.0","method":"textDocument/didOpen",
+                "params":{"textDocument":{
+                    "uri": virt_uri,
+                    "languageId":"ql",
+                    "version": version,
+                    "text": code_text
+                }}
+            })
+
+            # 拉一波诊断（必要时补一个短窗口兜住 LS 的 debounce）
+            diags = self._collect(tail=wait_secs, expected_version=version, target_uri=virt_uri)
+            if not diags:
+                diags = self._collect(tail=min(2.0, wait_secs/2), expected_version=version, target_uri=virt_uri)
+
+            # 关闭这份一次性文档，彻底避免"下一轮读到这一轮的 publishDiagnostics"
+            try:
+                write_msg(self.proc, {"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri": virt_uri}}})
+            except Exception:
+                pass
+
+            return {"diagnostics": diags, "summary": summarize(diags)}
 
     def shutdown(self):
         try:
@@ -297,9 +337,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body = self.rfile.read(length)
                 data = json.loads(body.decode('utf-8'))
                 code = data.get("code","")
+                wait = float(data.get("wait", 20.0))  # ★ 新增
+                res = self.engine.check_code(code, wait_secs=wait)
                 if not isinstance(code, str):
                     return self._send_json({"error":"bad payload: 'code' must be string"}, 400)
-                res = self.engine.check_code(code)
+                # res = self.engine.check_code(code)
                 # 如果LSP进程退出，尝试重启服务
                 if "error" in res and ("LSP进程退出" in res["error"] or "LSP检查异常" in res["error"]):
                     print(f"[LSP] 检测到LSP进程异常: {res['error']}")

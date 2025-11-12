@@ -58,6 +58,8 @@ class CodeQLLSPService:
                     if response.status_code == 200:
                         logger.info(f"LSP服务在第{i+1}秒启动成功")
                         return True
+                    else:
+                        logger.debug(f"服务返回状态码 {response.status_code}，继续等待...")
                 except Exception as e:
                     if i % 5 == 0:  # 每5秒显示一次等待状态
                         logger.debug(f"等待LSP服务启动... ({i+1}/{self.init_timeout}秒)")
@@ -85,8 +87,10 @@ class CodeQLLSPService:
             response = requests.post(
                 f"{self.base_url}/check",
                 json={"code": codeql_code},
-                timeout=10
+                timeout=30
             )
+
+            
 
             if response.status_code == 200:
                 return response.json()

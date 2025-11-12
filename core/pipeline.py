@@ -245,9 +245,9 @@ class AnalysisPipeline:
     def create_default_pipeline(cls) -> "AnalysisPipeline":
         """创建默认的分析流水线。"""
         steps = [
-            CVEAnalysisStep(),
-            SinkAnalysisStep(),
-            SourceAnalysisStep(),
+            #CVEAnalysisStep(),
+            #SinkAnalysisStep(),
+            #SourceAnalysisStep(),
             CodeQLGenerationStep(),
         ]
         return cls(steps)

@@ -404,197 +404,196 @@ class CodeQLComposeTool(BaseTool):
     
 
         try:
-            with self._syntax_session_cls(pack_root):
-                while round_index <= max_iterations:
-                    # Only use GenAgent for the first round
-                    if is_first_round:
-                        gen_prompt_base = gen_agent.build_prompt(
-                            language=target_language,
-                            requirement=requirement,
-                            round_index=round_index,
-                            prev_original_ql=prev_original_ql,
-                            prev_fix_suggestions=prev_fix_suggestions,
-                        )
-                        gen_values = build_placeholder_map(
-                            language=target_language,
-                            requirement=requirement,
-                            round_index=round_index,
-                            prev_original_ql=prev_original_ql,
-                            prev_fix_suggestions=prev_fix_suggestions,
-                            ql_template=ql_template,
-                            kb_directory_index=kb_context.get("kb_directory_index"),
-                            kb_suggestions=kb_context.get("kb_suggestions"),
-                            kb_structured_context=kb_context.get("kb_structured_context"),
-                            kb_reference_snippets=kb_context.get("kb_reference_snippets"),
-                            relevant_tags=kb_context.get("relevant_tags"),
-                        )
-                        gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
-                        gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
-
-                        if not gen_result.success:
-                            is_success = False
-                            final_result = f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
-                            return final_result
-
-                        current_ql = self._extract_codeql_from_response(gen_result.content)
-                        if not current_ql:
-                            is_success = False
-                            final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
-                            return final_result
-
-                        # Save generated query to file immediately
-                        print(f"💾 [CodeQLComposeTool] QL文件: {query_file}")
-                        query_file.write_text(current_ql, encoding='utf-8')
-
-                        # Also save to persistent directory
-                        metadata = {
-                            "task_id": task_id,
-                            "language": target_language,
-                            "requirement": requirement,
-                            "round": round_index,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                        save_query_to_persistent_dir(
-                            query_content=current_ql,
-                            task_id=task_id,
-                            language=target_language,
-                            metadata=metadata
-                        )
-
-                        is_first_round = False
-                    else:
-                        # For subsequent rounds, read from file (modified by FixInplaceAgent)
-                        try:
-                            current_ql = query_file.read_text(encoding='utf-8')
-                            print(f"📖 [CodeQLComposeTool] 从文件读取修改后的QL: {query_file}")
-                        except Exception as e:
-                            is_success = False
-                            final_result = f"Error reading query file: {e}"
-                            return final_result
-
-                    # 直接使用 LSP 进行语法检查和执行
-                    exec_result = self._lsp_and_execute(
-                        current_ql=current_ql,
-                        target_language=target_language,
-                        query_file=query_file,
-                        lsp_service=lsp_service,
-                    )
-
-                    # Check execution result
-                    if exec_result.get('success', False):
-                        mode_now = (exec_mode or 'analyze').lower()
-
-                        # 创建CodeQLExecutionResult对象
-                        from services.codeql_execution import CodeQLExecutionResult
-                        execution_result = CodeQLExecutionResult(
-                            success=exec_result.get('success', False),
-                            output=exec_result.get('output', ''),
-                            sarif_path=exec_result.get('sarif_path'),
-                            json_path=exec_result.get('json_path'),  # execute_codeql_query 不返回此字段，为 None
-                            paths_count=exec_result.get('paths_count'),  # execute_codeql_query 不返回此字段，为 None
-                            result_file=exec_result.get('result_file'),
-                            preview=exec_result.get('preview')
-                        )
-
-                        # 正常结果处理
-                        if mode_now == 'run' and run_query_and_decode_to_text is not None:
-                            result_file = exec_result.get('result_file')
-                            full_text = exec_result.get('output', '') or ''
-                            lines = (full_text.splitlines() if isinstance(full_text, str) else [])
-                            preview = "\n".join(lines[:40])
-                            if len(lines) > 40:
-                                preview += "\n..."
-                            result = (
-                                f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n"
-                                f"```ql\n{current_ql}\n```\n\n"
-                                f"Text results saved to: {result_file or '(unknown)'}\n"
-                            )
-                            if preview.strip():
-                                result += "Preview:\n\n```\n" + preview + "\n```"
-                            is_success = True
-                            final_result = result
-                            return result
-                        else:
-                            print("codeql query:", current_ql)
-                            is_success = True
-                            final_result = self._format_success_result(
-                                query=current_ql,
-                                round_index=round_index,
-                                execution=execution_result,
-                            )
-                            return final_result
-
-                    # 如果语法检查通过但执行失败，继续纠错循环
-                    if round_index >= max_iterations:
-                        error_info = self._format_error_info(exec_result.get('output', ''), round_index)
-                        is_success = False
-                        final_result = (
-                            f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
-                            f"Final error:\n{error_info}\n\n"
-                            f"Last attempted query:\n```ql\n{current_ql}\n```"
-                        )
-                        return final_result
-
-                    # Step 1: Use ErrorAgent to analyze errors
-                    print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
-                    error_prompt_base = error_agent.build_prompt(
-                        error_log=exec_result.get('output', ''),
-                        curr_ql_content=current_ql,
+            while round_index <= max_iterations:
+                # Only use GenAgent for the first round
+                if is_first_round:
+                    gen_prompt_base = gen_agent.build_prompt(
+                        language=target_language,
+                        requirement=requirement,
                         round_index=round_index,
                         prev_original_ql=prev_original_ql,
+                        prev_fix_suggestions=prev_fix_suggestions,
                     )
-                    error_values = build_placeholder_map(
+                    gen_values = build_placeholder_map(
                         language=target_language,
                         requirement=requirement,
                         round_index=round_index,
                         prev_original_ql=prev_original_ql,
                         prev_fix_suggestions=prev_fix_suggestions,
                         ql_template=ql_template,
-                        error_log=exec_result.get('output', ''),
-                        curr_ql_content=current_ql,
                         kb_directory_index=kb_context.get("kb_directory_index"),
                         kb_suggestions=kb_context.get("kb_suggestions"),
                         kb_structured_context=kb_context.get("kb_structured_context"),
                         kb_reference_snippets=kb_context.get("kb_reference_snippets"),
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
-                    error_prompt = apply_placeholders(error_prompt_base, error_values)
-                    error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking, event_callback=event_callback)
+                    gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
+                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
-                    if not error_analysis.success:
+                    if not gen_result.success:
                         is_success = False
-                        final_result = (
-                            f"Error in error analysis (Round {round_index}): "
-                            f"{error_analysis.error or 'Unknown error'}"
-                        )
+                        final_result = f"Error in CodeQL generation (Round {round_index}): {gen_result.error or 'Unknown error'}"
                         return final_result
 
-                    # Step 2: Use FixInplaceAgent to modify the file
-                    print(f"🔧 [CodeQLComposeTool] 开始修复QL语句")
-                    ql_file_path_abs = str(query_file.resolve())
+                    current_ql = self._extract_codeql_from_response(gen_result.content)
+                    if not current_ql:
+                        is_success = False
+                        final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
+                        return final_result
 
-                    fix_result = await fix_inplace_agent.fix(
-                        ql_file_path=ql_file_path_abs,
-                        curr_ql_content=current_ql,
-                        prev_fix_suggestions=error_analysis.content,
-                        prev_original_ql=prev_original_ql,
-                        round_index=round_index,
-                        show_thinking=show_thinking,
-                        event_callback=event_callback,
+                    # Save generated query to file immediately
+                    print(f"💾 [CodeQLComposeTool] QL文件: {query_file}")
+                    query_file.write_text(current_ql, encoding='utf-8')
+
+                    # Also save to persistent directory
+                    metadata = {
+                        "task_id": task_id,
+                        "language": target_language,
+                        "requirement": requirement,
+                        "round": round_index,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                    save_query_to_persistent_dir(
+                        query_content=current_ql,
+                        task_id=task_id,
+                        language=target_language,
+                        metadata=metadata
                     )
 
-                    if not fix_result.success:
+                    is_first_round = False
+                else:
+                    # For subsequent rounds, read from file (modified by FixInplaceAgent)
+                    try:
+                        current_ql = query_file.read_text(encoding='utf-8')
+                        print(f"📖 [CodeQLComposeTool] 从文件读取修改后的QL: {query_file}")
+                    except Exception as e:
                         is_success = False
-                        final_result = (
-                            f"Error in in-place fixing (Round {round_index}): "
-                            f"{fix_result.error or 'Unknown error'}"
+                        final_result = f"Error reading query file: {e}"
+                        return final_result
+
+                # 直接使用 LSP 进行语法检查和执行
+                exec_result = self._lsp_and_execute(
+                    current_ql=current_ql,
+                    target_language=target_language,
+                    query_file=query_file,
+                    lsp_service=lsp_service,
+                )
+
+                # Check execution result
+                if exec_result.get('success', False):
+                    mode_now = (exec_mode or 'analyze').lower()
+
+                    # 创建CodeQLExecutionResult对象
+                    from services.codeql_execution import CodeQLExecutionResult
+                    execution_result = CodeQLExecutionResult(
+                        success=exec_result.get('success', False),
+                        output=exec_result.get('output', ''),
+                        sarif_path=exec_result.get('sarif_path'),
+                        json_path=exec_result.get('json_path'),  # execute_codeql_query 不返回此字段，为 None
+                        paths_count=exec_result.get('paths_count'),  # execute_codeql_query 不返回此字段，为 None
+                        result_file=exec_result.get('result_file'),
+                        preview=exec_result.get('preview')
+                    )
+
+                    # 正常结果处理
+                    if mode_now == 'run' and run_query_and_decode_to_text is not None:
+                        result_file = exec_result.get('result_file')
+                        full_text = exec_result.get('output', '') or ''
+                        lines = (full_text.splitlines() if isinstance(full_text, str) else [])
+                        preview = "\n".join(lines[:40])
+                        if len(lines) > 40:
+                            preview += "\n..."
+                        result = (
+                            f"CodeQL query successfully generated and executed after {round_index} round(s):\n\n"
+                            f"```ql\n{current_ql}\n```\n\n"
+                            f"Text results saved to: {result_file or '(unknown)'}\n"
+                        )
+                        if preview.strip():
+                            result += "Preview:\n\n```\n" + preview + "\n```"
+                        is_success = True
+                        final_result = result
+                        return result
+                    else:
+                        print("codeql query:", current_ql)
+                        is_success = True
+                        final_result = self._format_success_result(
+                            query=current_ql,
+                            round_index=round_index,
+                            execution=execution_result,
                         )
                         return final_result
 
-                    print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+                # 如果语法检查通过但执行失败，继续纠错循环
+                if round_index >= max_iterations:
+                    error_info = self._format_error_info(exec_result.get('output', ''), round_index)
+                    is_success = False
+                    final_result = (
+                        f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
+                        f"Final error:\n{error_info}\n\n"
+                        f"Last attempted query:\n```ql\n{current_ql}\n```"
+                    )
+                    return final_result
 
-                    prev_original_ql = current_ql
-                    round_index += 1
+                # Step 1: Use ErrorAgent to analyze errors
+                print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
+                error_prompt_base = error_agent.build_prompt(
+                    error_log=exec_result.get('output', ''),
+                    curr_ql_content=current_ql,
+                    round_index=round_index,
+                    prev_original_ql=prev_original_ql,
+                )
+                error_values = build_placeholder_map(
+                    language=target_language,
+                    requirement=requirement,
+                    round_index=round_index,
+                    prev_original_ql=prev_original_ql,
+                    prev_fix_suggestions=prev_fix_suggestions,
+                    ql_template=ql_template,
+                    error_log=exec_result.get('output', ''),
+                    curr_ql_content=current_ql,
+                    kb_directory_index=kb_context.get("kb_directory_index"),
+                    kb_suggestions=kb_context.get("kb_suggestions"),
+                    kb_structured_context=kb_context.get("kb_structured_context"),
+                    kb_reference_snippets=kb_context.get("kb_reference_snippets"),
+                    relevant_tags=kb_context.get("relevant_tags"),
+                )
+                error_prompt = apply_placeholders(error_prompt_base, error_values)
+                error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking, event_callback=event_callback)
+
+                if not error_analysis.success:
+                    is_success = False
+                    final_result = (
+                        f"Error in error analysis (Round {round_index}): "
+                        f"{error_analysis.error or 'Unknown error'}"
+                    )
+                    return final_result
+
+                # Step 2: Use FixInplaceAgent to modify the file
+                print(f"🔧 [CodeQLComposeTool] 开始修复QL语句")
+                ql_file_path_abs = str(query_file.resolve())
+
+                fix_result = await fix_inplace_agent.fix(
+                    ql_file_path=ql_file_path_abs,
+                    curr_ql_content=current_ql,
+                    prev_fix_suggestions=error_analysis.content,
+                    prev_original_ql=prev_original_ql,
+                    round_index=round_index,
+                    show_thinking=show_thinking,
+                    event_callback=event_callback,
+                )
+
+                if not fix_result.success:
+                    is_success = False
+                    final_result = (
+                        f"Error in in-place fixing (Round {round_index}): "
+                        f"{fix_result.error or 'Unknown error'}"
+                    )
+                    return final_result
+
+                print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+
+                prev_original_ql = current_ql
+                round_index += 1
 
         except RuntimeError as runtime_error:
             final_result = f"Error: {runtime_error}"
