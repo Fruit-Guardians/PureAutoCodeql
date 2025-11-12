@@ -33,16 +33,18 @@
    #   --refresh-intel    # 强制刷新情报摘要
    #   --provider deepseek
    ```
-3. 成功后会在 `output/analysis_output_<timestamp>/` 下生成：
+3. 成功后会在 `output/<CASE>/<TIMESTAMP>/` 下生成：
    ```
-   output.md                 # 各模块总结
-   result_<time>.json        # CodeQL 原始 dataFlowPath 结果
-   assets/...                # LLM、情报、中间数据
+   summary.md                # 各模块总结
+   sarif/codeql-run.sarif    # CodeQL 原始 SARIF
+   codeql/all-paths-raw.json # CodeQL dataFlowPath 原始结果
+   path-selection/...        # LLM 精排输出
    ```
-4. 第 6 模块会自动读取上述 `output.md` 与 `result_*.json`，并在同目录生成：
+4. 第 6 模块会自动读取上述 `summary.md` 与 `codeql/all-paths-raw.json`，并在同目录生成：
    ```
-   path_selection_report.md  # 人类可读报告
-   path_selection_result.json# 结构化结果
+   path-selection/report.md     # 人类可读报告
+   path-selection/selection.json# 结构化结果
+   path-selection/dataflow.json # 简洁 dataFlowPath 结果
    ```
    如果仅需查看最终路径，可直接打开这两个文件。
 
@@ -52,8 +54,8 @@
 
 有时只想复用路径选择能力（例如复盘某次 CodeQL 执行结果），可以在具备以下三份文件后独立调用：
 
-- `output.md`：包含 CVE Analysis / Sink / Source 模块的输出
-- `result.json`：CodeQL `dataFlowPath` 原始结果
+- `summary.md`：包含 CVE Analysis / Sink / Source 模块的输出
+- `codeql/all-paths-raw.json`：CodeQL `dataFlowPath` 原始结果
 - `source_root`：目标仓库的源码根目录（相对路径即可）
 
 ### 3.1 快速示例
@@ -77,8 +79,8 @@ from config import get_chat_config
 async def run():
     service = PathSelectionService(get_chat_config(), language="python")
     result = await service.select_best_paths(
-        output_md_path="output/analysis_output_<time>/output.md",
-        result_json_path="output/analysis_output_<time>/result_<time>.json",
+        output_md_path="output/<CASE>/<TIME>/summary.md",
+        result_json_path="output/<CASE>/<TIME>/codeql/all-paths-raw.json",
         source_root="projects/<CASE>/source_code",
         top_k=3,
     )
@@ -94,8 +96,9 @@ asyncio.run(run())
 
 | 文件 | 说明 |
 | --- | --- |
-| `path_selection_report.md` | Markdown 报告，包含选中路径、LLM 理由、验证结果与覆盖分析 |
-| `path_selection_result.json` | 机器可读的完整结果，可与其他系统对接 |
+| `path-selection/report.md` | Markdown 报告，包含选中路径、LLM 理由、验证结果与覆盖分析 |
+| `path-selection/selection.json` | 机器可读的完整结果，可与其他系统对接 |
+| `path-selection/dataflow.json` | 精简版 dataFlowPath，便于第三方系统消费 |
 | `*.log`（可选） | 控制台或日志文件，便于排查问题 |
 
 **常见问题**

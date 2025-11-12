@@ -2,22 +2,26 @@
 
 ## 📁 输出目录结构
 
-分析完成后，会在 `output/` 目录下生成带时间戳的输出文件夹：
+分析完成后，会在 `output/` 目录下生成以 **案例标签 / 时间戳** 区分的运行目录：
 
 ```
 output/
-└── analysis_output_CVE-XXXX-XXXX_YYYYMMDD_HHMMSS/
-    ├── CVE-XXXX-XXXX_output.md              # 完整分析报告
-    ├── CVE-XXXX-XXXX_all_paths_raw.json     # 所有原始路径（CodeQL输出）
-    ├── CVE-XXXX-XXXX_result.json            # ✅ 最终结果（选择的路径）
-    ├── path_selection_report_CVE-XXXX-XXXX.md    # 路径选择报告
-    ├── path_selection_detail_CVE-XXXX-XXXX.json  # 路径选择详细数据
-    └── result_YYYYMMDD_HHMMSS.sarif         # 原始SARIF文件
+└── CVE-XXXX-XXXX/
+    └── YYYYMMDD-HHMMSS/
+        ├── summary.md
+        ├── sarif/
+        │   └── codeql-run.sarif
+        ├── codeql/
+        │   └── all-paths-raw.json
+        └── path-selection/
+            ├── report.md
+            ├── selection.json
+            └── dataflow.json
 ```
 
 ## 📄 文件用途
 
-### 1. `CVE-XXXX-XXXX_result.json` ⭐
+### 1. `path-selection/dataflow.json` ⭐
 
 **这是最终结果文件！**
 
@@ -48,7 +52,7 @@ output/
 
 ---
 
-### 2. `CVE-XXXX-XXXX_all_paths_raw.json`
+### 2. `codeql/all-paths-raw.json`
 
 **原始数据，供调试使用**
 
@@ -59,7 +63,7 @@ output/
 
 ---
 
-### 3. `path_selection_report_CVE-XXXX-XXXX.md`
+### 3. `path-selection/report.md`
 
 **可读性报告**
 
@@ -74,7 +78,7 @@ output/
 
 ---
 
-### 4. `path_selection_detail_CVE-XXXX-XXXX.json`
+### 4. `path-selection/selection.json`
 
 **完整元数据**
 
@@ -89,7 +93,7 @@ output/
 
 ---
 
-### 5. `CVE-XXXX-XXXX_output.md`
+### 5. `summary.md`
 
 **完整分析报告**
 
@@ -100,7 +104,7 @@ output/
 
 ---
 
-### 6. `result_YYYYMMDD_HHMMSS.sarif`
+### 6. `sarif/codeql-run.sarif`
 
 **原始 CodeQL 输出**
 
@@ -116,25 +120,25 @@ output/
 ### 只需要最终结果？
 ```bash
 # 查看最终选择的路径
-cat output/analysis_output_*/CVE-*_result.json
+cat output/*/*/path-selection/dataflow.json
 ```
 
 ### 想了解为什么选这些路径？
 ```bash
 # 查看可读报告
-cat output/analysis_output_*/path_selection_report_*.md
+cat output/*/*/path-selection/report.md
 ```
 
 ### 需要对比所有路径？
 ```bash
 # 查看所有原始路径
-cat output/analysis_output_*/CVE-*_all_paths_raw.json
+cat output/*/*/codeql/all-paths-raw.json
 ```
 
 ### 深度分析和调试？
 ```bash
 # 查看完整元数据
-cat output/analysis_output_*/path_selection_detail_*.json
+cat output/*/*/path-selection/selection.json
 ```
 
 ---
