@@ -311,75 +311,64 @@ class AnalysisPipeline:
             from utils.io import write_analysis_output
 
             cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
-            cve_tag = sanitize_tag(cve_id or context.case_id or "UNKNOWN")
+            case_tag = sanitize_tag(cve_id or context.case_id or "UNKNOWN")
             output_base = Path(config.output_base_dir)
-            json_result_path: Optional[Path] = None
+            timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
 
-            # 确定输出路径
+            run_dir = output_base / case_tag / timestamp
+            summary_path = run_dir / "summary.md"
+            sarif_dir = run_dir / "sarif"
+            codeql_dir = run_dir / "codeql"
+            path_selection_dir = run_dir / "path-selection"
+
+            run_dir.mkdir(parents=True, exist_ok=True)
+            sarif_dir.mkdir(parents=True, exist_ok=True)
+            codeql_dir.mkdir(parents=True, exist_ok=True)
+            path_selection_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info("创建输出目录结构: %s", run_dir)
+
+            write_analysis_output(
+                result.cve_result,
+                result.sink_result,
+                result.source_result,
+                output_path=summary_path,
+                codeql_result=result.codeql_result,
+                codeql_execution_result=result.codeql_execution_result,
+                language=result.language,
+                intel_bundle=context.intel_bundle,
+                encoding=config.output_encoding,
+            )
+
+            # 若用户额外指定了输出文件，复制一份总结文件供兼容
             if config.output_file:
-                # 用户指定了输出文件，直接写入该文件
-                output_path = Path(config.output_file)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_dir = output_path.parent
+                custom_path = Path(config.output_file)
+                custom_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(summary_path, custom_path)
+                logger.info("额外写入自定义输出文件: %s", custom_path)
 
-                logger.info(f"写入输出文件: {output_path}")
-                write_analysis_output(
-                    result.cve_result,
-                    result.sink_result,
-                    result.source_result,
-                    output_path=output_path,
-                    codeql_result=result.codeql_result,
-                    codeql_execution_result=result.codeql_execution_result,
-                    language=result.language,
-                    intel_bundle=context.intel_bundle,
-                    encoding=config.output_encoding,
-                )
-                result.output_directory = str(output_dir)
-                logger.info(f"✅ 分析结果已保存到: {output_path}")
-            else:
-                # 使用时间戳目录
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_dir = output_base / f'analysis_output_{cve_tag}_{timestamp}'
-                output_dir.mkdir(parents=True, exist_ok=True)
+            # 清理旧的运行目录
+            if config.keep_output_dirs > 0:
+                self._cleanup_old_output_dirs(output_base, config.keep_output_dirs)
 
-                logger.info(f"创建输出目录: {output_dir}")
-
-                # 生成output.md文件
-                output_path = output_dir / f'{cve_tag}_output.md'
-                write_analysis_output(
-                    result.cve_result,
-                    result.sink_result,
-                    result.source_result,
-                    output_path=output_path,
-                    codeql_result=result.codeql_result,
-                    codeql_execution_result=result.codeql_execution_result,
-                    language=result.language,
-                    intel_bundle=context.intel_bundle,
-                    encoding=config.output_encoding,
-                )
-                # 清理旧输出目录
-                if config.keep_output_dirs > 0:
-                    self._cleanup_old_output_dirs(output_base, config.keep_output_dirs)
-
-                # 更新结果中的输出目录信息
-                result.output_directory = str(output_dir)
-                logger.info(f"✅ 分析结果已整合到文件夹: {output_dir}")
+            result.output_directory = str(run_dir)
+            logger.info("✅ 分析结果已整合至: %s", run_dir)
 
             json_result_path = await self._process_sarif_files(
                 output_base=output_base,
-                output_dir=output_dir,
+                sarif_dir=sarif_dir,
+                codeql_dir=codeql_dir,
                 config=config,
-                cve_tag=cve_tag,
             )
 
             if json_result_path:
                 path_selection_output = await self._run_path_selection(
                     context=context,
-                    output_dir=output_dir,
-                    output_md_path=output_path,
+                    run_dir=run_dir,
+                    summary_path=summary_path,
                     result_json_path=json_result_path,
+                    path_selection_dir=path_selection_dir,
                     config=config,
-                    cve_tag=cve_tag,
                 )
                 if path_selection_output:
                     context.add_result("path_selection", path_selection_output)
@@ -402,10 +391,11 @@ class AnalysisPipeline:
 
     async def _process_sarif_files(
         self,
+        *,
         output_base: Path,
-        output_dir: Path,
+        sarif_dir: Path,
+        codeql_dir: Path,
         config: AnalysisConfig,
-        cve_tag: str,
     ) -> Optional[Path]:
         """处理SARIF文件：复制、转换、删除，并返回生成的JSON路径。"""
         try:
@@ -415,12 +405,11 @@ class AnalysisPipeline:
                 return None
 
             latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
-            sarif_filename = latest_sarif.name
-            target_sarif = output_dir / sarif_filename
+            target_sarif = sarif_dir / "codeql-run.sarif"
 
             # 先复制文件
             shutil.copy2(latest_sarif, target_sarif)
-            logger.info(f"已复制SARIF文件: {sarif_filename}")
+            logger.info("已复制SARIF文件至: %s", target_sarif)
 
             # 转换SARIF为JSON（在复制成功后）
             json_path: Optional[Path] = None
@@ -431,18 +420,16 @@ class AnalysisPipeline:
                     sarif_data = json.load(f)
 
                 json_data = sarif_to_all_paths(sarif_data)
-                # 使用更清晰的命名：all_paths 表示这是所有原始路径
-                json_filename = f"{cve_tag}_all_paths_raw.json"
-                json_path = output_dir / json_filename
+                json_path = codeql_dir / "all-paths-raw.json"
 
                 with open(json_path, 'w', encoding=config.output_encoding) as f:
                     json.dump(json_data, f, ensure_ascii=False, indent=2)
 
                 # 验证JSON文件写入成功
                 if json_path.exists() and json_path.stat().st_size > 0:
-                    logger.info(f"✅ SARIF文件已转换为JSON(所有原始路径): {json_filename}")
+                    logger.info("✅ SARIF文件已转换为JSON: %s", json_path.name)
                 else:
-                    logger.warning(f"⚠️ JSON文件写入可能失败: {json_filename}")
+                    logger.warning("⚠️ JSON文件写入可能失败: %s", json_path)
 
             except Exception as e:
                 logger.warning(f"SARIF转JSON失败: {e}，但SARIF文件已保存")
@@ -462,30 +449,35 @@ class AnalysisPipeline:
         return None
 
     def _cleanup_old_output_dirs(self, output_base: Path, keep_count: int) -> None:
-        """清理旧的输出目录，只保留最近的N个。"""
+        """清理旧的输出目录，只保留最近的N个运行记录。"""
         try:
             if not output_base.exists():
                 return
 
-            # 查找所有输出目录
-            output_dirs = [
-                d for d in output_base.iterdir()
-                if d.is_dir() and d.name.startswith('analysis_output_')
-            ]
+            run_dirs: List[Path] = []
+            for case_dir in output_base.iterdir():
+                if not case_dir.is_dir():
+                    continue
+                for run_dir in case_dir.iterdir():
+                    if run_dir.is_dir():
+                        run_dirs.append(run_dir)
 
-            if len(output_dirs) <= keep_count:
+            if len(run_dirs) <= keep_count:
                 return
 
             # 按修改时间排序，删除最旧的
-            sorted_dirs = sorted(output_dirs, key=lambda x: x.stat().st_mtime, reverse=True)
+            sorted_dirs = sorted(run_dirs, key=lambda x: x.stat().st_mtime, reverse=True)
             dirs_to_remove = sorted_dirs[keep_count:]
 
             for old_dir in dirs_to_remove:
                 try:
                     shutil.rmtree(old_dir)
-                    logger.info(f"已清理旧输出目录: {old_dir.name}")
+                    logger.info("已清理旧输出目录: %s", old_dir)
+                    parent = old_dir.parent
+                    if parent != output_base and not any(parent.iterdir()):
+                        parent.rmdir()
                 except Exception as e:
-                    logger.warning(f"清理目录失败 {old_dir.name}: {e}")
+                    logger.warning("清理目录失败 %s: %s", old_dir, e)
 
         except Exception as e:
             logger.warning(f"清理旧输出目录时出错: {e}")
@@ -494,15 +486,15 @@ class AnalysisPipeline:
         self,
         *,
         context: AnalysisContext,
-        output_dir: Path,
-        output_md_path: Path,
+        run_dir: Path,
+        summary_path: Path,
         result_json_path: Path,
+        path_selection_dir: Path,
         config: AnalysisConfig,
-        cve_tag: str,
     ) -> Optional[PathSelectionResult]:
         """执行路径选择并输出报告。"""
-        if not output_md_path.exists():
-            logger.warning("路径选择跳过：output.md 不存在 (%s)", output_md_path)
+        if not summary_path.exists():
+            logger.warning("路径选择跳过：summary.md 不存在 (%s)", summary_path)
             return None
         if not result_json_path.exists():
             logger.warning("路径选择跳过：dataFlowPath JSON 不存在 (%s)", result_json_path)
@@ -528,7 +520,7 @@ class AnalysisPipeline:
                     pass
 
             selection = await service.select_best_paths(
-                output_md_path=output_md_path,
+                output_md_path=summary_path,
                 result_json_path=result_json_path,
                 source_root=source_root,
                 top_k=3,
@@ -537,13 +529,9 @@ class AnalysisPipeline:
                 debug=context.show_thinking,
             )
 
-            report_path = output_dir / f"path_selection_report_{cve_tag}.md"
-            detail_path = output_dir / f"path_selection_detail_{cve_tag}.json"
-            export_name = (selection.cve_id or "CVE-UNKNOWN").upper()
-            if not export_name.startswith("CVE-"):
-                export_name = f"CVE-{export_name}"
-            # 最终结果文件：简洁版本，只包含选择的路径
-            result_path = output_dir / f"{export_name}_result.json"
+            report_path = path_selection_dir / "report.md"
+            detail_path = path_selection_dir / "selection.json"
+            dataflow_path = path_selection_dir / "dataflow.json"
 
             # 生成三个文件：
             # 1. 可读报告（Markdown）
@@ -552,13 +540,13 @@ class AnalysisPipeline:
             with open(detail_path, "w", encoding=config.output_encoding) as handler:
                 json.dump(selection.to_dict(), handler, ensure_ascii=False, indent=2)
             # 3. 最终简洁结果（只包含选择的路径）
-            with open(result_path, "w", encoding=config.output_encoding) as handler:
+            with open(dataflow_path, "w", encoding=config.output_encoding) as handler:
                 json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
 
             logger.info("✅ 路径选择结果已输出:")
-            logger.info("   📄 报告: %s", report_path.name)
-            logger.info("   📊 详细数据: %s", detail_path.name)
-            logger.info("   ✅ 最终结果: %s", result_path.name)
+            logger.info("   📄 报告: %s", report_path.relative_to(run_dir))
+            logger.info("   📊 详细数据: %s", detail_path.relative_to(run_dir))
+            logger.info("   ✅ 最终结果: %s", dataflow_path.relative_to(run_dir))
             return selection
         except Exception as exc:
             logger.exception("路径选择执行失败: %s", exc)
