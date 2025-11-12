@@ -756,10 +756,15 @@ class MultiAgentAnalyzer:
         )
 
         self.tools = await self.mcp_client.get_tools()
+        
+        # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
+        from tools.lsp_lookup_tool import LSPFunctionLookupTool
+        lsp_lookup_tool = LSPFunctionLookupTool()
+        self.tools.append(lsp_lookup_tool)
 
         # Wrap all tools with token limiting
         logger = get_logger(__name__)
-        logger.info(f"正在包装 {len(self.tools)} 个MCP工具...")
+        logger.info(f"正在包装 {len(self.tools)} 个工具（包含MCP工具和LSP查询工具）...")
 
         for t in self.tools:
             tool_name = getattr(t, 'name', 'unknown')

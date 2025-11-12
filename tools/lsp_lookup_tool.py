@@ -24,14 +24,14 @@ class LSPFunctionLookupInput(BaseModel):
 
 class LSPFunctionLookupTool(BaseTool):
     """
-    LangChain tool for querying CodeQL function definitions via LSP.
+    LangChain tool for querying CodeQL function definitions.
     
     This tool allows agents to look up function definitions from the CodeQL
-    standard library to understand usage and fix errors. It reuses an existing
-    HotCodeQL LSP engine instance without restarting the service.
+    standard library using ripgrep (fast) or Python fallback (cross-platform).
+    No LSP engine required - works independently.
     
     Example usage:
-        tool = LSPFunctionLookupTool(engine=hot_codeql_instance)
+        tool = LSPFunctionLookupTool()
         result = tool.run("hasQualifiedName")
     """
     
@@ -44,22 +44,31 @@ class LSPFunctionLookupTool(BaseTool):
     )
     args_schema: Type[BaseModel] = LSPFunctionLookupInput
     
-    # Custom field for HotCodeQL engine
+    # Custom field for HotCodeQL engine (optional, for backward compatibility)
     engine: Optional[HotCodeQL] = None
     
     class Config:
         """Pydantic configuration."""
         arbitrary_types_allowed = True
     
-    def __init__(self, engine: HotCodeQL, **kwargs):
+    def __init__(self, engine: Optional[HotCodeQL] = None, **kwargs):
         """
-        Initialize the tool with a HotCodeQL engine instance.
+        Initialize the tool.
         
         Args:
-            engine: Running HotCodeQL LSP engine instance
+            engine: Optional HotCodeQL LSP engine instance (for backward compatibility)
+                   If None, uses ripgrep/Python search (recommended)
             **kwargs: Additional arguments passed to BaseTool
         """
         super().__init__(engine=engine, **kwargs)
+        
+        # Create a dummy engine if none provided (for LSPDefinitionLookup compatibility)
+        if engine is None:
+            class DummyEngine:
+                """Dummy engine for ripgrep-only mode."""
+                pass
+            engine = DummyEngine()
+        
         self._lookup = LSPDefinitionLookup(engine)
     
     def _run(self, function_name: str, language: str = "java") -> str:
