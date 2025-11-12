@@ -384,22 +384,62 @@ class CodeQLComposeTool(BaseTool):
 
         # 启动LSP服务
         print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
-        print(f"   [CodeQLComposeTool] 启动LSP服务进行语法检查...")
-        print(f"   [CodeQLComposeTool] 正在初始化LSP服务，请稍候...")
+        print(f"   [CodeQLComposeTool] 初始化LSP服务")
         lsp_service = CodeQLLSPService(pack_root, query_file)
+        
+        from tools.lsp_codeql import HotCodeQL
+        from tools.lsp_lookup_tool import LSPFunctionLookupTool
+        
+        hot_engine = None
+        lsp_lookup_tool = None
 
         # 添加详细的进度指示
         import time
         start_time = time.time()
         final_result = None
         is_success = False
-        print(f"   [CodeQLComposeTool] 开始启动LSP服务进程...")
+        print(f"   [CodeQLComposeTool] 启动LSP服务")
 
 
         # 调用start_server方法，它内部已经有30秒的重试机制
         if lsp_service.start():
             elapsed_time = time.time() - start_time
             print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+            try:
+                hot_engine = HotCodeQL(
+                    codeql="codeql",
+                    pack_root=pack_root,
+                    query_file=query_file,
+                    synchronous=True,
+                    init_timeout=60.0,
+                    quiet_logs=True
+                )
+                hot_engine.start()
+                
+                # 创建LSP函数查询工具
+                lsp_lookup_tool = LSPFunctionLookupTool(engine=hot_engine)
+                
+                # 确保analyzer已初始化
+                if self.analyzer:
+                    if not hasattr(self.analyzer, 'tools') or self.analyzer.tools is None:
+                        print(f"   [CodeQLComposeTool] 等待analyzer初始化...")
+                        await self.analyzer.initialize(event_callback)
+                    
+                    # 将工具添加到analyzer的工具列表
+                    if self.analyzer.tools is not None:
+                        self.analyzer.tools.append(lsp_lookup_tool)
+                        # print(f"✅ [CodeQLComposeTool] LSP函数查询工具已添加到analyzer (共{len(self.analyzer.tools)}个工具)")
+                    else:
+                        pass
+                        # print(f"⚠️  [CodeQLComposeTool] analyzer.tools为None，无法添加LSP查询工具")
+                else:
+                    print(f"⚠️  [CodeQLComposeTool] analyzer未配置，无法添加LSP查询工具")
+                
+            except Exception as e:
+                print(f"⚠️  [CodeQLComposeTool] HotCodeQL引擎启动失败: {e}")
+                print(f"   [CodeQLComposeTool] 将继续执行，但函数查询功能不可用")
+                import traceback
+                traceback.print_exc()
         else:
             print("❌ [CodeQLComposeTool] LSP服务启动失败")
             return f"Error: Failed to start LSP service for syntax checking"
@@ -444,7 +484,7 @@ class CodeQLComposeTool(BaseTool):
                             return final_result
 
                         # Save generated query to file immediately
-                        print(f"💾 [CodeQLComposeTool] 保存首次生成的查询到: {query_file}")
+                        print(f"💾 [CodeQLComposeTool] QL文件: {query_file}")
                         query_file.write_text(current_ql, encoding='utf-8')
                         
                         # Also save to persistent directory
@@ -467,7 +507,7 @@ class CodeQLComposeTool(BaseTool):
                         # For subsequent rounds, read from file (modified by FixInplaceAgent)
                         try:
                             current_ql = query_file.read_text(encoding='utf-8')
-                            print(f"📖 [CodeQLComposeTool] 从文件读取修改后的查询: {query_file}")
+                            print(f"📖 [CodeQLComposeTool] 从文件读取修改后的QL: {query_file}")
                         except Exception as e:
                             is_success = False
                             final_result = f"Error reading query file: {e}"
@@ -571,7 +611,7 @@ class CodeQLComposeTool(BaseTool):
                         return final_result
 
                     # Step 2: Use FixInplaceAgent to modify the file
-                    print(f"🔧 [CodeQLComposeTool] 使用原地修复模式修改文件")
+                    print(f"🔧 [CodeQLComposeTool] 开始修复QL语句")
                     ql_file_path_abs = str(query_file.resolve())
                     
                     fix_result = await fix_inplace_agent.fix(
@@ -618,6 +658,20 @@ class CodeQLComposeTool(BaseTool):
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
             lsp_service.stop()
+            
+            # 停止HotCodeQL引擎
+            if hot_engine:
+                try:
+                    hot_engine.shutdown()
+                except Exception as e:
+                    print(f"⚠️  [CodeQLComposeTool] 停止HotCodeQL引擎时出错: {e}")
+            
+            # 从analyzer工具列表中移除LSP查询工具
+            if lsp_lookup_tool and self.analyzer and hasattr(self.analyzer, 'tools') and self.analyzer.tools:
+                try:
+                    self.analyzer.tools.remove(lsp_lookup_tool)
+                except ValueError:
+                    pass
 
         if final_result is not None:
             return final_result
