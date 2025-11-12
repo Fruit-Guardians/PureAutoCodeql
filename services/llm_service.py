@@ -369,7 +369,11 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000) -> Any:
     支持两种返回格式：
     1. 单个值：直接返回截断后的字符串
     2. 元组 (content, artifact)：保持元组格式，只截断content部分
+    
+    对于代码文件，采用智能截断策略，尝试保留函数定义区域。
     """
+    import re
+    
     # 检查是否是 (content, artifact) 元组格式
     is_tuple_format = isinstance(output, tuple) and len(output) == 2
 
@@ -395,30 +399,92 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000) -> Any:
     logger = get_logger(__name__)
     logger.info(f"⚠️ 工具输出超过限制: {token_count} tokens > {token_limit} tokens，正在截断...")
 
+    # 检测是否是代码文件（通过常见代码文件特征）
+    is_code_file = False
+    code_keywords = [
+        r'\b(static\s+)?(int|void|char|struct|class|def|function)\s+\w+\s*\(',  # 函数定义
+        r'#include\s*<',  # C/C++头文件
+        r'^\s*//',  # 注释
+        r'^\s*/\*',  # 多行注释
+    ]
+    for pattern in code_keywords:
+        if re.search(pattern, text, re.MULTILINE):
+            is_code_file = True
+            break
+
     try:
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
         tokens = encoding.encode(text)
+        
+        # 对于代码文件，尝试智能截断：保留更多中间区域
+        if is_code_file and len(tokens) > token_limit * 2:
+            # 代码文件：头部(15%) + 中间关键区域(70%) + 尾部(15%)
+            # 这样可以更好地保留中间的函数定义
+            first_token_count = int(token_limit * 0.15)
+            middle_token_count = int(token_limit * 0.70)
+            last_token_count = int(token_limit * 0.15)
+            
+            first_tokens = tokens[:first_token_count]
+            # 中间区域：从总长度的25%到75%之间
+            total_tokens = len(tokens)
+            middle_start = int(total_tokens * 0.25)
+            middle_end = middle_start + middle_token_count
+            middle_tokens = tokens[middle_start:middle_end] if middle_end < total_tokens else tokens[middle_start:]
+            last_tokens = tokens[-last_token_count:]
+            
+            first_part = encoding.decode(first_tokens)
+            middle_part = encoding.decode(middle_tokens)
+            last_part = encoding.decode(last_tokens)
+            
+            truncated_text = (
+                f"[Token限制: 输出共{token_count}个Token，已截断至{token_limit}个Token（代码文件智能截断）]\n\n"
+                f"{first_part}\n\n"
+                f"... [中间区域: 行{middle_start//50}-{middle_end//50}] ...\n\n"
+                f"{middle_part}\n\n"
+                f"...\n\n"
+                f"{last_part}"
+            )
+        else:
+            # 非代码文件或小文件：使用原有策略
+            first_token_count = int(token_limit * 0.4)
+            last_token_count = int(token_limit * 0.6)
 
-        first_token_count = int(token_limit * 0.4)
-        last_token_count = int(token_limit * 0.6)
+            first_tokens = tokens[:first_token_count]
+            last_tokens = tokens[-last_token_count:]
 
-        first_tokens = tokens[:first_token_count]
-        last_tokens = tokens[-last_token_count:]
+            first_part = encoding.decode(first_tokens)
+            last_part = encoding.decode(last_tokens)
 
-        first_part = encoding.decode(first_tokens)
-        last_part = encoding.decode(last_tokens)
-
-        truncated_text = f"[Token限制: 输出共{token_count}个Token，已截断至{token_limit}个Token]\n\n{first_part}\n\n...\n\n{last_part}"
+            truncated_text = f"[Token限制: 输出共{token_count}个Token，已截断至{token_limit}个Token]\n\n{first_part}\n\n...\n\n{last_part}"
     except Exception as e:
         logger.warning(f"Token截断失败，使用字符截断: {e}")
         char_limit = token_limit * 4
-        first_char_count = int(char_limit * 0.4)
-        last_char_count = int(char_limit * 0.6)
+        
+        if is_code_file:
+            # 代码文件：保留更多中间区域
+            first_char_count = int(char_limit * 0.15)
+            middle_char_count = int(char_limit * 0.70)
+            last_char_count = int(char_limit * 0.15)
+            
+            total_chars = len(text)
+            first_part = text[:first_char_count]
+            middle_start = int(total_chars * 0.25)
+            middle_end = middle_start + middle_char_count
+            middle_part = text[middle_start:middle_end] if middle_end < total_chars else text[middle_start:]
+            last_part = text[-last_char_count:]
+            
+            truncated_text = (
+                f"[Token限制: 输出约{token_count}个Token，已截断（代码文件智能截断）]\n\n"
+                f"{first_part}\n\n... [中间区域] ...\n\n{middle_part}\n\n...\n\n{last_part}"
+            )
+        else:
+            first_char_count = int(char_limit * 0.4)
+            last_char_count = int(char_limit * 0.6)
 
-        first_part = text[:first_char_count]
-        last_part = text[-last_char_count:]
-        truncated_text = f"[Token限制: 输出约{token_count}个Token，已截断]\n\n{first_part}\n\n...\n\n{last_part}"
+            first_part = text[:first_char_count]
+            last_part = text[-last_char_count:]
+            truncated_text = f"[Token限制: 输出约{token_count}个Token，已截断]\n\n{first_part}\n\n...\n\n{last_part}"
 
     # 如果原始输出是元组格式，保持元组格式返回
     if is_tuple_format:
