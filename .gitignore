@@ -38,8 +38,6 @@ env/
 .env
 .env.local
 
-# 输出文件
-output/
 *.log
 
 # 临时文件
