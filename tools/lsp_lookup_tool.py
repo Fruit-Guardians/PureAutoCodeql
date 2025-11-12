@@ -62,12 +62,13 @@ class LSPFunctionLookupTool(BaseTool):
         super().__init__(engine=engine, **kwargs)
         self._lookup = LSPDefinitionLookup(engine)
     
-    def _run(self, function_name: str) -> str:
+    def _run(self, function_name: str, language: str = "java") -> str:
         """
-        Execute the function definition lookup.
+        Execute the function definition lookup with fallback.
         
         Args:
             function_name: Name of the function to look up
+            language: Target language (default: java)
             
         Returns:
             Formatted string with file path, line range, and code definition
@@ -75,18 +76,32 @@ class LSPFunctionLookupTool(BaseTool):
         if not function_name or not isinstance(function_name, str):
             return "Error: function_name must be a non-empty string"
         
+        # Print query information
+        print(f"\n{'='*60}")
+        print(f"🔍 [LSP函数查询] 正在查询函数定义...")
+        print(f"📝 查询函数名: {function_name.strip()}")
+        print(f"{'='*60}\n")
+        
         try:
-            result = self._lookup.get_function_definition(
+            # Use the new method with fallback
+            result = self._lookup.get_function_definition_with_fallback(
                 function_name=function_name.strip(),
+                language=language,
                 timeout=5.0
             )
             
             if not result:
+                print(f"❌ [函数查询] 未找到函数 '{function_name}' 的定义\n")
                 return (
                     f"Could not find definition for '{function_name}'. "
-                    "Make sure the function is used in the current query file "
-                    "and the LSP engine is running."
+                    "The symbol was not found in the current query file or the CodeQL standard library."
                 )
+            
+            # Print success message
+            print(f"✅ [函数查询] 查询成功!")
+            print(f"📂 文件位置: {result['file_path']}")
+            print(f"📍 代码行数: {result['start_line']}-{result['end_line']}")
+            print(f"{'='*60}\n")
             
             # Format the result
             output = [
@@ -103,6 +118,7 @@ class LSPFunctionLookupTool(BaseTool):
             return "\n".join(output)
             
         except Exception as e:
+            print(f"❌ [函数查询] 查询失败: {type(e).__name__}: {e}\n")
             return f"Error looking up function definition: {type(e).__name__}: {e}"
     
     async def _arun(self, function_name: str) -> str:
