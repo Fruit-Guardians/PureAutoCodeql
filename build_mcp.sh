@@ -14,47 +14,105 @@ if ! command -v node &> /dev/null; then
 fi
 
 echo "[1/2] 检查 Node.js 版本..."
-node --version
+NODE_VERSION=$(node --version)
+echo "Node.js 版本: $NODE_VERSION"
+
+# 检查 Node.js 版本是否满足要求 (v18 或更高)
+NODE_MAJOR=$(echo $NODE_VERSION | cut -d'v' -f2 | cut -d'.' -f1)
+if [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "[错误] Node.js 版本过低，需要 v18 或更高版本，当前版本: $NODE_VERSION"
+    exit 1
+fi
+echo "✓ Node.js 版本检查通过"
 echo ""
 
 # 构建 mcp_ripgrep
 echo "[2/2] 构建 mcp_ripgrep..."
-cd tools/mcp_ripgrep
+
+# 保存原始目录
+ORIGINAL_DIR=$(pwd)
+
+# 检查目录是否存在
+if [ ! -d "tools/mcp_ripgrep" ]; then
+    echo "[错误] tools/mcp_ripgrep 目录不存在"
+    exit 1
+fi
+
+cd tools/mcp_ripgrep || {
+    echo "[错误] 无法进入 tools/mcp_ripgrep 目录"
+    exit 1
+}
+
+echo "当前工作目录: $(pwd)"
 
 if [ ! -d "node_modules" ]; then
     echo "  安装依赖..."
-    npm install
-    if [ $? -ne 0 ]; then
+    npm install || {
         echo "[错误] npm install 失败"
-        cd ../..
+        cd "$ORIGINAL_DIR"
         exit 1
-    fi
+    }
+    echo "✓ 依赖安装成功"
 else
     echo "  依赖已存在，跳过安装"
 fi
 
 echo "  编译 TypeScript..."
-npm run build
-if [ $? -ne 0 ]; then
+npm run build || {
     echo "[错误] TypeScript 编译失败"
-    cd ../..
+    cd "$ORIGINAL_DIR"
     exit 1
-fi
+}
+echo "✓ TypeScript 编译成功"
 
-cd ../..
+# 返回原始目录
+cd "$ORIGINAL_DIR" || {
+    echo "[错误] 无法返回原始目录"
+    exit 1
+}
 
 # 检查编译结果
-if [ -f "tools/mcp_ripgrep/dist/index.js" ]; then
-    echo ""
-    echo "========================================"
-    echo " ✓ 构建成功！"
-    echo "========================================"
-    echo " mcp_ripgrep 已编译到: tools/mcp_ripgrep/dist/index.js"
-    echo ""
-    chmod +x tools/mcp_ripgrep/dist/index.js
+DIST_FILE="tools/mcp_ripgrep/dist/index.js"
+echo "  检查编译结果: $DIST_FILE"
+
+if [ -f "$DIST_FILE" ]; then
+    # 检查文件是否为空
+    FILE_SIZE=$(stat -f%z "$DIST_FILE" 2>/dev/null || stat -c%s "$DIST_FILE" 2>/dev/null || echo "0")
+    if [ "$FILE_SIZE" -gt 0 ]; then
+        echo ""
+        echo "========================================"
+        echo " ✓ 构建成功！"
+        echo "========================================"
+        echo " mcp_ripgrep 已编译到: $DIST_FILE"
+        echo " 文件大小: $FILE_SIZE 字节"
+        echo ""
+
+        # 设置执行权限
+        chmod +x "$DIST_FILE" || {
+            echo "[警告] 无法设置执行权限，但不影响使用"
+        }
+
+        # 验证文件内容
+        if grep -q "mcp-ripgrep\|MCP\|ripgrep" "$DIST_FILE" 2>/dev/null; then
+            echo "✓ 文件内容验证通过"
+        else
+            echo "[警告] 文件内容验证失败，但文件已生成"
+        fi
+    else
+        echo ""
+        echo "[错误] 编译后的文件存在但为空"
+        exit 1
+    fi
 else
     echo ""
-    echo "[错误] 编译后的文件不存在"
+    echo "[错误] 编译后的文件不存在: $DIST_FILE"
+    echo "调试信息:"
+    echo "- 当前目录: $(pwd)"
+    echo "- dist 目录内容:"
+    if [ -d "tools/mcp_ripgrep/dist" ]; then
+        ls -la "tools/mcp_ripgrep/dist/" 2>/dev/null || echo "无法列出目录内容"
+    else
+        echo "dist 目录不存在"
+    fi
     exit 1
 fi
-
