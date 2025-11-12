@@ -133,10 +133,10 @@ async def demo_basic_usage():
     print_section("路径选择服务 - 基础用法示例", leading_blank=False)
 
     # 1. 准备输入路径
-    output_dir = Path("output/analysis_output_20251109_131403")
-    output_md = output_dir / "output.md"
-    result_json = output_dir / "result_20251109_131312.json"
-    source_root = Path("projects/CVE-2025-54381/source_code/BentoML-1.4.10/BentoML-1.4.10")
+    output_dir = Path("output/analysis_output_CVE-2014-0160_20251112_154054")
+    output_md = output_dir / "CVE-2014-0160_output.md"
+    result_json = output_dir / "CVE-2014-0160_all_paths_raw.json"
+    source_root = Path("projects/CVE-2014-0160/source_code")
 
     # 检查文件是否存在
     if not output_md.exists():
@@ -281,10 +281,10 @@ async def demo_without_clustering():
 
     print_section("禁用聚类示例")
 
-    output_dir = Path("output/analysis_output_20251109_131403")
-    output_md = output_dir / "output.md"
-    result_json = output_dir / "result_20251109_131312.json"
-    source_root = Path("projects/CVE-2025-54381/source_code/BentoML-1.4.10/BentoML-1.4.10")
+    output_dir = Path("output/analysis_output_CVE-2014-0160_20251112_154054")
+    output_md = output_dir / "CVE-2014-0160_output.md"
+    result_json = output_dir / "CVE-2014-0160_all_paths_raw.json"
+    source_root = Path("projects/CVE-2014-0160/source_code")
 
     if not all([output_md.exists(), result_json.exists()]):
         print("示例文件不存在，跳过")

@@ -62,32 +62,19 @@
    - ✅ 严格使用 `MethodCall` (正确)
    - ❌ 禁止使用 `MethodAccess` (已弃用)
    - ❌ 禁止使用 `MethodAccessExpr` (不存在)
-2. **接口实现规范（C/C++）:**
+2. **接口实现规范:**
 
-   - ✅ 使用 `module VulnConfig implements DataFlow::ConfigSig` (最新API)
-   - ❌ 禁止使用 `class Config extends DataFlow::Configuration` (已弃用)
    - 必须实现: `isSource`, `isSink`
    - 可选实现: `isAdditionalFlowStep`, `isSanitizer`
-3. **必要导入（按语言区分）:**
+   - ⚠️ 不同语言有不同的API规范，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的接口实现规范
+3. **必要导入:**
 
-   - C/C++（最新API，必须严格遵守）：
-     - `import cpp`
-     - ✅ `import semmle.code.cpp.dataflow.new.TaintTracking` (必须)
-     - ✅ `import semmle.code.cpp.dataflow.new.DataFlow` (必须)
-     - ❌ 禁止使用 `import semmle.code.cpp.dataflow.DataFlow` (已弃用)
-     - ✅ 使用 `module VulnFlow = TaintTracking::Global<VulnConfig>;`
-     - ✅ 使用 `import VulnFlow::PathGraph`
-     - ✅ PathNode 使用: `VulnFlow::PathNode` (从模块别名获取)
-     - ✅ flowPath 使用: `VulnFlow::flowPath(src, snk)`
-     - ❌ 禁止使用 `DataFlow::PathNode` (已弃用)
-     - ❌ 禁止使用 `cfg.hasFlowPath(source, sink)` (旧API)
-     - ⚠️ 指针解引用类型: 使用 `DerefExpr`，禁止使用 `PointerDereference` 或 `PointerDereferenceExpr`
-     - ⚠️ 数组访问类型: 使用 `ArrayExpr`，`getArrayBase()` 获取数组基址
-     - ⚠️ 地址取操作类型: 使用 `AddressOfExpr`，`getOperand()` 获取操作数
-     - ⚠️ DataFlow::Node 转换: 使用 `source.asExpr()` 和 `sink.getNode().asExpr()`
-     - ⚠️ 模块别名: 可以使用任意名称，但必须与 import 语句一致
-     - ⚠️ 谓词返回值: 使用 `none()` 表示不匹配，禁止使用 `false`
-   - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
+   - 根据 `[LANGUAGE]` 导入正确的标准CodeQL库和DataFlow/TaintTracking库
+   - ⚠️ **重要**：不同语言有不同的导入规范和API版本，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的导入规范
+   - 例如：
+     - Python: 参考 `python_template_ql.md`
+     - Java: 参考 `java_temple_ql.md`
+     - C/C++: 参考 `c_template_ql.md`
 4. **Select语句格式:**
 
    - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求

@@ -46,9 +46,9 @@ import semmle.code.cpp.dataflow.new.DataFlow
  *    - ❌ 禁止使用: DataFlow::hasFlowPath(source, sink) (不存在)
  * 
  * 6. 指针解引用类型规范：
- *    - ✅ 必须使用: DerefExpr (正确的AST类型)
+ *    - ✅ 必须使用: PointerDereferenceExpr (正确的AST类型)
+ *    - ❌ 禁止使用: DerefExpr (不存在)
  *    - ❌ 禁止使用: PointerDereference (不存在)
- *    - ❌ 禁止使用: PointerDereferenceExpr (旧类型，已弃用)
  * 
  * 7. 数组和地址操作类型规范：
  *    - ✅ 数组访问: 使用 ArrayExpr，getArrayBase() 获取数组基址
@@ -77,6 +77,7 @@ import semmle.code.cpp.dataflow.new.DataFlow
  *     - ✅ 使用 none() 表示谓词不匹配任何内容（用于可选谓词）
  *     - ❌ 禁止使用 false 作为表达式返回值
  *     - ⚠️ 注意: isAdditionalFlowStep 和 isSanitizer 如果不需要，应使用 none()
+ *     - ⚠️ 重要: isSanitizer 必须标记为 additional，因为它不是 DataFlow::ConfigSig 接口的必需成员
  * 
  * 12. 常用 AST 类型和方法规范：
  *     - FunctionCall: getTarget() 获取函数, getArgument(n) 获取第n个参数, getEnclosingFunction() 获取包含函数
@@ -84,6 +85,8 @@ import semmle.code.cpp.dataflow.new.DataFlow
  *     - FieldAccess: getTarget() 获取字段, getQualifier() 获取限定对象
  *     - Parameter: getFunction() 获取所属函数, getName() 获取参数名
  *     - LocalVariable: getFunction() 获取所属函数, getName() 获取变量名
+ *     - ⚠️ 注意: 当通过 VariableAccess.getTarget() 获取变量时，需要先进行类型转换才能调用类型特定方法
+ *     - ⚠️ 例如: va.getTarget().(LocalVariable).getFunction() 而不是 va.getTarget().getFunction()
  *     - Function: hasGlobalName(name) 检查全局名称, getFile() 获取文件
  *     - File: getRelativePath() 获取相对路径
  *     - ⚠️ 注意: 参数索引从 0 开始，getArgument(0) 是第一个参数
@@ -141,7 +144,7 @@ predicate isSourceExpr(Expr expr) {
       inTarget(va.getTarget().(Parameter).getFunction())
       or
       va.getTarget() instanceof LocalVariable and
-      inTarget(va.getTarget().getFunction())
+      inTarget(va.getTarget().(LocalVariable).getFunction())
     ) and
     expr = va
   )
@@ -172,11 +175,11 @@ module VulnConfig implements DataFlow::ConfigSig {
     )
     or
     // 指针解引用传播：相同操作数的解引用传播 (例如: *p -> *p)
-    // ⚠️ 注意：必须使用 DerefExpr 类型，不要使用 PointerDereference 或 PointerDereferenceExpr
-    exists(DerefExpr de1, DerefExpr de2 |
-      n1.asExpr() = de1 and
-      n2.asExpr() = de2 and
-      de1.getOperand() = de2.getOperand()
+    // ⚠️ 注意：必须使用 PointerDereferenceExpr 类型
+    exists(PointerDereferenceExpr pde1, PointerDereferenceExpr pde2 |
+      n1.asExpr() = pde1 and
+      n2.asExpr() = pde2 and
+      pde1.getOperand() = pde2.getOperand()
     )
     or
     // 数组元素访问传播：数组到其元素的传播 (例如: arr -> arr[i])
@@ -195,7 +198,7 @@ module VulnConfig implements DataFlow::ConfigSig {
   }
   
   /** 可选：净化器（如果不需要，可以省略或使用 none()） */
-  predicate isSanitizer(DataFlow::Node node) {
+  additional predicate isSanitizer(DataFlow::Node node) {
     none()  // 如果不需要净化器，使用 none()
   }
 }

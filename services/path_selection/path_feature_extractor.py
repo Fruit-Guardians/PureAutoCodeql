@@ -36,6 +36,7 @@ class PathFeatureExtractor:
         self.knowledge_base = knowledge_base
         self._dangerous_api_set: Set[str] = set(self.adapter.get_dangerous_apis() or [])
         self._sanitizers: Sequence[str] = SANITIZER_KEYWORDS.get(self.language, ())
+        self._path_cache: Dict[tuple[str, str], Optional[Path]] = {}
 
     async def build_features(
         self,
@@ -45,6 +46,14 @@ class PathFeatureExtractor:
     ) -> List[PathFeatures]:
         """Extract structured features for the provided CodeQL paths."""
         source_root_path = Path(source_root)
+        if not source_root_path.exists():
+            logger.warning(
+                "源代码根目录不存在: %s (这可能导致无法读取代码片段)",
+                source_root_path,
+            )
+        else:
+            logger.debug("使用源代码根目录: %s", source_root_path)
+        
         keywords = self._collect_keywords(cve_context or {})
         features: List[PathFeatures] = []
 
@@ -228,15 +237,100 @@ class PathFeatureExtractor:
         relative_file: str,
         line: int,
     ) -> str:
-        full_path = (source_root / relative_file).resolve()
-        if not full_path.exists():
-            logger.debug("Source file not found for snippet: %s", full_path)
+        if not relative_file or not line:
+            logger.debug(
+                "无法读取代码片段: 缺少文件路径或行号 (file=%s, line=%s, source_root=%s)",
+                relative_file,
+                line,
+                source_root,
+            )
             return ""
+        
+        resolved = self._resolve_relative_path(source_root, relative_file)
+
+        if resolved and resolved.exists():
+            return self._read_file_snippet(resolved, line)
+
+        logger.debug(
+            "源文件不存在，无法读取代码片段: %s (source_root=%s, relative_file=%s, line=%s)",
+            resolved or (source_root / relative_file),
+            source_root,
+            relative_file,
+            line,
+        )
+        return ""
+
+    def _resolve_relative_path(self, source_root: Path, relative_file: str) -> Optional[Path]:
+        """更鲁棒地解析 CodeQL 报告中的相对路径。"""
+
+        normalized = self._normalize_relative_path(relative_file)
+        if not normalized:
+            return None
+
+        root_key = str(source_root.resolve())
+        cache_key = (root_key, normalized)
+        if cache_key in self._path_cache:
+            return self._path_cache[cache_key]
+
+        direct_candidate = (source_root / normalized).resolve()
+        if direct_candidate.exists():
+            self._path_cache[cache_key] = direct_candidate
+            return direct_candidate
+
+        # 尝试第一层和第二层子目录（兼容 source_root/project/version/... 结构）
+        try:
+            for child in source_root.iterdir():
+                if not child.is_dir():
+                    continue
+                nested_candidate = (child / normalized).resolve()
+                if nested_candidate.exists():
+                    self._path_cache[cache_key] = nested_candidate
+                    return nested_candidate
+                # 再向下一层尝试一次，覆盖常见的双层压缩目录结构
+                for grandchild in child.iterdir():
+                    if not grandchild.is_dir():
+                        continue
+                    deeper_candidate = (grandchild / normalized).resolve()
+                    if deeper_candidate.exists():
+                        self._path_cache[cache_key] = deeper_candidate
+                        return deeper_candidate
+        except OSError:
+            # 文件过多或权限问题时继续使用兜底策略
+            pass
+
+        # 兜底：按文件名遍历查找匹配的后缀
+        suffix = normalized.replace("\\", "/")
+        try:
+            for match in source_root.rglob(Path(normalized).name):
+                if str(match.as_posix()).endswith(suffix):
+                    self._path_cache[cache_key] = match.resolve()
+                    return self._path_cache[cache_key]
+        except OSError as exc:
+            logger.debug("遍历源码目录失败: %s", exc)
+
+        self._path_cache[cache_key] = None
+        return None
+
+    @staticmethod
+    def _normalize_relative_path(relative_file: str) -> str:
+        if not relative_file:
+            return ""
+        cleaned = relative_file.strip()
+        if cleaned.startswith("file://"):
+            cleaned = cleaned[7:]
+        return cleaned.replace("\\", "/").lstrip("/")
+    
+    def _read_file_snippet(self, full_path: Path, line: int) -> str:
+        """从文件中读取指定行的代码片段"""
         try:
             with open(full_path, "r", encoding="utf-8", errors="ignore") as handle:
                 lines = handle.readlines()
         except OSError as exc:
-            logger.debug("Failed reading %s: %s", full_path, exc)
+            logger.debug(
+                "读取文件失败，无法获取代码片段: %s (错误: %s)",
+                full_path,
+                exc,
+            )
             return ""
 
         start_idx = max(0, line - self.context_lines - 1)
