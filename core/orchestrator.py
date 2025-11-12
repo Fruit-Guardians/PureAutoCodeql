@@ -42,9 +42,10 @@ class AnalysisOrchestrator:
             else:
                 logger.debug(f"JSON文件: {cve_assets.json_path} (网络获取)")
             if cve_assets.diff_path:
-                logger.debug(f"Diff文件: {cve_assets.diff_path} (本地)")
+                file_type = "Diff" if cve_assets.diff_path.suffix == ".diff" else "Patch"
+                logger.debug(f"{file_type}文件: {cve_assets.diff_path} (本地)")
             else:
-                logger.debug("Diff文件: 无")
+                logger.debug("Diff/Patch文件: 无")
 
             # 收集情报数据
             logger.info("正在收集漏洞情报...")
