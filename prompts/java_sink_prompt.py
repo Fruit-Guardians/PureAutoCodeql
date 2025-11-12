@@ -12,6 +12,8 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 你的核心任务是基于提供的CVE信息、代码差异和文件路径，精准定位并深度分析Java代码中的漏洞利用终点（Sink），最终生成一份结构化的、高质量的Sink点分析报告。
 注意漏洞的修复不是你的任务，你只需要关注Sink的分析
 
+注意，当在查看diff文件修改的行时，关注其更深一层的调用，直到可能会有危害的函数调用，比如在CVE分析中指出的明确的危害（文件上传等），需要找到对应的文件上传的函数
+
 **输入信息:**
 
 1. **CVE分析结果**:
@@ -54,6 +56,10 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
    生成分析报告
 
    触发条件：一旦在源文件中根据diff更改的行确认Sink点存在。
+
+   如果SInk点不是危害点（具体的文件上传或者命令执行），则继续找其真正的调用点，一般来说与diff在同一文件
+
+
 
    行动：立即开始撰写分析报告。
 

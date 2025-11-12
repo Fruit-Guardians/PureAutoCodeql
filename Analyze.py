@@ -54,7 +54,7 @@ async def run_case_analysis(
         api_key=api_key,
         base_url=base_url
     )
-    
+
     # 显示模型提供商信息
     try:
         # 使用配置中的参数获取模型配置
@@ -72,7 +72,7 @@ async def run_case_analysis(
             api_key=api_key,
             base_url=base_url
         )
-        
+
         provider_display = provider or chat_config.provider or "环境变量配置"
         print_user_info(f"🤖 使用模型提供商: {provider_display}")
         print_user_info(f"   💭 推理模型: {think_config.model}")
@@ -142,7 +142,7 @@ async def run_md_direct_codeql(
         print_user_error(f"❌ MD文件不存在: {md_file_path}")
         logger.error(f"MD文件不存在: {md_file_path}")
         return
-    
+
     if not md_path.suffix.lower() == '.md':
         print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
         logger.error(f"文件格式错误: {md_file_path}")
@@ -185,7 +185,7 @@ async def run_md_direct_codeql(
             api_key=api_key,
             base_url=base_url
         )
-        
+
         provider_display = provider or chat_config.provider or "环境变量配置"
         print_user_info(f"🤖 使用模型提供商: {provider_display}")
         print_user_info(f"   💭 推理模型: {think_config.model}")
@@ -226,23 +226,23 @@ async def run_md_direct_codeql(
     # 执行CodeQL生成
     try:
         print_user_info(f"🚀 开始从MD文件生成CodeQL查询...")
-        
+
         # 使用MD文件内容作为需求描述
         requirement = f"根据以下漏洞描述生成CodeQL查询:\n\n{md_content}"
-        
+
         result = await codeql_tool._arun(
             requirement=requirement,
             exec_mode="analyze",
             show_thinking=stream
         )
-        
+
         # 输出结果
         print_user_success(f"\n🎉 CodeQL生成完成！")
         print_user_info(f"📋 查询结果:")
         print(result)
-        
+
         logger.info(f"CodeQL生成成功完成")
-        
+
     except Exception as e:
         print_user_error(f"❌ CodeQL生成失败: {e}")
         logger.error(f"CodeQL生成失败: {e}", exc_info=True)
@@ -282,7 +282,7 @@ async def run_md_source_analysis(
         print_user_error(f"❌ MD文件不存在: {md_file_path}")
         logger.error(f"MD文件不存在: {md_file_path}")
         return
-    
+
     if not md_path.suffix.lower() == '.md':
         print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
         logger.error(f"文件格式错误: {md_file_path}")
@@ -336,7 +336,7 @@ async def run_md_source_analysis(
             api_key=api_key,
             base_url=base_url
         )
-        
+
         provider_display = provider or chat_config.provider or "环境变量配置"
         print_user_info(f"🤖 使用模型提供商: {provider_display}")
         print_user_info(f"   💭 推理模型: {think_config.model}")
@@ -375,21 +375,17 @@ async def run_md_source_analysis(
     # 执行Source点分析
     try:
         print_user_info(f"🚀 开始从MD文件生成Source点分析报告...")
-        
+
         # 使用MD文件内容作为sink分析结果（模拟）
         sink_analysis = f"根据以下漏洞描述分析Source点:\n\n{md_content}"
-        
+
         result = await source_agent.analyze_sources(
             language=language,
             sink_analysis=sink_analysis,
             show_thinking=stream
         )
-        
-        # 输出结果
         if result.success:
             print_user_success(f"\n🎉 Source点分析完成！")
-            
-            # 格式化输出报告
             report_content = f"""# Source点分析报告
 
 ## 分析配置
@@ -407,14 +403,14 @@ async def run_md_source_analysis(
 ---
 *报告由 PureAutoCodeQL 自动生成*
 """
-            
+
             # 保存到文件
             if output_file:
                 output_path = Path(output_file)
             else:
                 timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_path = Path(f"source_analysis_report_{timestamp}.md")
-            
+
             try:
                 output_path.write_text(report_content, encoding='utf-8')
                 print_user_info(f"📄 分析报告已保存到: {output_path}")
@@ -427,7 +423,7 @@ async def run_md_source_analysis(
         else:
             print_user_error(f"\n❌ Source点分析失败: {result.error}")
             logger.error(f"Source点分析失败: {result.error}")
-        
+
     except Exception as e:
         print_user_error(f"❌ Source点分析失败: {e}")
         logger.error(f"Source点分析失败: {e}", exc_info=True)
@@ -635,11 +631,11 @@ def parse_arguments() -> argparse.Namespace:
 def list_providers() -> None:
     """列出所有可用的模型提供商"""
     providers = list_available_providers()
-    
+
     print("\n" + "=" * 80)
     print("📋 可用的模型提供商:")
     print("=" * 80)
-    
+
     for provider in providers:
         print(f"\n🔹 {provider['display_name']} ({provider['name']})")
         print(f"   状态: {provider['status']}")
@@ -648,7 +644,7 @@ def list_providers() -> None:
         print(f"   Base URL: {provider['base_url']}")
         if not provider['has_api_key']:
             print(f"   ⚠️  需要设置 API Key 环境变量")
-    
+
     print("\n" + "=" * 80)
     print("💡 使用方式:")
     print("   python Analyze.py --case CVE-2021-21985 --provider deepseek")
@@ -682,7 +678,7 @@ async def main() -> None:
             # 如果指定了 --model，同时应用到 think_model 和 chat_model
             think_model = args.think_model or args.model
             chat_model = args.chat_model or args.model
-            
+
             await run_case_analysis(
                 case_id=args.case,
                 refresh_intel=args.refresh_intel,
@@ -698,7 +694,7 @@ async def main() -> None:
             print(f"🚀 PureAutoCodeQL 启动")
             print(f"📄 MD文件: {args.md_file}")
             print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
-            
+
             # 检查是否同时指定了 --src-path，如果是则使用source分析模式
             if args.src_path:
                 print(f"📁 源代码路径: {args.src_path}")
@@ -714,7 +710,7 @@ async def main() -> None:
                 # 如果指定了 --model，同时应用到 think_model 和 chat_model
                 think_model = args.think_model or args.model
                 chat_model = args.chat_model or args.model
-                
+
                 await run_md_source_analysis(
                     md_file_path=args.md_file,
                     src_path=args.src_path,
@@ -740,7 +736,7 @@ async def main() -> None:
                 # 如果指定了 --model，同时应用到 think_model 和 chat_model
                 think_model = args.think_model or args.model
                 chat_model = args.chat_model or args.model
-                
+
                 await run_md_direct_codeql(
                     md_file_path=args.md_file,
                     stream=args.stream,
