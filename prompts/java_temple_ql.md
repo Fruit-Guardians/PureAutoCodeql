@@ -32,7 +32,23 @@ import semmle.code.java.dataflow.FlowSources
 module VulnConfig implements DataFlow::ConfigSig {
   predicate isSource(DataFlow::Node src) {
     // TODO: 定义Java数据源，例如:
-    // exists(RemoteFlowSource rfs | rfs.getSource() = src)
+    // exists(RemoteFlowSource rfs | rfs.getSource() = src)exists(Method m, Parameter p |
+      m.getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
+      (
+        m.hasName("xxx") or
+        m.hasName("xxx")
+      ) and
+      p = m.getAParameter() and
+      src.asParameter() = p
+    )
+    or
+    // Also consider Spring request body and request parameters as sources
+    exists(Method m, Parameter p |
+      m.getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
+      p.getAnAnnotation().getType().hasQualifiedName("org.springframework.web.bind.annotation", "RequestBody") and
+      src.asParameter() = p
+    )
+    or
   }
   predicate isSink(DataFlow::Node sink) {
     // TODO: 定义Java sinks
@@ -52,7 +68,12 @@ module VulnConfig implements DataFlow::ConfigSig {
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
     // Handle data flow through ProxygenSerializer deserialization
     exists(MethodCall mc |
-      ...........................
+      mc.getMethod().getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
+      (
+        mc.getMethod().hasName("xxx") or
+        mc.getMethod().hasName("xxx")
+      ) and
+      dst.asExpr() = mc
     )
   }
 }

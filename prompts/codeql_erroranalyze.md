@@ -9,9 +9,6 @@
 使用方法：调用 `lsp_function_lookup("函数名")` 即可获取函数的完整定义、参数说明和使用示例。
 
 以下是占位符变量说明：
-<ROUND_INDEX>
-[[ROUND_INDEX]] – 迭代编号。
-</ROUND_INDEX>
 <ERROR_LOG>
 [[ERROR_LOG]] – 原始编译器/执行日志。
 </ERROR_LOG>
@@ -77,6 +74,8 @@ Rules:
 | Flow 模块 | `module Flow = TaintTracking::Global<Config>;` | Path - problem 固定写法 |
 
 禁止出现：`MethodCall`、`Call`、未加命名空间的 `ParameterNode`、直接 `getFile()`、任何旧版 API。若需要引用参考案例，请说明“沿用 + 改动点”。
+
+不使用 m.getBody().getAStmt().getAChildExpr() 深度 AST 导航，而是使用 Call 的 getEnclosingCallable() 与 getAnArgument() 进行浅层选择；保持 m.getDeclaringType().hasQualifiedName("com.vmware.vsan.client.services","ProxygenController")、m.hasName("invokeService") 和 src.asParameter() = p 约束，并将 dst.asExpr() 绑定为 c.getAnArgument()，以避免 inline 报错。
 
 ### 诊断步骤
 1. **解析错误信息**：

@@ -103,5 +103,6 @@
    - Java：通常使用7个参数格式
    - C/C++：通常使用6个参数格式
    - ❌ 不要混用不同语言的格式
+- 不使用 m.getBody().getAStmt().getAChildExpr() 深度 AST 导航，而是使用 Call 的 getEnclosingCallable() 与 getAnArgument() 进行浅层选择；保持 m.getDeclaringType().hasQualifiedName("com.vmware.vsan.client.services","ProxygenController")、m.hasName("invokeService") 和 src.asParameter() = p 约束，并将 dst.asExpr() 绑定为 c.getAnArgument()，以避免 inline 报错。
 
 最终无须总结报告
