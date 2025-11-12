@@ -23,14 +23,14 @@ def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
     if not config:
         from config import get_resilient_llm_config, LLMRole
         return get_resilient_llm_config(role)
-    
+
     from config import get_llm_config, LLMRole
     # 从配置中获取参数
     provider = config.llm_provider
     model_name = config.think_model if role == LLMRole.THINK else config.chat_model
     api_key = config.api_key
     base_url = config.base_url
-    
+
     return get_llm_config(
         role,
         provider_name=provider,
@@ -208,8 +208,8 @@ class CodeQLGenerationStep(AnalysisStep):
         print("=== CodeQL Query Generation ===")
         print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
         compose_output = await codeql_tool._arun(
-            codeql_requirement, 
-            show_thinking=context.show_thinking, 
+            codeql_requirement,
+            show_thinking=context.show_thinking,
             event_callback=context.event_callback,
             agent_name=self.agent_name,
             agent_type=self.name
@@ -260,7 +260,7 @@ class AnalysisPipeline:
             language=context.language
         )
         config = config or AnalysisConfig()
-        
+
         # 将配置存储到上下文中，供步骤使用
         context._config = config
 
@@ -294,34 +294,34 @@ class AnalysisPipeline:
 
         finally:
             result.execution_time = time.time() - start_time
-            
+
             # 整合输出文件到统一文件夹
             await self._consolidate_output_files(context, result, config)
 
         return result
 
     async def _consolidate_output_files(
-        self, 
-        context: AnalysisContext, 
+        self,
+        context: AnalysisContext,
         result: AnalysisResult,
         config: AnalysisConfig
     ) -> None:
         """整合所有输出文件到统一的文件夹结构。"""
         try:
             from utils.io import write_analysis_output
-            
+
             cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
             cve_tag = sanitize_tag(cve_id or context.case_id or "UNKNOWN")
             output_base = Path(config.output_base_dir)
             json_result_path: Optional[Path] = None
-            
+
             # 确定输出路径
             if config.output_file:
                 # 用户指定了输出文件，直接写入该文件
                 output_path = Path(config.output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_dir = output_path.parent
-                
+
                 logger.info(f"写入输出文件: {output_path}")
                 write_analysis_output(
                     result.cve_result,
@@ -341,9 +341,9 @@ class AnalysisPipeline:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_dir = output_base / f'analysis_output_{cve_tag}_{timestamp}'
                 output_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 logger.info(f"创建输出目录: {output_dir}")
-                
+
                 # 生成output.md文件
                 output_path = output_dir / f'{cve_tag}_output.md'
                 write_analysis_output(
@@ -360,18 +360,18 @@ class AnalysisPipeline:
                 # 清理旧输出目录
                 if config.keep_output_dirs > 0:
                     self._cleanup_old_output_dirs(output_base, config.keep_output_dirs)
-                
+
                 # 更新结果中的输出目录信息
                 result.output_directory = str(output_dir)
                 logger.info(f"✅ 分析结果已整合到文件夹: {output_dir}")
-            
+
             json_result_path = await self._process_sarif_files(
                 output_base=output_base,
                 output_dir=output_dir,
                 config=config,
                 cve_tag=cve_tag,
             )
-            
+
             if json_result_path:
                 path_selection_output = await self._run_path_selection(
                     context=context,
@@ -386,7 +386,7 @@ class AnalysisPipeline:
                     result.path_selection_result = path_selection_output
             else:
                 logger.warning("路径选择模块跳过：未生成 dataFlowPath JSON")
-                
+
         except PermissionError as e:
             error_msg = f"文件权限错误，无法写入输出文件: {e}"
             logger.error(error_msg)
@@ -399,11 +399,11 @@ class AnalysisPipeline:
             error_msg = f"输出文件整合失败: {e}"
             logger.exception(error_msg)
             result.error_message = (result.error_message or "") + f"\n{error_msg}"
-    
+
     async def _process_sarif_files(
-        self, 
-        output_base: Path, 
-        output_dir: Path, 
+        self,
+        output_base: Path,
+        output_dir: Path,
         config: AnalysisConfig,
         cve_tag: str,
     ) -> Optional[Path]:
@@ -413,80 +413,80 @@ class AnalysisPipeline:
             if not sarif_files:
                 logger.debug("未找到SARIF文件")
                 return None
-            
+
             latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
             sarif_filename = latest_sarif.name
             target_sarif = output_dir / sarif_filename
-            
+
             # 先复制文件
             shutil.copy2(latest_sarif, target_sarif)
             logger.info(f"已复制SARIF文件: {sarif_filename}")
-            
+
             # 转换SARIF为JSON（在复制成功后）
             json_path: Optional[Path] = None
             try:
                 from utils.sarif_utils import sarif_to_all_paths
-                
+
                 with open(target_sarif, 'r', encoding='utf-8') as f:
                     sarif_data = json.load(f)
-                
+
                 json_data = sarif_to_all_paths(sarif_data)
                 # 使用更清晰的命名：all_paths 表示这是所有原始路径
                 json_filename = f"{cve_tag}_all_paths_raw.json"
                 json_path = output_dir / json_filename
-                
+
                 with open(json_path, 'w', encoding=config.output_encoding) as f:
                     json.dump(json_data, f, ensure_ascii=False, indent=2)
-                
+
                 # 验证JSON文件写入成功
                 if json_path.exists() and json_path.stat().st_size > 0:
                     logger.info(f"✅ SARIF文件已转换为JSON(所有原始路径): {json_filename}")
                 else:
                     logger.warning(f"⚠️ JSON文件写入可能失败: {json_filename}")
-                    
+
             except Exception as e:
                 logger.warning(f"SARIF转JSON失败: {e}，但SARIF文件已保存")
                 json_path = None
-            
+
             # 所有处理完成后再删除原文件
             try:
                 latest_sarif.unlink()
                 logger.debug(f"已删除原始SARIF文件: {latest_sarif}")
             except Exception as e:
                 logger.warning(f"删除原始SARIF文件失败: {e}，文件已保留")
-            
+
             return json_path
-                
+
         except Exception as e:
             logger.exception(f"处理SARIF文件时出错: {e}")
         return None
-    
+
     def _cleanup_old_output_dirs(self, output_base: Path, keep_count: int) -> None:
         """清理旧的输出目录，只保留最近的N个。"""
         try:
             if not output_base.exists():
                 return
-            
+
             # 查找所有输出目录
             output_dirs = [
                 d for d in output_base.iterdir()
                 if d.is_dir() and d.name.startswith('analysis_output_')
             ]
-            
+
             if len(output_dirs) <= keep_count:
                 return
-            
+
             # 按修改时间排序，删除最旧的
             sorted_dirs = sorted(output_dirs, key=lambda x: x.stat().st_mtime, reverse=True)
             dirs_to_remove = sorted_dirs[keep_count:]
-            
+
             for old_dir in dirs_to_remove:
                 try:
                     shutil.rmtree(old_dir)
                     logger.info(f"已清理旧输出目录: {old_dir.name}")
                 except Exception as e:
                     logger.warning(f"清理目录失败 {old_dir.name}: {e}")
-                    
+
         except Exception as e:
             logger.warning(f"清理旧输出目录时出错: {e}")
 
