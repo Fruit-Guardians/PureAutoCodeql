@@ -44,8 +44,11 @@ env/
 temp/
 tmp/
 *.tmp
+output/
+
 
 # OS
+projects/
 .DS_Store
 Thumbs.db
 .projects/CVE-2025-46725/
