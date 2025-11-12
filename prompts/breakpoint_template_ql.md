@@ -1,3 +1,8 @@
+# 生成策略
+把已知Source和Sink点以及isAddtion判断条件直接填入<SINK>和<SOURCE>以及<ISADDITION>中，不能擅自修改，严格遵循骨架
+
+骨架如下：
+
 /** ====== 与上个查询相同的 Source/Sink 和补边 ====== */
 class FixedSourceNode extends DataFlow::Node { FixedSourceNode() { <SINK> } }
 class FixedSinkNode   extends DataFlow::Node { FixedSinkNode()   { <SOURCE> } }
