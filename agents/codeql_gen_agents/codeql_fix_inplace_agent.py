@@ -14,11 +14,11 @@ if TYPE_CHECKING:
         pass
 
 
-class CodeQLErrorAgent:
-    """Analyze and diagnose CodeQL compilation/runtime errors.
+class CodeQLFixInplaceAgent:
+    """Fix CodeQL errors by modifying existing query files in-place using MCP tools.
     
-    This agent analyzes errors and provides structured fix suggestions,
-    but does NOT generate or modify code directly.
+    This agent receives error analysis suggestions and uses MCP filesystem tools
+    to apply the fixes directly to the .ql file.
     """
 
     def __init__(
@@ -27,9 +27,9 @@ class CodeQLErrorAgent:
         prompt_file: Optional[Path] = None
     ):
         self.analyzer = analyzer
-        # Always use error analysis prompt
+        # Always use in-place fix prompt
         self.prompt_file = prompt_file or (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_erroranalyze.md"
+            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_fix_inplace.md"
         )
 
     def _load_prompt(self) -> str:
@@ -50,54 +50,56 @@ class CodeQLErrorAgent:
 
     def build_prompt(
         self,
-        error_log: str,
+        ql_file_path: str,
         curr_ql_content: str,
-        round_index: int = 1,
+        prev_fix_suggestions: str,
         prev_original_ql: Optional[str] = None,
     ) -> str:
-        """Build the final prompt including error logs and QL contents.
+        """Build the final prompt for in-place fixing.
         
         Args:
-            error_log: Error log from CodeQL execution
+            ql_file_path: Absolute path to the .ql file to be modified
             curr_ql_content: Current query content
-            round_index: Current iteration number
+            prev_fix_suggestions: Error analysis suggestions from ErrorAgent
             prev_original_ql: Previous query content (optional)
         """
         template = self._load_prompt()
         values = {
-            "ROUND_INDEX": str(round_index or 1),
-            "ERROR_LOG": error_log or "",
+            "QL_FILE_PATH": ql_file_path or "",
             "CURR_QL_CONTENT": curr_ql_content or "",
+            "PREV_FIX_SUGGESTIONS": prev_fix_suggestions or "",
             "PREV_ORIGINAL_QL": prev_original_ql or "",
         }
         return self._fill_placeholders(template, values)
 
-    async def analyze(
+    async def fix(
         self,
-        error_log: str,
+        ql_file_path: str,
         curr_ql_content: str,
-        round_index: int = 1,
+        prev_fix_suggestions: str,
         prev_original_ql: Optional[str] = None,
+        round_index: int = 1,
         show_thinking: bool = False,
         event_callback = None,
         agent_name: str = None,
         agent_type: str = None,
     ) -> "AgentResult":
-        """Run error analysis with current and previous context to produce fix suggestions.
+        """Apply in-place fixes to the .ql file based on error analysis suggestions.
         
         Args:
-            error_log: Error log from CodeQL execution
+            ql_file_path: Absolute path to the .ql file to be modified
             curr_ql_content: Current query content
-            round_index: Current iteration number
+            prev_fix_suggestions: Error analysis suggestions from ErrorAgent
             prev_original_ql: Previous query content (optional)
+            round_index: Current iteration number
             show_thinking: Whether to show thinking process
             event_callback: Callback for events
             agent_name: Name of the agent
             agent_type: Type of the agent
         """
         try:
-            _agent_name = agent_name or "CodeQL Error Analysis Agent"
-            _agent_type = agent_type or "codeql_error_analysis"
+            _agent_name = agent_name or "CodeQL In-Place Fix Agent"
+            _agent_type = agent_type or "codeql_inplace_fix"
             if event_callback:
                 from datetime import datetime
                 await event_callback({
@@ -105,14 +107,14 @@ class CodeQLErrorAgent:
                     "timestamp": datetime.now().isoformat(),
                     "agent_name": _agent_name,
                     "agent_type": _agent_type,
-                    "message": f"开始CodeQL错误分析（第{round_index}轮）",
-                    "data": {"round_index": round_index}
+                    "message": f"开始CodeQL原地修复（第{round_index}轮）",
+                    "data": {"round_index": round_index, "ql_file_path": ql_file_path}
                 })
             
             prompt = self.build_prompt(
-                error_log=error_log,
+                ql_file_path=ql_file_path,
                 curr_ql_content=curr_ql_content,
-                round_index=round_index,
+                prev_fix_suggestions=prev_fix_suggestions,
                 prev_original_ql=prev_original_ql,
             )
             
@@ -129,7 +131,7 @@ class CodeQLErrorAgent:
                     "timestamp": datetime.now().isoformat(),
                     "agent_name": _agent_name,
                     "agent_type": _agent_type,
-                    "message": f"CodeQL错误分析完成（第{round_index}轮）",
+                    "message": f"CodeQL原地修复完成（第{round_index}轮）",
                     "data": {"success": result.success, "round_index": round_index}
                 })
             
@@ -138,14 +140,14 @@ class CodeQLErrorAgent:
         except Exception as e:
             if event_callback:
                 from datetime import datetime
-                _agent_name = agent_name or "CodeQL Error Analysis Agent"
-                _agent_type = agent_type or "codeql_error_analysis"
+                _agent_name = agent_name or "CodeQL In-Place Fix Agent"
+                _agent_type = agent_type or "codeql_inplace_fix"
                 await event_callback({
                     "type": "error",
                     "timestamp": datetime.now().isoformat(),
                     "agent_name": _agent_name,
                     "agent_type": _agent_type,
-                    "message": f"CodeQL错误分析失败: {str(e)}",
+                    "message": f"CodeQL原地修复失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
             
@@ -158,3 +160,4 @@ class CodeQLErrorAgent:
                 error: str = None
 
             return AgentResult(content="", success=False, error=str(e))
+

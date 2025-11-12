@@ -293,27 +293,34 @@ class PathSelectionService:
             selection_reasoning = "LLM fallback: 使用确定性打分排序的结果"
             coverage_analysis = rank_result.coverage
 
+        # 输出 LLM 选择结果摘要
+        selection_data = {
+            "selection": [
+                {
+                    "index": path.get("index"),
+                    "candidate_rank": path.get("selection_info", {}).get(
+                        "candidate_rank"
+                    ),
+                    "confidence": path.get("selection_info", {}).get("confidence"),
+                    "reason": path.get("selection_info", {}).get("reason"),
+                    "analysis_steps": path.get("selection_info", {}).get(
+                        "analysis_steps"
+                    ),
+                }
+                for path in selected_paths
+            ]
+        }
+        
         await self._emit_event(
             event_callback,
             event_type="info",
             message="LLM 精排结论",
-            data={
-                "selection": [
-                    {
-                        "index": path.get("index"),
-                        "candidate_rank": path.get("selection_info", {}).get(
-                            "candidate_rank"
-                        ),
-                        "confidence": path.get("selection_info", {}).get("confidence"),
-                        "reason": path.get("selection_info", {}).get("reason"),
-                        "analysis_steps": path.get("selection_info", {}).get(
-                            "analysis_steps"
-                        ),
-                    }
-                    for path in selected_paths
-                ]
-            },
+            data=selection_data,
         )
+        
+        # 如果没有 callback，直接打印到控制台
+        if not event_callback:
+            self._print_selection_summary(selection_data["selection"])
 
         verification = self.path_verifier.verify_paths(
             selected_paths,
@@ -451,6 +458,33 @@ class PathSelectionService:
                 entry.get("reason"),
             )
         logger.info("Verification summary: %s", debug_info.get("verification", {}))
+
+    def _print_selection_summary(self, selection: List[Dict[str, Any]]) -> None:
+        """在控制台输出选择结果摘要。"""
+        import sys
+        
+        sys.stdout.write("\n")
+        sys.stdout.write("=" * 60 + "\n")
+        sys.stdout.write("📊 LLM 精排结论\n")
+        sys.stdout.write("=" * 60 + "\n")
+        
+        for item in selection:
+            idx = item.get("index", "?")
+            rank = item.get("candidate_rank", "?")
+            confidence = item.get("confidence", "N/A")
+            reason = item.get("reason", "N/A")
+            
+            sys.stdout.write(f"\n  ✓ 路径 #{idx} [候选排名: {rank}, 置信度: {confidence}]\n")
+            sys.stdout.write(f"    原因: {reason}\n")
+            
+            steps = item.get("analysis_steps") or []
+            if steps:
+                sys.stdout.write("    分析步骤:\n")
+                for step in steps:
+                    sys.stdout.write(f"      · {step}\n")
+        
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
     async def _emit_event(
         self,
