@@ -382,16 +382,10 @@ class CodeQLComposeTool(BaseTool):
         query_file = create_temporary_qlpack("", language=target_language, task_id=task_id)
         pack_root = query_file.parent
 
-        # 启动LSP服务
+        # 启动LSP服务（仅用于语法检查）
         print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
         print(f"   [CodeQLComposeTool] 初始化LSP服务")
         lsp_service = CodeQLLSPService(pack_root, query_file)
-        
-        from tools.lsp_codeql import HotCodeQL
-        from tools.lsp_lookup_tool import LSPFunctionLookupTool
-        
-        hot_engine = None
-        lsp_lookup_tool = None
 
         # 添加详细的进度指示
         import time
@@ -400,49 +394,14 @@ class CodeQLComposeTool(BaseTool):
         is_success = False
         print(f"   [CodeQLComposeTool] 启动LSP服务")
 
-
         # 调用start_server方法，它内部已经有30秒的重试机制
-        if lsp_service.start():
-            elapsed_time = time.time() - start_time
-            print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
-            try:
-                hot_engine = HotCodeQL(
-                    codeql="codeql",
-                    pack_root=pack_root,
-                    query_file=query_file,
-                    synchronous=True,
-                    init_timeout=60.0,
-                    quiet_logs=True
-                )
-                hot_engine.start()
-                
-                # 创建LSP函数查询工具
-                lsp_lookup_tool = LSPFunctionLookupTool(engine=hot_engine)
-                
-                # 确保analyzer已初始化
-                if self.analyzer:
-                    if not hasattr(self.analyzer, 'tools') or self.analyzer.tools is None:
-                        print(f"   [CodeQLComposeTool] 等待analyzer初始化...")
-                        await self.analyzer.initialize(event_callback)
-                    
-                    # 将工具添加到analyzer的工具列表
-                    if self.analyzer.tools is not None:
-                        self.analyzer.tools.append(lsp_lookup_tool)
-                        # print(f"✅ [CodeQLComposeTool] LSP函数查询工具已添加到analyzer (共{len(self.analyzer.tools)}个工具)")
-                    else:
-                        pass
-                        # print(f"⚠️  [CodeQLComposeTool] analyzer.tools为None，无法添加LSP查询工具")
-                else:
-                    print(f"⚠️  [CodeQLComposeTool] analyzer未配置，无法添加LSP查询工具")
-                
-            except Exception as e:
-                print(f"⚠️  [CodeQLComposeTool] HotCodeQL引擎启动失败: {e}")
-                print(f"   [CodeQLComposeTool] 将继续执行，但函数查询功能不可用")
-                import traceback
-                traceback.print_exc()
-        else:
+        if not lsp_service.start():
             print("❌ [CodeQLComposeTool] LSP服务启动失败")
             return f"Error: Failed to start LSP service for syntax checking"
+        
+        elapsed_time = time.time() - start_time
+        print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+    
 
         try:
             with self._syntax_session_cls(pack_root):
@@ -486,7 +445,7 @@ class CodeQLComposeTool(BaseTool):
                         # Save generated query to file immediately
                         print(f"💾 [CodeQLComposeTool] QL文件: {query_file}")
                         query_file.write_text(current_ql, encoding='utf-8')
-                        
+
                         # Also save to persistent directory
                         metadata = {
                             "task_id": task_id,
@@ -501,7 +460,7 @@ class CodeQLComposeTool(BaseTool):
                             language=target_language,
                             metadata=metadata
                         )
-                        
+
                         is_first_round = False
                     else:
                         # For subsequent rounds, read from file (modified by FixInplaceAgent)
@@ -575,7 +534,7 @@ class CodeQLComposeTool(BaseTool):
                             f"Last attempted query:\n```ql\n{current_ql}\n```"
                         )
                         return final_result
-                    
+
                     # Step 1: Use ErrorAgent to analyze errors
                     print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
                     error_prompt_base = error_agent.build_prompt(
@@ -613,7 +572,7 @@ class CodeQLComposeTool(BaseTool):
                     # Step 2: Use FixInplaceAgent to modify the file
                     print(f"🔧 [CodeQLComposeTool] 开始修复QL语句")
                     ql_file_path_abs = str(query_file.resolve())
-                    
+
                     fix_result = await fix_inplace_agent.fix(
                         ql_file_path=ql_file_path_abs,
                         curr_ql_content=current_ql,
@@ -623,7 +582,7 @@ class CodeQLComposeTool(BaseTool):
                         show_thinking=show_thinking,
                         event_callback=event_callback,
                     )
-                    
+
                     if not fix_result.success:
                         is_success = False
                         final_result = (
@@ -631,7 +590,7 @@ class CodeQLComposeTool(BaseTool):
                             f"{fix_result.error or 'Unknown error'}"
                         )
                         return final_result
-                    
+
                     print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
 
                     prev_original_ql = current_ql
@@ -658,20 +617,6 @@ class CodeQLComposeTool(BaseTool):
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
             lsp_service.stop()
-            
-            # 停止HotCodeQL引擎
-            if hot_engine:
-                try:
-                    hot_engine.shutdown()
-                except Exception as e:
-                    print(f"⚠️  [CodeQLComposeTool] 停止HotCodeQL引擎时出错: {e}")
-            
-            # 从analyzer工具列表中移除LSP查询工具
-            if lsp_lookup_tool and self.analyzer and hasattr(self.analyzer, 'tools') and self.analyzer.tools:
-                try:
-                    self.analyzer.tools.remove(lsp_lookup_tool)
-                except ValueError:
-                    pass
 
         if final_result is not None:
             return final_result
