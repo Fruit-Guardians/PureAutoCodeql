@@ -72,7 +72,11 @@ def build_cpp_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = 
 
 **可用工具:**
 
-* `ripgrep`: 用于快速搜索文件中的函数名、关键词，获取行号位置（**大文件分析前必须先使用此工具定位**）。
+* `ripgrep` (或 `search`): 用于快速搜索文件中的函数名、关键词，获取行号位置（**大文件分析前必须先使用此工具定位**）。
+  - **重要**: ripgrep 工具使用相对于当前工作目录的路径。
+  - **路径格式**: 使用相对于当前工作目录的路径，例如：`projects/CVE-2000-0973/source_code/...`
+  - **如果遇到路径错误**: 可以先使用 `search_files` 工具找到文件的确切路径，然后再使用 ripgrep 搜索文件内容。
+  - **替代方案**: 如果 ripgrep 工具路径有问题，可以直接使用 `read_text_file` 工具读取文件，然后手动搜索关键词。
 * `server-filesystem`: 用于读取文件内容（重要限制：只读取sink点所在的文件，不额外读取其他文件）。
 * 工具参数约束：
   - 调用 `read_text_file` 时，不能同时指定 `head` 与 `tail`；如需同时查看文件顶部与底部，请分两次分别读取。

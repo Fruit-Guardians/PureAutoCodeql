@@ -533,7 +533,8 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
         else:
             return f"找到 {count} 个文件"
 
-    if tool_name == "ripgrep":
+    # 处理 ripgrep/search 工具（mcp-ripgrep 的工具名称是 "search"）
+    if tool_name in ("ripgrep", "search"):
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         line_count = len(lines)
         if "no matches found" in text.lower() or text.lower() == "no matches found" or line_count == 0:
@@ -719,6 +720,50 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
 
         print("-" * 60)
 
+    # 检查是否是 ripgrep/search 工具
+    is_ripgrep = (
+        tool_name == "ripgrep" or
+        tool_name == "search" or
+        "ripgrep" in tool_name.lower() or
+        "search" in tool_name.lower()
+    )
+
+    if is_ripgrep:
+        # 显示 ripgrep 搜索结果的详细信息
+        output_str = str(output)
+        
+        # 提取 content='...' 中的内容
+        content_match = re.search(r"content='((?:[^'\\]|\\.)*)'", output_str)
+        if content_match:
+            content = content_match.group(1)
+            content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
+            output_str = content
+        
+        # 处理转义字符
+        if '\\n' in output_str and '\n' not in output_str:
+            output_str = output_str.replace('\\n', '\n')
+        
+        lines = [line.strip() for line in output_str.splitlines() if line.strip()]
+        line_count = len(lines)
+        
+        if "no matches found" in output_str.lower() or line_count == 0:
+            print("🔍 搜索结果: 未找到匹配")
+        else:
+            print(f"🔍 搜索结果: 找到 {line_count} 个匹配")
+            if line_count <= 20:
+                # 如果结果不多，显示所有结果
+                print("-" * 60)
+                for i, line in enumerate(lines, 1):
+                    print(f"{i:3d} | {line}")
+                print("-" * 60)
+            else:
+                # 如果结果很多，只显示前10个
+                print("-" * 60)
+                for i, line in enumerate(lines[:10], 1):
+                    print(f"{i:3d} | {line}")
+                print(f"... (还有 {line_count - 10} 个匹配未显示)")
+                print("-" * 60)
+
 
 class MultiAgentAnalyzer:
     """用于漏洞分析工作流的多Agent分析器。"""
@@ -748,8 +793,8 @@ class MultiAgentAnalyzer:
                     "transport": "stdio",
                 },
                 "ripgrep": {
-                    "command": "npx",
-                    "args": ["-y", "mcp-ripgrep@latest"],
+                    "command": "node",
+                    "args": [str(Path(__file__).parent.parent / "tools" / "mcp_ripgrep" / "dist" / "index.js")],
                     "transport": "stdio",
                 },
             }
@@ -876,11 +921,37 @@ class MultiAgentAnalyzer:
                         # 工具开始执行
                         tool_name = event.get("name", "")
                         current_tool = tool_name
+                        tool_input = event.get("data", {}).get("input", {})
+                        
                         # 如果AI正在流式输出，先换行
                         if ai_streaming:
                             print()
                             ai_streaming = False
-                        print(f"🔧 {tool_name} → ", end="", flush=True)
+                        
+                        # 对于 ripgrep/search 工具，显示命令信息
+                        if tool_name in ("ripgrep", "search"):
+                            # 尝试从不同位置获取输入参数
+                            if isinstance(tool_input, dict):
+                                pattern = tool_input.get("pattern", "")
+                                path = tool_input.get("path", "")
+                            else:
+                                # 尝试从 event.data 中获取
+                                event_data = event.get("data", {})
+                                if isinstance(event_data, dict):
+                                    pattern = event_data.get("pattern", "")
+                                    path = event_data.get("path", "")
+                                else:
+                                    pattern = ""
+                                    path = ""
+                            
+                            if pattern and path:
+                                # 构建命令显示
+                                cmd_display = f"rg -n '{pattern[:30]}{'...' if len(pattern) > 30 else ''}' '{path[:40]}{'...' if len(path) > 40 else ''}'"
+                                print(f"🔧 {tool_name} ({cmd_display}) → ", end="", flush=True)
+                            else:
+                                print(f"🔧 {tool_name} → ", end="", flush=True)
+                        else:
+                            print(f"🔧 {tool_name} → ", end="", flush=True)
 
                     elif event_name == "on_tool_end":
                         # 工具执行完成，在同一行显示结果

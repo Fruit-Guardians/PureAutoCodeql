@@ -109,7 +109,7 @@ def _discover_extra_files(inputs_dir: Path, cve_id: str) -> tuple[ExtraFile, ...
     """
     发现 inputs 目录中的额外文件。
     
-    排除标准的 CVE JSON 和 diff 文件。
+    排除标准的 CVE JSON、diff 和 patch 文件。
     """
     extra_files = []
     
@@ -118,7 +118,7 @@ def _discover_extra_files(inputs_dir: Path, cve_id: str) -> tuple[ExtraFile, ...
             continue
         
         # 排除标准 CVE 文件
-        if file_path.name.startswith('CVE-') and file_path.suffix in ('.json', '.diff'):
+        if file_path.name.startswith('CVE-') and file_path.suffix in ('.json', '.diff', '.patch'):
             continue
         
         # 排除隐藏文件和临时文件
@@ -166,12 +166,14 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
             json_path = json_map[cve_id]
             logger.info(f"📁 [本地文件] 找到CVE JSON文件: {json_path}")
         else:
-            # 本地有JSON文件但格式都无效，尝试从diff文件推断CVE ID
+            # 本地有JSON文件但格式都无效，尝试从diff/patch文件推断CVE ID
             diff_files = sorted(case_paths.inputs.glob("CVE-*.diff"))
-            if diff_files:
-                cve_id = extract_cve_id(diff_files[0].name)
+            patch_files = sorted(case_paths.inputs.glob("CVE-*.patch"))
+            all_diff_patch_files = sorted(diff_files + patch_files)
+            if all_diff_patch_files:
+                cve_id = extract_cve_id(all_diff_patch_files[0].name)
                 if cve_id:
-                    logger.info(f"📝 [推断ID] 从diff文件推断CVE ID: {cve_id}")
+                    logger.info(f"📝 [推断ID] 从diff/patch文件推断CVE ID: {cve_id}")
                 else:
                     raise ValueError(
                         f"Inputs directory {case_paths.inputs} contains files but no valid CVE IDs could be extracted"
@@ -181,18 +183,20 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
                     f"Inputs directory {case_paths.inputs} contains JSON files but no valid CVE IDs could be extracted"
                 )
     else:
-        # 没有本地JSON文件，尝试从diff文件推断CVE ID
+        # 没有本地JSON文件，尝试从diff/patch文件推断CVE ID
         diff_files = sorted(case_paths.inputs.glob("CVE-*.diff"))
-        if diff_files:
-            cve_id = extract_cve_id(diff_files[0].name)
+        patch_files = sorted(case_paths.inputs.glob("CVE-*.patch"))
+        all_diff_patch_files = sorted(diff_files + patch_files)
+        if all_diff_patch_files:
+            cve_id = extract_cve_id(all_diff_patch_files[0].name)
             if not cve_id:
                 raise ValueError(
-                    f"Inputs directory {case_paths.inputs} contains diff files but no valid CVE IDs could be extracted"
+                    f"Inputs directory {case_paths.inputs} contains diff/patch files but no valid CVE IDs could be extracted"
                 )
-            logger.info(f"📝 [推断ID] 未找到JSON文件，从diff文件推断CVE ID: {cve_id}")
+            logger.info(f"📝 [推断ID] 未找到JSON文件，从diff/patch文件推断CVE ID: {cve_id}")
         else:
             raise FileNotFoundError(
-                f"No CVE JSON or diff files found in {case_paths.inputs}"
+                f"No CVE JSON, diff or patch files found in {case_paths.inputs}"
             )
 
     # 如果没有有效的本地JSON文件，从NVD API获取
@@ -206,15 +210,20 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
             logger.error(f"❌ [获取失败] 无法获取CVE数据 {cve_id}: {e}")
             raise RuntimeError(f"Failed to fetch CVE data for {cve_id}: {e}")
 
-    # 处理diff文件（可选，缺失时不抛出异常）
+    # 处理diff/patch文件（可选，缺失时不抛出异常）
+    # 优先使用diff文件，如果没有则使用patch文件
     diff_candidates = sorted(case_paths.inputs.glob("CVE-*.diff"))
-    diff_map = {extract_cve_id(path.name): path for path in diff_candidates}
+    patch_candidates = sorted(case_paths.inputs.glob("CVE-*.patch"))
+    all_candidates = diff_candidates + patch_candidates
+    
+    diff_map = {extract_cve_id(path.name): path for path in all_candidates}
     diff_path = diff_map.get(cve_id.upper())
 
     if diff_path:
-        logger.info(f"📄 [本地文件] 找到diff文件: {diff_path}")
+        file_type = "diff" if diff_path.suffix == ".diff" else "patch"
+        logger.info(f"📄 [本地文件] 找到{file_type}文件: {diff_path}")
     else:
-        logger.info(f"⚠️  [文件缺失] 未找到 {cve_id} 的diff文件，将继续进行分析（无diff模式）")
+        logger.info(f"⚠️  [文件缺失] 未找到 {cve_id} 的diff/patch文件，将继续进行分析（无diff模式）")
 
     # 发现额外输入文件
     extra_files = _discover_extra_files(case_paths.inputs, cve_id)

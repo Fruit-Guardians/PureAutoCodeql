@@ -76,7 +76,17 @@ uv sync
 
 # 或使用 pip 安装
 pip install -r requirements.txt
+
+# 构建 MCP 工具（ripgrep 搜索工具）
+# Windows:
+build_mcp.bat
+
+# Linux/Mac:
+chmod +x build_mcp.sh
+./build_mcp.sh
 ```
+
+**注意**：MCP 工具需要 Node.js (v18+) 和 npm。如果未安装，请先安装 Node.js：https://nodejs.org/
 
 ### 快速运行
 

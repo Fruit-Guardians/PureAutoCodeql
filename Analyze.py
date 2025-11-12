@@ -472,9 +472,10 @@ async def validate_case(case_id: str) -> bool:
         print_user_info(f"   🎯 CVE ID: {cve_assets.cve_id}")
         print_user_info(f"   📄 JSON文件: {cve_assets.json_path}")
         if cve_assets.diff_path:
-            print_user_info(f"   🔄 Diff文件: {cve_assets.diff_path}")
+            file_type = "Diff" if cve_assets.diff_path.suffix == ".diff" else "Patch"
+            print_user_info(f"   🔄 {file_type}文件: {cve_assets.diff_path}")
         else:
-            print_user_warning(f"   ⚠️  没有Diff文件")
+            print_user_warning(f"   ⚠️  没有Diff/Patch文件")
 
         # 检测语言
         detector = LanguageDetector()
