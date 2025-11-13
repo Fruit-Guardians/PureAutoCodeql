@@ -147,13 +147,15 @@ module VulnConfig implements DataFlow::ConfigSig {
 
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
     // Handle data flow through ProxygenSerializer deserialization
-    exists(MethodCall mc |
+    exists(MethodCall mc , Expr arg|
       mc.getMethod().getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
       (
         mc.getMethod().hasName("xxx") or
         mc.getMethod().hasName("xxx")
       ) and
-      dst.asExpr() = mc
+    arg = mc.getAnArgument() and
+    src.asExpr() = arg and
+    dst.asExpr() = mc
     )
   }
 }
