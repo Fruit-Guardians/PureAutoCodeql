@@ -40,18 +40,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
   - **必须优先定义Sink点分析报告中的sink点**
   - **对于Java反射命令执行**：
     - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
-    - **不要限制函数的包名**，因为报告不会指明具体调用了哪个包的同名函数
-    - 使用方法名 + 文件路径的组合来定位，而不是包名
-    - 禁止使用底层调用（如 `Runtime.exec()`, `java.lang` 包下的函数等）
-    - 示例结构：`(报告中的sink点条件)`
-    - 参考定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
 
-        * **示例:**
-            - `new ResourceAdaptor(File file)` 构造函数（如果diff在此添加验证）
-            - `Resource.get(String path)` 方法（如果diff在此添加验证）
-            - `new File(parent, child)` 路径拼接处（如果diff在此添加验证）
-        * **关键:** Sink是**接受未验证路径的入口点**，而不是后续的文件操作
-        * **注意:** 这种情况比较少见，大多数路径遍历都会导致文件读写
 
     * **情况2 - 文件写入/上传漏洞 (File Write/Upload):**
         * **识别特征:** CVE描述提到"arbitrary file write", "file upload", "write arbitrary content"
@@ -133,6 +122,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 
 ---
 **[在此线下开始撰写报告]**
+禁止输出选择理由等无关信息，只保留这两个标题下的内容
 ````markdown
 ### Sink点分析报告：[此处填写CVE编号]
 
@@ -146,4 +136,6 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 ```java
 // [此处粘贴与Sink点最相关的关键代码片段，必须包含最终的文件操作/执行调用]
 ```
+
+
 """

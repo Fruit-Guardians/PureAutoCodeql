@@ -24,16 +24,7 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 - source点应该是明确的用户输入来源
 - **sink点定义原则（重要）**：
   - **必须优先定义Sink点分析报告中的sink点**
-  - **禁止直接使用底层调用作为限制条件**：
-    - ❌ 禁止：`Runtime.exec()`, `java.lang.reflect.Method.invoke()`, `java.lang` 包下的函数等
-    - ❌ 禁止：使用 `mc.getMethod().getDeclaringType().hasQualifiedName("java.lang.reflect", "Method")` 作为限制条件
-    - ✅ 要求：只限制到 Sink 点报告给出的具体函数调用
-  - **三种方法精确定位 sink 点**（使用 AND 组合确保精确性）：
-    1. **被调用的方法名**：`mc.getEnclosingCallable().hasName("invokeService")` - 用于锁定 sink 点所在的上层方法
-    2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` - 用于锁定具体的危险方法调用
-    3. **Java 文件路径匹配**：`mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java")` - 用于锁定具体文件
   - **注意**：
-    - 不允许使用内部包（如 java.lang）作为限制条件
     - 如果代码段有多次调用同名方法，可以添加包名或其他条件进一步限制
     - Sink 点报告中的 sink 点是必需的，必须精确匹配报告中的调用位置
   - 对于其他场景：sink点应该是明确的危险操作点
@@ -89,7 +80,6 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
   - 考虑间接的、多层调用的危险点
   - 包含日志记录、序列化等可能的风险点
   - 降低对sink点类型的限制
-  - **注意**：仍然避免直接使用底层 API（如 `java.lang` 包）作为主要限制条件
 
 - 适当放宽数据流的污点传播规则
 - 考虑更多的中间节点和传播路径

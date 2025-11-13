@@ -20,19 +20,43 @@ DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
     1. **被调用的方法名**：`mc.getEnclosingCallable().hasName("invokeService")` - 用于锁定 sink 点所在的上层方法
     2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` - 用于锁定具体的危险方法调用
     3. **Java 文件路径匹配**：`mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java")` - 用于锁定具体文件
-  - **示例**：
+  
+  - **🔴 关键：Sink 节点的正确定义方式**：
+    - **对于反射调用、命令执行等漏洞，必须将方法的参数作为 sink，而不是方法调用本身**
+    - ✅ **正确**：`sink.asExpr() = mc.getAnArgument()` - 污点数据流向方法参数
+    - ❌ **错误**：`sink.asExpr() = mc` - 污点数据流向整个方法调用
+    - **原因**：在数据流分析中，污点数据通常流向危险方法的参数（如 `invoke(method, obj, args)`），而不是方法调用表达式本身
+    - **适用场景**：
+      - 反射调用：`Method.invoke()`, `Constructor.newInstance()`
+      - 命令执行：`Runtime.exec()`, `ProcessBuilder.command()`
+      - SQL注入：`Statement.execute()`, `PreparedStatement.executeQuery()`
+      - 文件操作：`FileInputStream()`, `FileOutputStream()`
+      - 等所有接受用户输入作为参数的危险方法
+  
+  - **示例对比**：
     ```ql
+    // ❌ 错误示例 - 无法检测到数据流
     exists(MethodCall mc |
       mc.getEnclosingCallable().hasName("invokeService") and
       mc.getMethod().hasName("invoke") and
       mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
-      sink.asExpr() = mc
+      sink.asExpr() = mc  // 错误：将整个方法调用作为sink
+    )
+    
+    // ✅ 正确示例 - 能够检测到数据流
+    exists(MethodCall mc |
+      mc.getEnclosingCallable().hasName("invokeService") and
+      mc.getMethod().hasName("invoke") and
+      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
+      sink.asExpr() = mc.getAnArgument()  // 正确：将方法参数作为sink
     )
     ```
+  
   - **注意**：
     - 不允许使用内部包（如 java.lang）作为限制条件
     - 如果代码段有多次调用同名方法，可以添加包名或其他条件进一步限制
     - Sink 点报告中的 sink 点是必需的，必须精确匹配报告中的调用位置
+    - **默认情况下，对于所有危险方法调用，都应该使用 `mc.getAnArgument()` 作为 sink 节点**
 - 确保查询逻辑严谨，避免误报
 
 #### 编写约束
@@ -98,6 +122,7 @@ module VulnConfig implements DataFlow::ConfigSig {
     // 1. mc.getEnclosingCallable().hasName("xxx") - 被调用的方法名
     // 2. mc.getMethod().hasName("xxx") - 当前方法调用名
     // 3. mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%XxxController.java") - 文件路径
+    // 🔴 重要：使用 mc.getAnArgument() 将方法参数作为sink，而不是整个方法调用
     
     exists(MethodCall mc |
       // 方法1: 用被调用的方法去锁定这个sink点
@@ -106,7 +131,8 @@ module VulnConfig implements DataFlow::ConfigSig {
       mc.getMethod().hasName("invoke") and
       // 方法3: 用Java文件路径去锁定
       mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
-      sink.asExpr() = mc
+      // 🔴 关键：将方法参数作为sink，而不是方法调用本身
+      sink.asExpr() = mc.getAnArgument()
     )
     // 如果有多个sink点，使用 or 连接
     or
@@ -114,7 +140,8 @@ module VulnConfig implements DataFlow::ConfigSig {
       mc.getEnclosingCallable().hasName("anotherMethod") and
       mc.getMethod().hasName("dangerousCall") and
       mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%AnotherController.java") and
-      sink.asExpr() = mc
+      // 同样使用 mc.getAnArgument()
+      sink.asExpr() = mc.getAnArgument()
     )
   }
 
@@ -130,6 +157,14 @@ module VulnConfig implements DataFlow::ConfigSig {
     )
   }
 }
+
+//predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
+    exists(MethodCall ma |
+      ma.getMethod().hasQualifiedName("org.springframework.beans.factory", "BeanFactory", "getBean") and
+      node1.asExpr() = ma.getArgument(0) and
+      node2.asExpr() = ma
+    )
+  //}
 
 module Flow = TaintTracking::Global`<VulnConfig>`;
 import Flow::PathGraph
