@@ -47,6 +47,7 @@ class LSPDefinitionLookup:
     def get_supported_languages(self) -> List[str]:
         """
         Get list of supported languages based on available CodeQL packs.
+        Handles both versioned (e.g., java-all/7.7.2/) and non-versioned structures.
         
         Returns:
             List of supported language identifiers
@@ -57,7 +58,7 @@ class LSPDefinitionLookup:
         
         supported = []
         
-        # Check for language-specific packs
+        # Check for language-specific packs (versioned structure)
         language_patterns = [
             "java-all",    # Java
             "python-all",  # Python  
@@ -70,11 +71,15 @@ class LSPDefinitionLookup:
         ]
         
         for pattern in language_patterns:
-            if (stdlib_path / pattern).exists():
-                lang = pattern.replace("-all", "")
-                supported.append(lang)
+            pack_dir = stdlib_path / pattern
+            if pack_dir.exists():
+                # Check if it has version subdirectories
+                has_versions = any(d.is_dir() and d.name[0].isdigit() for d in pack_dir.iterdir())
+                if has_versions or pack_dir.is_dir():
+                    lang = pattern.replace("-all", "")
+                    supported.append(lang)
         
-        # Also check direct language directories
+        # Also check direct language directories (non-versioned)
         direct_langs = ["java", "python", "cpp", "javascript", "go", "csharp", "ruby", "swift"]
         for lang in direct_langs:
             if (stdlib_path / lang).exists():
@@ -320,33 +325,49 @@ class LSPDefinitionLookup:
         search_dirs = []
         
         # 1. Language-specific directories
+        # Handle versioned package structure (e.g., java-all/7.7.2/)
+        lang_pack_dir = stdlib_path / f"{language}-all"
+        if lang_pack_dir.exists():
+            # Find the latest version directory
+            version_dirs = [d for d in lang_pack_dir.iterdir() if d.is_dir()]
+            if version_dirs:
+                # Sort by version (simple string sort works for semantic versions)
+                latest_version = sorted(version_dirs)[-1]
+                search_dirs.append(latest_version)
+        
+        # Try non-versioned paths
         lang_dir = stdlib_path / language / "ql" / "lib"
         if lang_dir.exists():
             search_dirs.append(lang_dir)
-        else:
-            # Try alternative paths for different language pack structures
-            alt_paths = [
-                stdlib_path / language / "ql" / "src",
-                stdlib_path / f"{language}-all" / "ql" / "lib",
-                stdlib_path / f"{language}-all" / "ql" / "src",
-                # For language-specific packages that might be directly under stdlib
-                stdlib_path / f"codeql-{language}-all" / "ql" / "lib",
-                stdlib_path / f"codeql-{language}" / "ql" / "lib",
-            ]
-            for alt in alt_paths:
-                if alt.exists():
-                    search_dirs.append(alt)
-                    break
+        
+        # Try alternative paths for different language pack structures
+        alt_paths = [
+            stdlib_path / language / "ql" / "src",
+            stdlib_path / f"{language}-all" / "ql" / "lib",
+            stdlib_path / f"{language}-all" / "ql" / "src",
+            # For language-specific packages that might be directly under stdlib
+            stdlib_path / f"codeql-{language}-all" / "ql" / "lib",
+            stdlib_path / f"codeql-{language}" / "ql" / "lib",
+        ]
+        for alt in alt_paths:
+            if alt.exists() and alt not in search_dirs:
+                search_dirs.append(alt)
         
         # 2. Common/shared libraries (for signature modules like ConfigSig)
-        common_dirs = [
-            stdlib_path / "dataflow",  # codeql/dataflow package
-            stdlib_path / "util",       # codeql/util package
-            stdlib_path / "ssa",        # codeql/ssa package
-        ]
-        for common_dir in common_dirs:
-            if common_dir.exists():
-                search_dirs.append(common_dir)
+        # These are also versioned packages
+        common_packages = ["dataflow", "util", "ssa", "typetracking", "regex"]
+        for pkg_name in common_packages:
+            pkg_dir = stdlib_path / pkg_name
+            if pkg_dir.exists():
+                # Check if it's a versioned package
+                version_dirs = [d for d in pkg_dir.iterdir() if d.is_dir() and d.name[0].isdigit()]
+                if version_dirs:
+                    # Use the latest version
+                    latest_version = sorted(version_dirs)[-1]
+                    search_dirs.append(latest_version)
+                else:
+                    # Use the package directory directly
+                    search_dirs.append(pkg_dir)
         
         if not search_dirs:
             return None
