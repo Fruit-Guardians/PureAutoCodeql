@@ -12,6 +12,28 @@
  *       external/cve/cve-[CVE-ID]
  */
 
+## CodeQL生成规则 (CRITICAL)
+
+- **导入规范**
+  - 必须：`import cpp`
+  - 必须：`import semmle.code.cpp.dataflow.new.DataFlow`, `import semmle.code.cpp.dataflow.new.TaintTracking`
+  - ❌ 不使用旧模块 `semmle.code.cpp.dataflow.*`（非 new）
+- **配置与模块**
+  - 使用 `module VulnConfig implements DataFlow::ConfigSig`
+  - 使用 `module VulnFlow = TaintTracking::Global<VulnConfig>;` 并 `import VulnFlow::PathGraph`
+- **路径与节点**
+  - 使用 `VulnFlow::PathNode`，通过 `VulnFlow::flowPath(src, snk)` 计算路径
+- **类型要点**
+  - 指针解引用：`PointerDereferenceExpr`
+  - 数组：`ArrayExpr`；地址取：`AddressOfExpr`；字段：`FieldAccess`
+  - `DataFlow::Node` 与 `Expr` 之间用 `asExpr()`、`getNode().asExpr()` 转换
+- **Select 语句**
+  - 遵循模板中的 7 参数格式，首元素通常选危险调用元素（如 `VulnerableCall`）
+- **空谓词返回**
+  - 使用 `none()`，不要使用 `false`
+- **禁止事项**
+  - ❌ 不使用 `DataFlow::PathNode`、`TaintTracking::PathNode`、`DerefExpr` 等不存在/弃用类型
+
 import cpp
 import semmle.code.cpp.dataflow.new.TaintTracking
 import semmle.code.cpp.dataflow.new.DataFlow

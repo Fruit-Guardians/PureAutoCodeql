@@ -57,31 +57,28 @@
 
 ## CodeQL生成规则 (CRITICAL)
 
-1. **类型名称规范:**
+语言通用模板
 
-   - ✅ 严格使用 `MethodCall` (正确)
-   - ❌ 禁止使用 `MethodAccess` (已弃用)
-   - ❌ 禁止使用 `MethodAccessExpr` (不存在)
-2. **接口实现规范:**
+[[QL_TEMPLATE]]
+
+1. **接口实现规范（通用）**
 
    - 必须实现: `isSource`, `isSink`
    - 可选实现: `isAdditionalFlowStep`, `isSanitizer`
-   - ⚠️ 不同语言有不同的API规范，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的接口实现规范
-3. **必要导入:**
+   - ⚠️ 语言的具体 API/类型差异请遵循对应语言模板
+2. **导入规范（通用）**
 
-   - 根据 `[LANGUAGE]` 导入正确的标准CodeQL库和DataFlow/TaintTracking库
-   - ⚠️ **重要**：不同语言有不同的导入规范和API版本，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的导入规范
-   - 例如：
-     - Python: 参考 `python_template_ql.md`
-     - Java: 参考 `java_temple_ql.md`
-     - C/C++: 参考 `c_template_ql.md`
-4. **Select语句格式:**
+   - 根据 `[LANGUAGE]` 导入正确的标准库与 DataFlow/TaintTracking 库
+   - ⚠️ 具体导入清单与版本差异以对应语言模板为准
+3. **Select 语句（通用）**
 
-   - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求
-   - Python：通常使用7个参数格式
-   - Java：通常使用7个参数格式  
-   - C/C++：通常使用6个参数格式
-   - ❌ 不要混用不同语言的格式
+   - 严格遵循对应语言模板的 `select` 参数与格式约定
+   - ❌ 不要混用不同语言的 `select` 形式
+4. **语言特定规则位置**
+
+   - Python 规则见：`prompts/python_template_ql.md`
+   - Java 规则见：`prompts/java_temple_ql.md`
+   - C/C++ 规则见：`prompts/c_template_ql.md`
 
 ### Path-problem 查询通用要求
 
@@ -100,7 +97,7 @@
 
 #### 3. 语言特定规范
 
-**重要**：不同语言有不同的API和语法规范，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的规范：
+**重要**：不同语言有不同的API和语法规范，请严格遵循对应语言的模板文件中的规范：
 
 - **Python**：请参考 `python_template_ql.md` 中的Python DataFlow API规范
 - **Java**：请参考 `java_temple_ql.md` 中的Java规范
@@ -134,9 +131,3 @@
 现版本已将MethodAccess弃用
 
 **请严格遵循对应语言模板中的规范，不要混用不同语言的语法。**
-
----
-
-## 语言通用模板
-
-[[QL_TEMPLATE]]

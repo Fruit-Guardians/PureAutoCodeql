@@ -6,6 +6,30 @@
 
 ---
 
+## CodeQL生成规则 (CRITICAL)
+
+- **导入规范**
+  - 必须：`import python`
+  - 必须：`import semmle.python.dataflow.new.DataFlow`, `import semmle.python.dataflow.new.TaintTracking`
+  - 需要远程源时：`import semmle.python.dataflow.new.RemoteFlowSources`
+  - `import Flow::PathGraph` 放在 `module` 定义之后
+- **配置与模块**
+  - 使用 `module VulnConfig implements DataFlow::ConfigSig`
+  - 使用 `module Flow = TaintTracking::Global<VulnConfig>;`
+- **Select 语句**
+  - 使用 7 参数格式，例如：
+    `select sink.getNode(), src, sink, "message", src, "source", sink, "sink"`
+- **类型与节点约定**
+  - 常用：`DataFlow::CallCfgNode`, `DataFlow::ParameterNode`, `DataFlow::AttrRead`
+  - 作用域检查使用 `source.getScope() = f`、`call.getScope() = f`
+  - 远程源：`src instanceof RemoteFlowSource`
+- **空谓词返回**
+  - 使用 `none()`，不要使用 `false`
+- **禁止事项**
+  - 不要使用 `MethodCall`、裸 `ParameterNode`、旧的 `semmle.python.security.*`
+  - 不要直接对 AST 做 instance 判断，应先 `asCfgNode().getNode()`
+  - 不要使用 `getEnclosingCallable()` 替代 `getScope()`
+
 ## 1. 输出结构
 
 1. `### Plan Summary`  
