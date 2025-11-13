@@ -131,6 +131,7 @@ class LSPDefinitionLookup:
         # Compile regex patterns
         patterns = [
             re.compile(rf"^\s*class\s+{symbol_name}\s"),  # class definition
+            re.compile(rf"^\s*abstract\s+class\s+{symbol_name}\s"),  # abstract class definition
             re.compile(rf"^\s*predicate\s+{symbol_name}\s*\("),  # predicate definition
             re.compile(rf"^\s*(private|override|abstract|final)\s+{symbol_name}\s+{symbol_name}\s*\("),  # method
             re.compile(rf"^\s*[a-zA-Z_][a-zA-Z0-9_]*\s+{symbol_name}\s*\("),  # function with return type
@@ -215,6 +216,7 @@ class LSPDefinitionLookup:
             # ripgrep works on Windows/Linux/Mac
             patterns = [
                 f"^\\s*class\\s+{symbol_name}\\s",
+                f"^\\s*abstract\\s+class\\s+{symbol_name}\\s",
                 f"^\\s*predicate\\s+{symbol_name}\\s*\\(",
                 f"^\\s*(private|override|abstract|final)\\s+{symbol_name}\\s+{symbol_name}\\s*\\(",
                 f"^\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s+{symbol_name}\\s*\\(",
@@ -573,7 +575,12 @@ class LSPDefinitionLookup:
         if parsed.netloc and parsed.netloc != "localhost":
             file_path = Path(f"//{parsed.netloc}{parsed.path}")
         else:
-            file_path = Path(unquote(parsed.path))
+            path_str = unquote(parsed.path)
+            # Windows: Remove leading slash from drive letter paths (e.g., /C:/path -> C:/path)
+            import platform
+            if platform.system() == "Windows" and len(path_str) > 2 and path_str[0] == '/' and path_str[2] == ':':
+                path_str = path_str[1:]
+            file_path = Path(path_str)
         
         # Get range information
         range_info = (
