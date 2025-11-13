@@ -3,34 +3,69 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://python.org)
 [![CodeQL](https://img.shields.io/badge/CodeQL-Automated%20Security%20Analysis-green.svg)](https://codeql.github.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-HTTP%20API-green.svg)](https://fastapi.tiangolo.com/)
 
-**基于多智能体架构的自动化漏洞分析工具，使用 CodeQL 和 AI 技术进行 Java、C、Python 代码安全分析**
+**基于多智能体架构的自动化漏洞分析工具，使用 CodeQL 和 AI 技术进行 Java、C/C++、Python 代码安全分析**
 
-[📖 文档](docs/) · [🚀 快速开始](#-快速开始) · [🏗️ 架构](#-架构设计) · [🔧 配置](#llm-配置)
+[📖 文档](#-详细文档) · [🚀 快速开始](#-快速开始) · [🏗️ 架构](#-架构设计) · [🔧 配置](#-llm-配置) · [🌐 API 服务](#-http-api-服务)
 
 </div>
 
-## ✨ 新版本特性
+## 📚 目录
 
-### 🎯 **重构新架构 (v2.0)**
-- ✅ **分层架构设计** - 清晰的代码组织和职责分离
-- ✅ **统一编排器** - 简化的分析流程管理
-- ✅ **服务化组件** - 可复用的LLM、LSP、语言检测服务
+- [核心特性](#-核心特性)
+- [架构设计](#-架构设计)
+- [快速开始](#-快速开始)
+- [LLM 配置](#-llm-配置)
+- [HTTP API 服务](#-http-api-服务)
+- [高级功能](#-高级功能)
+- [使用场景](#-使用场景)
+- [开发指南](#-开发指南)
+- [详细文档](#-详细文档)
+
+## ✨ 核心特性
+
+### 🎯 **多智能体架构 (v2.0)**
+- ✅ **分层架构设计** - 核心层、服务层、Agent层、工具层清晰分离
+- ✅ **统一编排器** - `AnalysisOrchestrator` 统一管理分析流程
+- ✅ **服务化组件** - 可复用的 LLM、LSP、语言检测、知识库服务
+- ✅ **专业 Agent 系统** - CVE分析、Source分析、Sink分析、CodeQL生成等专业Agent
 - ✅ **向后兼容** - 现有代码无需修改即可使用
-- ✅ **异步优化** - 更好的并发性能和资源利用
-- ✅ **额外输入文件支持** - 在 `inputs/` 目录添加额外信息文件增强分析 🆕
+- ✅ **异步优化** - 全异步架构，支持高并发处理
 
-### 📊 **架构对比**
+### 🔬 **智能分析能力**
+- ✅ **自动语言检测** - 智能识别 Java、C/C++、Python 代码
+- ✅ **情报收集系统** - 自动从 NVD、GHSA 获取漏洞情报
+- ✅ **路径选择服务** - 基于 LLM 的智能路径筛选与验证
+- ✅ **Flow Break 检测** - 自动检测数据流断点并生成补边代码
+- ✅ **知识库支持** - Python CodeQL 知识库，包含模板、案例、辅助谓词
+- ✅ **额外输入文件** - 支持在 `inputs/` 目录添加任意格式的补充信息
 
-| 特性 | 旧版本 | 新版本 |
-|------|--------|--------|
-| 代码组织 | 单文件652行 | 分层模块化 |
-| 扩展性 | 需修改核心代码 | 插件化扩展 |
-| 维护性 | 耦合度高 | 低耦合高内聚 |
-| 测试性 | 难以单元测试 | 完整测试覆盖 |
-| 性能 | 同步阻塞 | 异步并发 |
+### 🛠️ **工具生态**
+- ✅ **CodeQL Compose** - 自动生成、编译、执行 CodeQL 查询
+- ✅ **LSP 集成** - CodeQL 语法检查和定义查找
+- ✅ **MCP Ripgrep** - 高效代码搜索工具
+- ✅ **多模型支持** - DeepSeek、SiliconFlow、智谱GLM、Kimi、Gemini
+- ✅ **自定义提供商** - 通过 TOML 配置任意 OpenAI 兼容 API
+
+### 🌐 **HTTP API 服务**
+- ✅ **FastAPI 服务器** - RESTful API 和 SSE 流式输出
+- ✅ **项目管理** - 案例创建、列表、详情查询
+- ✅ **异步分析** - 后台任务执行，实时进度反馈
+- ✅ **多语言支持** - API 路由自动适配不同编程语言
+
+### 📊 **技术亮点**
+
+| 特性 | 实现方式 | 优势 |
+|------|---------|------|
+| 代码组织 | 分层模块化设计 | 清晰的职责分离，易于维护和扩展 |
+| 分析流程 | Pipeline + Orchestrator | 灵活的步骤组合，支持自定义流程 |
+| 多模型支持 | 统一配置系统 | 零代码切换，支持自定义提供商 |
+| 性能优化 | 全异步架构 | 高并发处理，资源利用率高 |
+| 知识管理 | JSON 知识库 | 标签驱动检索，上下文精准 |
+| 可观测性 | 统一日志 + SSE 流 | 实时进度反馈，便于调试 |
 
 ## 🏗️ 架构设计
 
@@ -38,83 +73,271 @@
 
 ```
 PureAutoCodeql/
-├── 🎯 core/                        # 核心层 - 业务逻辑编排
-│   ├── context.py                  # 分析上下文和配置管理
+├── 🎯 core/                         # 核心层 - 业务逻辑编排
+│   ├── context.py                   # 分析上下文和配置管理
 │   ├── pipeline.py                  # 分析流水线和步骤定义
-│   └── orchestrator.py              # 分析编排器
-├── 🔧 services/                    # 服务层 - 基础服务
-│   ├── lsp_service.py               # CodeQL LSP语法检查服务
-│   ├── llm_service.py               # LLM和多Agent服务
-│   └── language_detector.py         # 编程语言检测服务
-├── 🤖 agents/                      # Agent层 - 专业分析Agent
-│   ├── cve_analysis_agent.py        # CVE分析Agent
-│   ├── unified_sink_path_agent.py   # 统一Sink路径分析Agent
-│   ├── unified_source_analysis_agent.py # 统一Source分析Agent
-│   └── codeql_gen_agents/           # CodeQL生成相关Agent
-├── 🛠️ tools/                       # 工具层 - 具体工具实现
-├── 📦 utils/                       # 工具函数层 - 通用工具
-├── 📝 prompts/                     # 提示词层 - 提示词管理
-├── ⚙️ config.py                    # 配置管理
-├── 🚀 Analyze.py                   # 主入口文件
-└── 📊 Information/                 # 情报收集模块 (GHSA/NVD)
+│   └── orchestrator.py              # 分析编排器（统一入口）
+│
+├── 🤖 agents/                       # Agent层 - 专业分析Agent
+│   ├── cve_analysis_agent.py        # CVE漏洞分析（提取漏洞类型、技术细节）
+│   ├── unified_source_analysis_agent.py # Source点分析（识别污点源）
+│   ├── unified_sink_path_agent.py   # Sink点分析（识别危险函数）
+│   └── codeql_gen_agents/           # CodeQL生成Agent集合
+│       ├── codeql_gen_agent.py      # 查询生成
+│       ├── codeql_error_agent.py    # 错误诊断
+│       └── codeql_fix_inplace_agent.py # 就地修复
+│
+├── 🔧 services/                     # 服务层 - 基础服务
+│   ├── llm_service.py               # LLM服务（多Agent协调）
+│   ├── lsp_service.py               # CodeQL LSP语法检查
+│   ├── language_detector.py         # 编程语言自动检测
+│   ├── codeql_execution.py          # CodeQL命令执行
+│   ├── flow_break_detection.py      # 数据流断点检测
+│   ├── path_selection/              # 路径选择服务
+│   │   ├── selector.py              # 主选择器
+│   │   ├── llm_analyzer.py          # LLM智能分析
+│   │   ├── path_verifier.py         # 路径验证
+│   │   └── language_adapters/       # 多语言适配器
+│   └── knowledge_base/              # 知识库服务
+│       ├── python.py                # Python知识库
+│       └── base.py                  # 知识库基类
+│
+├── 🛠️ tools/                        # 工具层 - 具体工具实现
+│   ├── codeql_compose.py            # CodeQL组合工具（生成+编译+执行）
+│   ├── lsp_codeql.py                # LSP CodeQL工具
+│   ├── lsp_lookup_tool.py           # LSP定义查找
+│   └── mcp_ripgrep/                 # MCP Ripgrep搜索工具
+│
+├── 📦 utils/                        # 工具函数层 - 通用工具
+│   ├── case.py                      # 案例解析和资产发现
+│   ├── intel.py                     # 情报收集（NVD/GHSA集成）
+│   ├── codeql.py                    # CodeQL辅助函数
+│   ├── sarif_utils.py               # SARIF结果解析
+│   └── logger.py                    # 统一日志系统
+│
+├── 📝 prompts/                      # 提示词层 - 提示词管理
+│   ├── codeql_prompts.py            # CodeQL生成提示词
+│   ├── sink_prompt_manager.py       # Sink分析提示词
+│   └── source_prompt_manager.py     # Source分析提示词
+│
+├── 🌐 api/                          # HTTP API服务
+│   ├── server.py                    # FastAPI服务器
+│   ├── analysis_routes.py           # 分析任务路由
+│   ├── projects_routes.py           # 项目管理路由
+│   └── task_manager.py              # 异步任务管理
+│
+├── ⚙️ config/                       # 配置系统
+│   ├── core.py                      # 核心配置逻辑
+│   ├── display.py                   # Rich美化显示
+│   ├── cli.py                       # 命令行工具
+│   └── keys.toml                    # 配置文件
+│
+├── 📊 Information/                  # 情报收集模块
+│   ├── nvd_info_fetch.py            # NVD数据获取
+│   └── ghsa_fetch.py                # GHSA数据获取
+│
+├── 📚 resources/codeql/             # CodeQL资源
+│   └── python/                      # Python知识库
+│       ├── knowledge_base/          # JSON知识库（模板、案例、辅助谓词）
+│       └── py/                      # CVE案例查询
+│
+├── 🚀 Analyze.py                    # 主入口文件（CLI）
+└── 📄 pyproject.toml                # 项目配置和依赖
 ```
 
-### 核心组件
+### 核心组件详解
 
-- **AnalysisOrchestrator** - 分析编排器，统一管理整个分析流程
-- **AnalysisPipeline** - 分析流水线，定义分析步骤序列
-- **AnalysisContext** - 分析上下文，管理分析过程数据
-- **服务层** - 提供LLM、LSP、语言检测等基础服务
+#### 1. 编排层（Core）
+
+- **AnalysisOrchestrator** - 分析编排器
+  - 统一入口，协调整个分析流程
+  - 管理案例解析、情报收集、语言检测
+  - 创建和执行分析流水线
+  
+- **AnalysisPipeline** - 分析流水线
+  - 定义可组合的分析步骤序列
+  - 支持自定义步骤和流程
+  - 内置步骤：CVE分析 → Sink分析 → Source分析 → CodeQL生成 → 执行 → 路径选择
+  
+- **AnalysisContext** - 分析上下文
+  - 存储案例信息、语言、情报数据
+  - 管理步骤间的数据传递
+  - 支持事件回调（SSE流式输出）
+
+#### 2. Agent层
+
+- **CVEAnalysisAgent** - CVE分析Agent
+  - 提取漏洞类型（SQL注入、XSS、RCE等）
+  - 分析技术细节和攻击向量
+  - 生成Sink/Source分析的基础上下文
+  
+- **UnifiedSourceAnalysisAgent** - Source分析Agent
+  - 识别污点源（用户输入、HTTP请求等）
+  - 支持 Java、C/C++、Python
+  - 生成Source点的CodeQL谓词
+  
+- **UnifiedSinkPathAgent** - Sink分析Agent
+  - 识别危险函数（exec、eval、system等）
+  - 分析数据流汇聚点
+  - 生成Sink点的CodeQL谓词
+  
+- **CodeQL Generation Agents** - CodeQL生成Agent组
+  - `codeql_gen_agent`: 查询生成
+  - `codeql_error_agent`: 编译错误诊断
+  - `codeql_fix_inplace_agent`: 自动修复
+
+#### 3. 服务层
+
+- **LLMService** - LLM服务
+  - 统一的LLM接口
+  - 支持多种模型提供商
+  - 连接复用和自动重试
+  
+- **LSPService** - LSP服务
+  - CodeQL语法检查
+  - 定义查找和代码补全
+  - 进程管理和资源清理
+  
+- **PathSelectionService** - 路径选择服务
+  - 基于LLM的智能路径筛选
+  - 多维验证（完整性、正确性、置信度）
+  - 支持路径聚类和去重
+  
+- **KnowledgeBaseService** - 知识库服务
+  - 标签驱动的上下文检索
+  - 模板、辅助谓词、案例管理
+  - 支持多语言扩展
 
 ## 🚀 快速开始
 
-### 安装依赖
+### 系统要求
+
+- **Python**: 3.13+ （推荐使用 uv 管理依赖）
+- **CodeQL CLI**: 最新版本（用于查询执行）
+- **Node.js**: v18+ （用于 MCP 工具）
+- **操作系统**: Windows、Linux、macOS
+
+### 安装步骤
+
+#### 1. 克隆项目
 
 ```bash
-# 使用 uv 安装依赖（推荐）
+git clone https://github.com/Fruit-Guardians/PureAutoCodeql.git
+cd PureAutoCodeql
+```
+
+#### 2. 安装 Python 依赖
+
+```bash
+# 使用 uv（推荐，速度更快）
 uv sync
 
-# 或使用 pip 安装
-pip install -r requirements.txt
+# 或使用 pip
+pip install -e .
+```
 
-# 构建 MCP 工具（ripgrep 搜索工具）
-# Windows:
+#### 3. 安装 CodeQL CLI
+
+```bash
+# Linux/Mac
+wget https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-linux64.zip
+unzip codeql-linux64.zip
+export PATH="$PATH:/path/to/codeql"
+
+# Windows
+# 下载并解压到本地，添加到 PATH 环境变量
+```
+
+#### 4. 构建 MCP 工具（可选，用于高级搜索）
+
+```bash
+# Windows
 build_mcp.bat
 
-# Linux/Mac:
+# Linux/Mac
 chmod +x build_mcp.sh
 ./build_mcp.sh
 ```
 
-**注意**：MCP 工具需要 Node.js (v18+) 和 npm。如果未安装，请先安装 Node.js：https://nodejs.org/
+**注意**：MCP 工具需要 Node.js (v18+) 和 npm
 
-### 快速运行
+### 第一次运行
 
-#### 🎯 **使用主入口文件**
+#### 1. 配置 API Key
 
 ```bash
-# 分析单个案例
-uv run python Analyze.py --case CVE-2021-21985
+# 复制配置模板
+cp config/keys.example.toml config/keys.toml
 
-# 显示AI思考过程
-uv run python Analyze.py --case CVE-2021-21985 --stream
+# 编辑配置文件，添加 API Key
+# 至少配置一个模型提供商
+```
 
-# 强制刷新情报数据
-uv run python Analyze.py --case CVE-2021-21985 --refresh-intel
+```toml
+# config/keys.toml
+[builtin_keys]
+deepseek = "sk-your-api-key"  # 推荐：性价比高
+```
 
+#### 2. 运行示例分析
+
+```bash
+# 分析单个CVE案例
+python Analyze.py --case CVE-2021-21985
+
+# 显示AI思考过程（推荐用于学习）
+python Analyze.py --case CVE-2021-21985 --stream
+
+# 使用不同的模型提供商
+python Analyze.py --case CVE-2021-21985 --provider siliconflow
+```
+
+### 常用命令
+
+#### 案例管理
+
+```bash
 # 列出所有可用案例
-uv run python Analyze.py --list
+python Analyze.py --list
 
-# 验证案例有效性
-uv run python Analyze.py --validate CVE-2021-21985
+# 验证案例结构
+python Analyze.py --validate CVE-2021-21985
 
-# 列出所有可用的模型提供商及其状态
-uv run python Analyze.py --list-providers
+# 强制刷新情报数据（从NVD/GHSA重新获取）
+python Analyze.py --case CVE-2021-21985 --refresh-intel
+```
 
-# 使用指定模型提供商进行分析
-uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
-uv run python Analyze.py --case CVE-2021-21985 --provider siliconflow
-uv run python Analyze.py --case CVE-2021-21985 --provider zhipu
+#### 模型配置
+
+```bash
+# 查看所有可用的模型提供商
+python Analyze.py --list-providers
+
+# 使用特定模型提供商
+python Analyze.py --case CVE-XXX --provider deepseek
+python Analyze.py --case CVE-XXX --provider siliconflow
+python Analyze.py --case CVE-XXX --provider zhipu
+
+# 自定义模型（覆盖默认配置）
+python Analyze.py --case CVE-XXX \
+  --provider deepseek \
+  --think-model deepseek-reasoner \
+  --chat-model deepseek-chat
+```
+
+#### 从 MD 文件生成
+
+```bash
+# 从漏洞描述生成 CodeQL 查询
+python Analyze.py --md-file vulnerability.md \
+  --database-path /path/to/codeql-db \
+  --language java
+
+# 从 MD 文件生成 Source 点分析报告
+python Analyze.py --md-file vuln.md \
+  --src-path /path/to/source \
+  --language python \
+  --output report.md
 ```
 
 ### 基本使用示例
