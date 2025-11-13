@@ -7,6 +7,7 @@ Reuses existing HotCodeQL LSP engine instance without restarting the service.
 """
 
 import json
+import os
 import time
 import re
 import subprocess
@@ -43,6 +44,45 @@ class LSPDefinitionLookup:
         self._request_id_counter += 1
         return self._request_id_counter
     
+    def get_supported_languages(self) -> List[str]:
+        """
+        Get list of supported languages based on available CodeQL packs.
+        
+        Returns:
+            List of supported language identifiers
+        """
+        stdlib_path = self._get_codeql_stdlib_path()
+        if not stdlib_path:
+            return []
+        
+        supported = []
+        
+        # Check for language-specific packs
+        language_patterns = [
+            "java-all",    # Java
+            "python-all",  # Python  
+            "cpp-all",     # C++
+            "javascript-all", # JavaScript
+            "go-all",      # Go
+            "csharp-all",  # C#
+            "ruby-all",    # Ruby
+            "swift-all",   # Swift
+        ]
+        
+        for pattern in language_patterns:
+            if (stdlib_path / pattern).exists():
+                lang = pattern.replace("-all", "")
+                supported.append(lang)
+        
+        # Also check direct language directories
+        direct_langs = ["java", "python", "cpp", "javascript", "go", "csharp", "ruby", "swift"]
+        for lang in direct_langs:
+            if (stdlib_path / lang).exists():
+                if lang not in supported:
+                    supported.append(lang)
+        
+        return supported
+    
     def _get_codeql_stdlib_path(self) -> Optional[Path]:
         """
         Get the path to CodeQL standard library.
@@ -54,9 +94,47 @@ class LSPDefinitionLookup:
             return self._codeql_stdlib_path
         
         try:
+            config_path = Path(__file__).parent.parent / "config" / "keys.toml"
+            if config_path.exists():
+                try:
+                    import tomli as tomllib
+                except ImportError:
+                    try:
+                        import tomllib  # Python >= 3.11
+                    except ImportError:
+                        import tomli as tomllib
+                
+                with open(config_path, 'rb') as f:
+                    config = tomllib.load(f)
+                    settings = config.get('settings', {})
+                    configured_path = settings.get('codeql_stdlib_path')
+                    
+                    if configured_path:
+                        path = Path(configured_path)
+                        if path.exists():
+                            # Verify it's a valid stdlib
+                            valid_indicators = [
+                                "java-all", "python-all", "cpp-all",
+                                "dataflow", "util", "ssa",
+                                "java", "python", "cpp"
+                            ]
+                            for indicator in valid_indicators:
+                                if (path / indicator).exists():
+                                    self._codeql_stdlib_path = path
+                                    return self._codeql_stdlib_path
+        except Exception:
+            pass  # Continue to other methods if config loading fails
+        env_path = os.getenv('CODEQL_STDLIB_PATH')
+        if env_path:
+            path = Path(env_path)
+            if path.exists():
+                self._codeql_stdlib_path = path
+                return self._codeql_stdlib_path
+        
+        try:
             # Try to find codeql home directory
             result = subprocess.run(
-                ["codeql", "resolve", "qlpacks"],
+                ["codeql", "resolve", "packs"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -64,19 +142,38 @@ class LSPDefinitionLookup:
             
             if result.returncode == 0:
                 # Parse output to find standard library path
-                # Format: "codeql/java-all (/path/to/codeql/java/ql/lib)"
+                # Look for the local pack cache path which contains the standard library
+                # Format: "Searching in: /home/user/.codeql/packages"
                 for line in result.stdout.splitlines():
-                    if "codeql/" in line and "(" in line:
-                        # Extract path from parentheses
-                        match = re.search(r'\(([^)]+)\)', line)
-                        if match:
-                            path = Path(match.group(1).strip())
-                            # Go up to find the root codeql directory (may be named codeql or codeql-main)
-                            while not path.name.startswith("codeql") and path.parent != path:
-                                path = path.parent
-                            if path.name.startswith("codeql"):
-                                self._codeql_stdlib_path = path
-                                return self._codeql_stdlib_path
+                    if "Searching in:" in line and ".codeql/packages" in line:
+                        # Extract path after "Searching in:"
+                        path_str = line.split("Searching in:", 1)[1].strip()
+                        path = Path(path_str)
+                        # The standard library is in the 'codeql' subdirectory of packages
+                        stdlib_path = path / "codeql"
+                        if stdlib_path.exists():
+                            # Verify it's a valid stdlib by checking for common packages
+                            # Support multiple languages: java, python, cpp, etc.
+                            valid_indicators = [
+                                "java-all", "python-all", "cpp-all",  # Language-specific packs
+                                "dataflow", "util", "ssa",           # Common packages
+                                "java", "python", "cpp"              # Direct language directories
+                            ]
+                            
+                            for indicator in valid_indicators:
+                                if (stdlib_path / indicator).exists():
+                                    self._codeql_stdlib_path = stdlib_path
+                                    return self._codeql_stdlib_path
+                
+                # Alternative: try to find CodeQL distribution path
+                # Format: "Searching in: /home/user/Software/codeql"
+                for line in result.stdout.splitlines():
+                    if "Searching in:" in line and "codeql" in line:
+                        path_str = line.split("Searching in:", 1)[1].strip()
+                        path = Path(path_str)
+                        if path.exists() and path.name.startswith("codeql"):
+                            self._codeql_stdlib_path = path
+                            return self._codeql_stdlib_path
         except Exception:
             pass
         
@@ -106,14 +203,31 @@ class LSPDefinitionLookup:
             ])
         
         for path in common_paths:
-            # Check for either java-all or dataflow package to verify it's a valid stdlib path
-            if path.exists() and (
-                (path / "java-all").exists() or 
-                (path / "dataflow").exists() or
-                (path / "java" / "ql" / "lib").exists()
-            ):
-                self._codeql_stdlib_path = path
-                return self._codeql_stdlib_path
+            # Check for valid CodeQL stdlib indicators supporting multiple languages
+            if path.exists():
+                valid_indicators = [
+                    "java-all", "python-all", "cpp-all",  # Language-specific packs
+                    "dataflow", "util", "ssa",           # Common packages
+                    "java", "python", "cpp"              # Direct language directories
+                ]
+                
+                # Check direct paths
+                for indicator in valid_indicators:
+                    if (path / indicator).exists():
+                        self._codeql_stdlib_path = path
+                        return self._codeql_stdlib_path
+                
+                # Check nested paths (e.g., java/ql/lib)
+                nested_indicators = [
+                    Path("java") / "ql" / "lib",
+                    Path("python") / "ql" / "lib", 
+                    Path("cpp") / "ql" / "lib"
+                ]
+                
+                for indicator in nested_indicators:
+                    if (path / indicator).exists():
+                        self._codeql_stdlib_path = path
+                        return self._codeql_stdlib_path
         
         return None
     
@@ -210,10 +324,14 @@ class LSPDefinitionLookup:
         if lang_dir.exists():
             search_dirs.append(lang_dir)
         else:
-            # Try alternative paths
+            # Try alternative paths for different language pack structures
             alt_paths = [
                 stdlib_path / language / "ql" / "src",
                 stdlib_path / f"{language}-all" / "ql" / "lib",
+                stdlib_path / f"{language}-all" / "ql" / "src",
+                # For language-specific packages that might be directly under stdlib
+                stdlib_path / f"codeql-{language}-all" / "ql" / "lib",
+                stdlib_path / f"codeql-{language}" / "ql" / "lib",
             ]
             for alt in alt_paths:
                 if alt.exists():
@@ -662,6 +780,35 @@ class LSPDefinitionLookup:
                 pass
         
         return result
+    
+    def test_language_support(self, language: str) -> bool:
+        """
+        Test if a specific language is supported in the current CodeQL installation.
+        
+        Args:
+            language: Language identifier (java, python, cpp, etc.)
+            
+        Returns:
+            True if language is supported, False otherwise
+        """
+        stdlib_path = self._get_codeql_stdlib_path()
+        if not stdlib_path:
+            return False
+        
+        # Check various possible locations for the language
+        possible_paths = [
+            stdlib_path / f"{language}-all",
+            stdlib_path / f"codeql-{language}-all", 
+            stdlib_path / language,
+            stdlib_path / language / "ql" / "lib",
+            stdlib_path / language / "ql" / "src",
+        ]
+        
+        for path in possible_paths:
+            if path.exists():
+                return True
+        
+        return False
     
     def get_function_definition_with_fallback(
         self, 

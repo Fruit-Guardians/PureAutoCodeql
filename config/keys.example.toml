@@ -95,3 +95,14 @@ gemini = "your_gemini_api_key_here"
 # 覆盖默认对话模型（不设置则使用服务商默认）
 # default_chat_model = "Pro/deepseek-ai/DeepSeek-V3.2-Exp"
 
+# CodeQL 标准库路径（可选）
+# 如果不配置，系统会自动尝试以下方式查找：
+# 1. 环境变量 CODEQL_STDLIB_PATH
+# 2. 运行 `codeql resolve packs` 自动检测
+# 3. 常见安装路径 (~/.codeql/packages/codeql, ~/codeql, /opt/codeql 等)
+# 
+# 示例配置：
+# codeql_stdlib_path = "/home/username/Software/codeql/codeql"
+# codeql_stdlib_path = "C:/Program Files/codeql"
+# codeql_stdlib_path = "/opt/codeql"
+

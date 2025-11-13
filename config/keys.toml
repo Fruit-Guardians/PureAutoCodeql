@@ -51,3 +51,7 @@ description = "自定义 API 服务"
 [settings]
 # default_provider = "siliconflow"
 
+# CodeQL 安装路径配置
+# 如果不配置，系统会自动尝试查找常见位置
+codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
+
