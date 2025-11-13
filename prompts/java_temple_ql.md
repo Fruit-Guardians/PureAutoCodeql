@@ -12,15 +12,27 @@ DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
 
 - **sink点定义原则（重要）**：
   - **必须优先定义Sink点分析报告中的sink点**
-  - **对于Java反射命令执行**：
-    - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
-    - **不要限制函数的包名**，因为报告不会指明具体调用了哪个包的同名函数
-    - 使用方法名 + 文件路径的组合来定位，而不是包名
-    - 禁止底层调用（如 `Runtime.exec()`, `java.lang` 包下的函数等
-    - 示例结构：`(报告中的sink点条件) or (底层调用条件)`
-    - 参考定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
-  - **注意**：Sink点报告中的sink点是必需的，底层调用是可选的
-  - 对于其他场景：sink点应该是明确的危险操作点
+  - **禁止直接使用底层调用作为限制条件**：
+    - ❌ 禁止：`Runtime.exec()`, `java.lang.reflect.Method.invoke()`, `java.lang` 包下的函数等
+    - ❌ 禁止：使用 `mc.getMethod().getDeclaringType().hasQualifiedName("java.lang.reflect", "Method")` 作为限制条件
+    - ✅ 要求：只限制到 Sink 点报告给出的具体函数调用
+  - **三种方法精确定位 sink 点**（使用 AND 组合确保精确性）：
+    1. **被调用的方法名**：`mc.getEnclosingCallable().hasName("invokeService")` - 用于锁定 sink 点所在的上层方法
+    2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` - 用于锁定具体的危险方法调用
+    3. **Java 文件路径匹配**：`mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java")` - 用于锁定具体文件
+  - **示例**：
+    ```ql
+    exists(MethodCall mc |
+      mc.getEnclosingCallable().hasName("invokeService") and
+      mc.getMethod().hasName("invoke") and
+      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
+      sink.asExpr() = mc
+    )
+    ```
+  - **注意**：
+    - 不允许使用内部包（如 java.lang）作为限制条件
+    - 如果代码段有多次调用同名方法，可以添加包名或其他条件进一步限制
+    - Sink 点报告中的 sink 点是必需的，必须精确匹配报告中的调用位置
 - 确保查询逻辑严谨，避免误报
 
 #### 编写约束
@@ -40,6 +52,24 @@ import java
 import semmle.code.java.dataflow.DataFlow
 import semmle.code.java.dataflow.TaintTracking
 import semmle.code.java.dataflow.FlowSources
+
+
+若目标Source分析为Spring等框架，则在source判断中加入如下内容，用来确保所有用户输入都作为source点
+class EndpointMethod extends Callable{
+    EndpointMethod(){
+        this.getAnAnnotation().getType() instanceof RouteAnnotation
+    }
+}
+
+class GateWaySource extends RemoteFlowSource{
+    GateWaySource(){
+        any(EndpointMethod m).getAParameter() = this.asParameter()
+    }
+
+    override string getSourceType(){
+        result = "gateway route source"
+    }
+}
 
 module VulnConfig implements DataFlow::ConfigSig {
   predicate isSource(DataFlow::Node src) {
@@ -64,17 +94,28 @@ module VulnConfig implements DataFlow::ConfigSig {
   }
   predicate isSink(DataFlow::Node sink) {
     // TODO: 定义Java sinks
-    这里的例子：predicate isSink(DataFlow::Node sink) {
+    // 使用三种方法精确定位sink点（根据报告中的具体调用位置）：
+    // 1. mc.getEnclosingCallable().hasName("xxx") - 被调用的方法名
+    // 2. mc.getMethod().hasName("xxx") - 当前方法调用名
+    // 3. mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%XxxController.java") - 文件路径
+    
     exists(MethodCall mc |
-      mc.getMethod().getDeclaringType().hasQualifiedName("java.sql", "Statement") and
-      (
-        mc.getMethod().hasName("execute") or
-        mc.getMethod().hasName("executeQuery") or
-        mc.getMethod().hasName("executeUpdate")
-      ) and
+      // 方法1: 用被调用的方法去锁定这个sink点
+      mc.getEnclosingCallable().hasName("invokeService") and
+      // 方法2: 用当前方法调用名去锁定
+      mc.getMethod().hasName("invoke") and
+      // 方法3: 用Java文件路径去锁定
+      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
       sink.asExpr() = mc
     )
-  }
+    // 如果有多个sink点，使用 or 连接
+    or
+    exists(MethodCall mc |
+      mc.getEnclosingCallable().hasName("anotherMethod") and
+      mc.getMethod().hasName("dangerousCall") and
+      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%AnotherController.java") and
+      sink.asExpr() = mc
+    )
   }
 
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {

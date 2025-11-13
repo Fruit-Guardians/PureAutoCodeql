@@ -24,14 +24,18 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 - source点应该是明确的用户输入来源
 - **sink点定义原则（重要）**：
   - **必须优先定义Sink点分析报告中的sink点**
-  - **对于Java反射命令执行**：
-    - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
-    - **不要限制函数的包名**，因为报告不会指明具体调用了哪个包的同名函数
-    - 使用方法名 + 文件路径的组合来定位，而不是包名
-    - 禁止底层调用（如 `Runtime.exec()`, `java.lang` 包下的函数等
-    - 示例结构：`(报告中的sink点条件) or (底层调用条件)`
-    - 参考定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
-  - **注意**：Sink点报告中的sink点是必需的，底层调用是可选的
+  - **禁止直接使用底层调用作为限制条件**：
+    - ❌ 禁止：`Runtime.exec()`, `java.lang.reflect.Method.invoke()`, `java.lang` 包下的函数等
+    - ❌ 禁止：使用 `mc.getMethod().getDeclaringType().hasQualifiedName("java.lang.reflect", "Method")` 作为限制条件
+    - ✅ 要求：只限制到 Sink 点报告给出的具体函数调用
+  - **三种方法精确定位 sink 点**（使用 AND 组合确保精确性）：
+    1. **被调用的方法名**：`mc.getEnclosingCallable().hasName("invokeService")` - 用于锁定 sink 点所在的上层方法
+    2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` - 用于锁定具体的危险方法调用
+    3. **Java 文件路径匹配**：`mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java")` - 用于锁定具体文件
+  - **注意**：
+    - 不允许使用内部包（如 java.lang）作为限制条件
+    - 如果代码段有多次调用同名方法，可以添加包名或其他条件进一步限制
+    - Sink 点报告中的 sink 点是必需的，必须精确匹配报告中的调用位置
   - 对于其他场景：sink点应该是明确的危险操作点
 - 确保查询逻辑严谨，避免误报
 """
@@ -49,15 +53,15 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 
 - **放宽sink点定义**：
   - **必须包含Sink点分析报告中的sink点**
-  - **对于Java反射命令执行**：
-    - 优先定义报告中标识的具体函数（使用方法名、文件名组合定位）
-    - **不要限制包名**，使用方法名 + 文件路径定位即可
-    - 可以用 `or` 连接底层调用作为补充（如 `Runtime.exec()`, `java.lang` 包函数等）
-    - 示例结构：`(报告sink点) or (底层调用1) or (底层调用2)`
-    - 定位方法：`mc.getEnclosingCallable().hasName()`, `mc.getMethod().hasName()`, 文件路径匹配
+  - **三种方法精确定位 sink 点**（可以适当放宽某些条件）：
+    1. `mc.getEnclosingCallable().hasName("xxx")` - 被调用的方法名（必需）
+    2. `mc.getMethod().hasName("xxx")` - 当前方法调用名（必需）
+    3. 文件路径匹配（可以放宽为目录级别匹配，如 `%/controller/%` 而不是具体文件名）
+  - 可以考虑多个相关的调用点，使用 `or` 连接
   - 除了明显的危险操作，也包含潜在的风险点
   - 考虑间接调用的危险函数
   - 包含可能导致安全问题的辅助函数
+  - **注意**：仍然禁止使用底层调用（如 `java.lang` 包）作为限制条件
 
 - 保持数据流分析的基本逻辑，但降低匹配的严格程度
 """
@@ -76,15 +80,16 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 
 - **更宽泛的sink点**：
   - **必须包含Sink点分析报告中的sink点**
-  - **Java反射场景**：
-    - 首先定义报告中的业务层面调用点（文件名和方法名组合匹配）
-    - **不限制包名**，只用方法名和文件路径定位
-    - 使用 `or` 连接更多底层调用作为补充条件
-    - 示例：`(报告sink点) or (底层API1) or (底层API2) or (相关危险函数)`
+  - **进一步放宽定位条件**：
+    - 方法名匹配可以使用模糊匹配（如包含特定关键词）
+    - 文件路径可以只匹配目录或模块名
+    - 可以考虑同一类型的多个方法调用
+  - 使用 `or` 连接多个相关的调用点
   - 包含所有可能产生副作用的操作
   - 考虑间接的、多层调用的危险点
   - 包含日志记录、序列化等可能的风险点
   - 降低对sink点类型的限制
+  - **注意**：仍然避免直接使用底层 API（如 `java.lang` 包）作为主要限制条件
 
 - 适当放宽数据流的污点传播规则
 - 考虑更多的中间节点和传播路径
@@ -104,15 +109,16 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 
 - **最大范围的sink点**：
   - **必须包含Sink点分析报告中的sink点作为核心条件**
-  - **Java反射/命令执行**：
-    - 首先定义报告中标识的具体方法和文件
-    - **不限制包名**，仅用方法名和文件路径定位
-    - 使用 `or` 连接所有可能的底层API和危险函数
-    - 示例：`(报告sink点) or (所有底层API) or (所有危险操作) or (所有副作用函数)`
+  - **最宽松的定位策略**：
+    - 可以只使用方法名或文件路径中的一个条件
+    - 可以使用非常宽泛的模式匹配
+    - 考虑所有相关的方法调用和操作
+  - 使用 `or` 连接所有可能相关的调用点
   - 包含所有可能产生影响的操作
   - 不限制操作的类型和危险程度
   - 包含所有方法调用、字段赋值等
   - 考虑任何可能产生副作用的代码
+  - **注意**：在此阶段可以适当考虑底层 API，但仍需以报告中的 sink 点为主
 
 - **最宽松的数据流规则**：
   - 放宽污点传播的限制

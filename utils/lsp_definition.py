@@ -84,6 +84,7 @@ class LSPDefinitionLookup:
         import platform
         
         common_paths = [
+            Path.home() / ".codeql" / "packages" / "codeql",  # User .codeql directory (package manager)
             Path.home() / "codeql",  # User home directory (all platforms)
         ]
         
@@ -105,7 +106,12 @@ class LSPDefinitionLookup:
             ])
         
         for path in common_paths:
-            if path.exists() and (path / "java" / "ql" / "lib").exists():
+            # Check for either java-all or dataflow package to verify it's a valid stdlib path
+            if path.exists() and (
+                (path / "java-all").exists() or 
+                (path / "dataflow").exists() or
+                (path / "java" / "ql" / "lib").exists()
+            ):
                 self._codeql_stdlib_path = path
                 return self._codeql_stdlib_path
         
@@ -130,6 +136,7 @@ class LSPDefinitionLookup:
         """
         # Compile regex patterns
         patterns = [
+            re.compile(rf"^\s*signature\s+module\s+{symbol_name}\s*(<|{{)"),  # signature module definition
             re.compile(rf"^\s*class\s+{symbol_name}\s"),  # class definition
             re.compile(rf"^\s*abstract\s+class\s+{symbol_name}\s"),  # abstract class definition
             re.compile(rf"^\s*predicate\s+{symbol_name}\s*\("),  # predicate definition
@@ -195,9 +202,14 @@ class LSPDefinitionLookup:
         if not stdlib_path:
             return None
         
-        # Determine search directory based on language
+        # Build list of search directories
+        search_dirs = []
+        
+        # 1. Language-specific directories
         lang_dir = stdlib_path / language / "ql" / "lib"
-        if not lang_dir.exists():
+        if lang_dir.exists():
+            search_dirs.append(lang_dir)
+        else:
             # Try alternative paths
             alt_paths = [
                 stdlib_path / language / "ql" / "src",
@@ -205,16 +217,28 @@ class LSPDefinitionLookup:
             ]
             for alt in alt_paths:
                 if alt.exists():
-                    lang_dir = alt
+                    search_dirs.append(alt)
                     break
-            else:
-                return None
+        
+        # 2. Common/shared libraries (for signature modules like ConfigSig)
+        common_dirs = [
+            stdlib_path / "dataflow",  # codeql/dataflow package
+            stdlib_path / "util",       # codeql/util package
+            stdlib_path / "ssa",        # codeql/ssa package
+        ]
+        for common_dir in common_dirs:
+            if common_dir.exists():
+                search_dirs.append(common_dir)
+        
+        if not search_dirs:
+            return None
         
         # Try ripgrep first (faster and cross-platform)
         try:
             # Search for class or predicate definitions using ripgrep
             # ripgrep works on Windows/Linux/Mac
             patterns = [
+                f"^\\s*signature\\s+module\\s+{symbol_name}\\s*(<|\\{{)",  # signature module (escape brace)
                 f"^\\s*class\\s+{symbol_name}\\s",
                 f"^\\s*abstract\\s+class\\s+{symbol_name}\\s",
                 f"^\\s*predicate\\s+{symbol_name}\\s*\\(",
@@ -223,50 +247,58 @@ class LSPDefinitionLookup:
             ]
             
             for pattern in patterns:
-                result = subprocess.run(
-                    [
-                        "rg",  # Works on all platforms when in PATH
-                        "--line-number",  # Show line numbers
-                        "--no-heading",   # Don't group by file
-                        "--glob", "*.qll", # Only search .qll files
-                        "--glob", "!upgrades/", # Exclude upgrades directory
-                        pattern,
-                        str(lang_dir)
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if result.returncode == 0 and result.stdout:
-                    lines = result.stdout.strip().splitlines()
-                    for line in lines:
-                        # Format: /path/to/file.qll:123:code
-                        match = re.match(r"^([^:]+):(\d+):", line)
-                        if match:
-                            file_path = Path(match.group(1))
-                            line_num = int(match.group(2))
-                            
-                            block = self.extract_definition_block(
-                                file_path, 
-                                line_num - 1,
-                                0
-                            )
-                            
-                            if block:
-                                code_lines = [text for _, text in block]
-                                return {
-                                    "file_path": str(file_path),
-                                    "start_line": block[0][0],
-                                    "end_line": block[-1][0],
-                                    "code": "\n".join(code_lines)
-                                }
+                # Search all directories
+                for search_dir in search_dirs:
+                    result = subprocess.run(
+                        [
+                            "rg",  # Works on all platforms when in PATH
+                            "--line-number",  # Show line numbers
+                            "--no-heading",   # Don't group by file
+                            "--glob", "*.qll", # Only search .qll files
+                            "--glob", "!upgrades/", # Exclude upgrades directory
+                            pattern,
+                            str(search_dir)
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if result.returncode == 0 and result.stdout:
+                        lines = result.stdout.strip().splitlines()
+                        for line in lines:
+                            # Format: /path/to/file.qll:123:code
+                            match = re.match(r"^([^:]+):(\d+):", line)
+                            if match:
+                                file_path = Path(match.group(1))
+                                line_num = int(match.group(2))
+                                
+                                block = self.extract_definition_block(
+                                    file_path, 
+                                    line_num - 1,
+                                    0
+                                )
+                                
+                                if block:
+                                    code_lines = [text for _, text in block]
+                                    return {
+                                        "file_path": str(file_path),
+                                        "start_line": block[0][0],
+                                        "end_line": block[-1][0],
+                                        "code": "\n".join(code_lines)
+                                    }
         except (FileNotFoundError, subprocess.TimeoutExpired):
             # ripgrep not available or timed out, fall back to Python implementation
             pass
         
         # Fallback: Use pure Python implementation (cross-platform)
-        return self._python_search_files(symbol_name, lang_dir)
+        # Try all search directories
+        for search_dir in search_dirs:
+            result = self._python_search_files(symbol_name, search_dir)
+            if result:
+                return result
+        
+        return None
     
     def find_symbol_in_text(self, text: str, symbol: str) -> Optional[Tuple[int, int]]:
         """
@@ -379,12 +411,12 @@ class LSPDefinitionLookup:
             return None
         
         # First, try to find the start of the definition by looking backwards
-        # for keywords like 'class', 'predicate', 'private', etc.
+        # for keywords like 'class', 'predicate', 'private', 'signature module', etc.
         def_start_line = start_line
         for i in range(start_line, max(0, start_line - 10), -1):
             line = lines[i].strip()
             # Look for definition keywords
-            if any(keyword in line for keyword in ['class ', 'predicate ', 'private ', 'override ', 'abstract ', 'final ']):
+            if any(keyword in line for keyword in ['signature module ', 'class ', 'predicate ', 'private ', 'override ', 'abstract ', 'final ']):
                 def_start_line = i
                 break
             # Stop if we hit a closing brace (previous definition)
@@ -427,7 +459,7 @@ class LSPDefinitionLookup:
                 
                 # Stop if we hit another definition at the same or lower indentation
                 if stripped and current_indent <= initial_indent:
-                    if any(keyword in stripped for keyword in ['class ', 'predicate ', 'private ', 'override ']):
+                    if any(keyword in stripped for keyword in ['signature module ', 'class ', 'predicate ', 'private ', 'override ']):
                         # Remove the last line (it's a new definition)
                         block_lines.pop()
                         return block_lines if block_lines else None
