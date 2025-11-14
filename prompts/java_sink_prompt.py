@@ -101,6 +101,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 2.  **定位文件 (Locate File):**
     * 根据 `{source_path}` 和diff分析，使用 `searchfile` 工具找到包含潜在Sink点的具体Java文件。
     * (捷径: 如果diff已明确显示文件名，请直接使用 `searchfile` 定位该文件。)
+    * 约束：调用文件搜索或内容搜索时，必须仅匹配 `.java` 文件，禁止返回非 Java 源文件。
 
 3.  **审计代码 (Audit Code):**
     * 使用文件读取工具，获取目标文件的完整内容。

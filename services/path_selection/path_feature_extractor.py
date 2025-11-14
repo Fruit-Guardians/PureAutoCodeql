@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
@@ -53,7 +54,7 @@ class PathFeatureExtractor:
             )
         else:
             logger.debug("使用源代码根目录: %s", source_root_path)
-        
+
         keywords = self._collect_keywords(cve_context or {})
         features: List[PathFeatures] = []
 
@@ -245,7 +246,7 @@ class PathFeatureExtractor:
                 source_root,
             )
             return ""
-        
+
         resolved = self._resolve_relative_path(source_root, relative_file)
 
         if resolved and resolved.exists():
@@ -261,28 +262,59 @@ class PathFeatureExtractor:
         return ""
 
     def _resolve_relative_path(self, source_root: Path, relative_file: str) -> Optional[Path]:
-        """更鲁棒地解析 CodeQL 报告中的相对路径。"""
+        """解析 CodeQL 报告中的相对路径。"""
 
         normalized = self._normalize_relative_path(relative_file)
         if not normalized:
             return None
 
-        root_key = str(source_root.resolve())
+        root_key = source_root.resolve().as_posix()
         cache_key = (root_key, normalized)
         if cache_key in self._path_cache:
             return self._path_cache[cache_key]
 
+        logger.debug("开始路径解析 - source_root=%s, relative_file=%s, normalized=%s",
+                    source_root, relative_file, normalized)
+
+        # 1. 直接匹配（原始路径）
         direct_candidate = (source_root / normalized).resolve()
+        logger.debug("尝试直接匹配: %s -> %s (存在: %s)",
+                    normalized, direct_candidate, direct_candidate.exists())
         if direct_candidate.exists():
             self._path_cache[cache_key] = direct_candidate
             return direct_candidate
 
-        # 尝试第一层和第二层子目录（兼容 source_root/project/version/... 结构）
+        # 2. 智能路径映射 - 处理反编译路径
+        mapped_candidates = self._generate_smart_mappings(normalized)
+        logger.debug("智能路径映射生成的候选: %s", mapped_candidates)
+
+        for mapped_path in mapped_candidates:
+            mapped_candidate = (source_root / mapped_path).resolve()
+            logger.debug("尝试映射路径: %s -> %s (存在: %s)",
+                        mapped_path, mapped_candidate, mapped_candidate.exists())
+            if mapped_candidate.exists():
+                # 对于Java文件，进行额外验证
+                if mapped_path.endswith('.java') and self.language == 'java':
+                    class_name = Path(mapped_path).stem
+                    if self._validate_java_file(mapped_candidate, class_name):
+                        logger.debug("Java文件验证成功: %s", mapped_candidate)
+                        self._path_cache[cache_key] = mapped_candidate
+                        return mapped_candidate
+                    else:
+                        logger.debug("Java文件验证失败，继续尝试: %s", mapped_candidate)
+                        continue
+                else:
+                    self._path_cache[cache_key] = mapped_candidate
+                    return mapped_candidate
+
+        # 3. 尝试第一层和第二层子目录（兼容 source_root/project/version/... 结构）
         try:
             for child in source_root.iterdir():
                 if not child.is_dir():
                     continue
                 nested_candidate = (child / normalized).resolve()
+                logger.debug("尝试子目录匹配: %s/%s -> %s (存在: %s)",
+                            child.name, normalized, nested_candidate, nested_candidate.exists())
                 if nested_candidate.exists():
                     self._path_cache[cache_key] = nested_candidate
                     return nested_candidate
@@ -291,6 +323,8 @@ class PathFeatureExtractor:
                     if not grandchild.is_dir():
                         continue
                     deeper_candidate = (grandchild / normalized).resolve()
+                    logger.debug("尝试深层子目录匹配: %s/%s/%s -> %s (存在: %s)",
+                                child.name, grandchild.name, normalized, deeper_candidate, deeper_candidate.exists())
                     if deeper_candidate.exists():
                         self._path_cache[cache_key] = deeper_candidate
                         return deeper_candidate
@@ -298,28 +332,39 @@ class PathFeatureExtractor:
             # 文件过多或权限问题时继续使用兜底策略
             pass
 
-        # 兜底：按文件名遍历查找匹配的后缀
+        # 4. 兜底：按文件名遍历查找匹配的后缀（跨平台处理）
         suffix = normalized.replace("\\", "/")
         try:
-            for match in source_root.rglob(Path(normalized).name):
-                if str(match.as_posix()).endswith(suffix):
+            filename = Path(normalized).name
+            for match in source_root.rglob(filename):
+                match_path = str(match.as_posix())
+                if match_path.endswith(suffix):
+                    logger.debug("找到匹配文件: %s", match)
                     self._path_cache[cache_key] = match.resolve()
                     return self._path_cache[cache_key]
         except OSError as exc:
             logger.debug("遍历源码目录失败: %s", exc)
 
+        logger.warning("路径解析失败 - 所有策略都未找到匹配文件 (source_root=%s, relative_file=%s)",
+                      source_root, relative_file)
         self._path_cache[cache_key] = None
         return None
 
-    @staticmethod
-    def _normalize_relative_path(relative_file: str) -> str:
+    def _normalize_relative_path(self, relative_file: str) -> str:
         if not relative_file:
             return ""
         cleaned = relative_file.strip()
         if cleaned.startswith("file://"):
             cleaned = cleaned[7:]
-        return cleaned.replace("\\", "/").lstrip("/")
-    
+
+        # 使用操作系统无关的路径标准化
+        normalized = os.path.normpath(cleaned)
+        # 统一转换为正斜杠格式用于内部处理
+        normalized = normalized.replace("\\", "/").lstrip("/")
+
+        logger.debug("路径标准化: '%s' -> '%s' (平台: %s)", cleaned, normalized, os.name)
+        return normalized
+
     def _read_file_snippet(self, full_path: Path, line: int) -> str:
         """从文件中读取指定行的代码片段"""
         try:
@@ -333,6 +378,10 @@ class PathFeatureExtractor:
             )
             return ""
 
+        if line <= 0 or line > len(lines):
+            logger.debug("行号超出范围: %s (文件总行数: %s)", line, len(lines))
+            return ""
+
         start_idx = max(0, line - self.context_lines - 1)
         end_idx = min(len(lines), line + self.context_lines)
 
@@ -342,6 +391,111 @@ class PathFeatureExtractor:
             prefix = ">>> " if line_no == line else "    "
             snippet_parts.append(f"{prefix}{line_no:4d} | {lines[idx].rstrip()}")
         return "\n".join(snippet_parts)
+
+    def _generate_smart_mappings(self, normalized_path: str) -> List[str]:
+        """生成智能路径映射候选"""
+        candidates = []
+        decompiled_prefixes = [
+            "out/decode/classes/",
+            "out/classes/",
+            "build/classes/",
+            "target/classes/",
+            "bin/classes/",
+            "src/main/java/",
+            "src/test/java/",
+            "out/",
+            "build/",
+            # Windows变体
+            "out\\decode\\classes\\",
+            "out\\classes\\",
+            "build\\classes\\",
+            "target\\classes\\",
+            "bin\\classes\\",
+            "src\\main\\java\\",
+            "src\\test\\java\\",
+            "out\\",
+            "build\\",
+        ]
+
+        mapped_path = normalized_path
+        for prefix in decompiled_prefixes:
+            if mapped_path.startswith(prefix):
+                mapped_path = mapped_path[len(prefix):]
+                logger.debug("移除前缀 '%s' -> '%s'", prefix, mapped_path)
+                break
+
+        if mapped_path != normalized_path:
+            candidates.append(mapped_path)
+
+        # 2. 处理包路径中的冗余（支持Windows路径分隔符）
+        # 例如: com/vmware/com/vmware/vsan/... -> com/vmware/vsan/...
+        #      com\vmware\com\vmware\vsan\... -> com\vmware\vsan\...
+        separators = ['/', '\\']
+
+        for sep in separators:
+            if sep in mapped_path:
+                parts = mapped_path.split(sep)
+                cleaned_parts = []
+                prev_part = None
+
+                for part in parts:
+                    if prev_part and part == prev_part:
+                        # 跳过重复的包名部分
+                        continue
+                    cleaned_parts.append(part)
+                    prev_part = part
+
+                # 使用正斜杠重新组合（内部统一格式）
+                cleaned_path = '/'.join(cleaned_parts)
+                if cleaned_path != mapped_path and cleaned_path not in candidates:
+                    candidates.append(cleaned_path)
+                    logger.debug("清理包路径: '%s' -> '%s'", mapped_path, cleaned_path)
+                break
+
+        # 3. 确保有正确的文件扩展名（跨平台文件名提取）
+        for i, candidate in enumerate(candidates[:]):  # 创建副本用于迭代
+            if self.language == 'java' and not candidate.endswith('.java'):
+                # 跨平台文件名提取
+                filename = Path(candidate).name
+                if '.' not in filename:  # 文件名没有扩展名
+                    candidate_with_ext = candidate + '.java'
+                    candidates[i] = candidate_with_ext
+                    # 同时保留原路径作为候选
+                    if candidate_with_ext not in candidates:
+                        candidates.append(candidate_with_ext)
+                        logger.debug("添加Java扩展名: '%s' -> '%s'", candidate, candidate_with_ext)
+
+        return candidates
+
+    def _validate_java_file(self, file_path: Path, expected_class: str) -> bool:
+        """验证Java文件是否包含期望的类"""
+        try:
+            # 使用pathlib的跨平台文件打开方式
+            content = file_path.read_text(encoding='utf-8', errors='ignore')[:8192]
+
+            # 检查是否包含类声明
+            patterns = [
+                f"\\bclass\\s+{re.escape(expected_class)}\\b",
+                f"\\benum\\s+{re.escape(expected_class)}\\b",
+                f"\\binterface\\s+{re.escape(expected_class)}\\b",
+            ]
+
+            for pattern in patterns:
+                if re.search(pattern, content):
+                    logger.debug("Java类声明匹配: %s in %s", expected_class, file_path)
+                    return True
+
+            # 如果文件名包含内部类符号（如$），检查主类名
+            if '$' in expected_class:
+                main_class = expected_class.split('$')[0]
+                if re.search(f"\\bclass\\s+{re.escape(main_class)}\\b", content):
+                    logger.debug("Java主类声明匹配: %s in %s", main_class, file_path)
+                    return True
+
+        except Exception as e:
+            logger.debug("验证Java文件失败: %s (错误: %s)", file_path, e)
+
+        return False
 
     def _analyze_node(
         self,

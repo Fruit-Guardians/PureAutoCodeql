@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { resolve, isAbsolute } from "node:path";
+import { readFile } from "node:fs/promises";
 
 /**
  * Strip ANSI escape sequences from a string to make it human-readable.
@@ -200,6 +201,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           type: "object",
           properties: {}
         }
+      },
+      {
+        name: "read-file-lines",
+        description: "Read specific lines from a file with context. Given a target line number and context size, reads lines above and below the target. For example, reading line 314 with 20 lines of context will return lines 294-334 (20 lines before, the target line, and 20 lines after). Supports both Windows and Linux file paths.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            filePath: { type: "string", description: "Path to the file to read (absolute or relative, supports Windows and Linux paths)" },
+            targetLine: { type: "number", description: "The target line number to read (1-indexed)" },
+            contextLines: { type: "number", description: "Number of lines to read above and below the target line (default: 10)" }
+          },
+          required: ["filePath", "targetLine"]
+        }
       }
     ]
   };
@@ -209,7 +223,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const toolName = request.params.name;
   
-  if (!["search", "advanced-search", "count-matches", "list-files", "list-file-types"].includes(toolName)) {
+  if (![
+    "search", "advanced-search", "count-matches", "list-files", "list-file-types", "read-file-lines"
+  ].includes(toolName)) {
     // Return ServerResult.NEXT to allow the next handler to process the request
     return Object.create(null);
   }
@@ -541,6 +557,79 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
             }
           ]
         };
+      }
+      
+      case "read-file-lines": {
+        const filePathArg = String(args.filePath);
+        // Normalize path to handle Windows paths and relative paths correctly
+        const filePath = normalizePath(filePathArg);
+        const targetLine = typeof args.targetLine === 'number' ? args.targetLine : 0;
+        const contextLines = typeof args.contextLines === 'number' ? args.contextLines : 10;
+        
+        if (!targetLine || targetLine < 1) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "Error: targetLine must be a positive number (1-indexed)" }]
+          };
+        }
+        
+        if (contextLines < 0) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "Error: contextLines must be a non-negative number" }]
+          };
+        }
+        
+        // Calculate the line range
+        const startLine = Math.max(1, targetLine - contextLines);
+        const endLine = targetLine + contextLines;
+        
+        try {
+          // Read the entire file using Node.js fs module
+          const fileContent = await readFile(filePath, 'utf-8');
+          const lines = fileContent.split('\n');
+          
+          // Extract the requested line range (convert to 0-indexed)
+          const startIndex = startLine - 1;
+          const endIndex = Math.min(endLine, lines.length);
+          const selectedLines = lines.slice(startIndex, endIndex);
+          
+          // Format with line numbers
+          const formattedLines = selectedLines.map((line, index) => {
+            const lineNumber = startLine + index;
+            return lineNumber + '\t' + line;
+          }).join('\n');
+          
+          if (!formattedLines || formattedLines.trim() === "") {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: "File: " + filePath + "\nTarget line: " + targetLine + "\nRequested range: " + startLine + "-" + endLine + "\n\nNo content found (file may be shorter than expected or empty)"
+                }
+              ]
+            };
+          }
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: "File: " + filePath + "\nTarget line: " + targetLine + "\nShowing lines " + startLine + "-" + endIndex + ":\n\n" + formattedLines
+              }
+            ]
+          };
+        } catch (error: any) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: "Error reading file: " + error.message
+              }
+            ]
+          };
+        }
       }
       
       default:

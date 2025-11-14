@@ -89,13 +89,13 @@
    - ❌ 不要实现 `isSanitizer`（不属于该接口）
 3. **必要导入（按语言区分）:**
 
-   - C/C++（稳定接口）：
-     - `import cpp`
-     - `import semmle.code.cpp.dataflow.DataFlow`
-     - `class Config extends DataFlow::Configuration`
-     - PathGraph 使用: `DataFlow::PathNode` + `cfg.hasFlowPath(source, sink)`
-     - ❌ 不要使用 `new.*` 模块或 `Flow::*` 别名
-   - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
+  - C/C++（新接口对齐）：
+    - `import cpp` 
+    - `import semmle.code.cpp.dataflow.new.DataFlow` 
+    - （如需要）`import semmle.code.cpp.dataflow.new.TaintTracking` 
+    - 全局流与路径图：`module Flow = DataFlow::Global<Config>`；`import Flow::PathGraph` 
+    - Path 节点与路径：使用 `Flow::PathNode`、`Flow::flowPath(src, snk)` 
+  - 其他语言：按各自标准库使用（如 `import java` 等），并选择对应 DataFlow/TaintTracking 实现
 4. **Select语句格式:**
 
    - **重要**：不同语言的select语句格式不同，请严格遵循对应语言的模板文件（[[QL_TEMPLATE]]）中的格式要求

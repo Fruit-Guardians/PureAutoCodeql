@@ -1,6 +1,8 @@
 ---
+name: /openspec-archive
+id: openspec-archive
+category: OpenSpec
 description: Archive a deployed OpenSpec change and update specs.
-auto_execution_mode: 3
 ---
 <!-- OPENSPEC:START -->
 **Guardrails**

@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime
+import sys
 
 
 # 功能：
@@ -502,6 +503,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
     """
     对指定的数据库执行CodeQL查询。
 
+    注意: 此函数会添加 --verbose 参数到 CodeQL 命令，实时输出执行进度到控制台，
+    并将详细日志保存到 temp/codeql_temp/<task_id>/codeql_verbose.log。
+
     Args:
         query_content: 要执行的CodeQL查询字符串。
         database_path: CodeQL数据库的路径。
@@ -547,27 +551,73 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
 
         start_time = time.time()
 
-        # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出
-        result = subprocess.run(
+        # 确定日志目录（从 query_file 路径提取）
+        log_dir = query_file.parent if query_file else Path('./temp/codeql_temp') / datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / 'codeql_verbose.log'
+
+        # 写入命令信息到日志文件头部
+        log_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[{log_timestamp}] 执行 codeql database analyze\n")
+            f.write(f"{'='*80}\n")
+
+        # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出，添加 --verbose 参数
+        import threading
+        process = subprocess.Popen(
             [
                 'codeql', 'database', 'analyze',
+                '--verbose',
                 database_path,
                 str(query_file),
                 '--rerun',
                 '--format=sarifv2.1.0',
                 f'--output={str(sarif_path)}',
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600
+            bufsize=1,
         )
+
+        stdout_lines = []
+        stderr_lines = []
+
+        # 实时读取并输出 stdout 和 stderr
+        def read_stdout():
+            for line in process.stdout:
+                stdout_lines.append(line)
+                print(line, end='', flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        def read_stderr():
+            for line in process.stderr:
+                stderr_lines.append(line)
+                print(line, end='', file=sys.stderr, flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        stdout_thread = threading.Thread(target=read_stdout)
+        stderr_thread = threading.Thread(target=read_stderr)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # 等待进程完成
+        returncode = process.wait(timeout=600)
+        stdout_thread.join()
+        stderr_thread.join()
+
+        stdout = ''.join(stdout_lines)
+        stderr = ''.join(stderr_lines)
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
         print(f"✅ CodeQL查询执行完成! 用时: {execution_time:.2f}秒")
         print("📊 正在处理查询结果...")
 
-        if result.returncode == 0:
+        if returncode == 0:
             return {
                 'success': True,
                 'output': 'Query executed successfully',
@@ -577,10 +627,10 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         else:
             # 合并stderr和stdout以捕获所有错误信息
             error_output = []
-            if result.stderr:
-                error_output.append(result.stderr.strip())
-            if result.stdout:
-                error_output.append(result.stdout.strip())
+            if stderr:
+                error_output.append(stderr.strip())
+            if stdout:
+                error_output.append(stdout.strip())
 
             combined_error = '\n'.join(filter(None, error_output))
 
@@ -651,6 +701,24 @@ def run_query_and_decode_to_text(
     language: Optional[str] = None,
     output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """
+    执行 CodeQL 查询并解码为文本格式。
+
+    注意: 此函数会添加 --verbose 参数到 CodeQL 命令，实时输出执行进度到控制台，
+    并将详细日志保存到 temp/codeql_temp/<task_id>/codeql_verbose.log。
+
+    Args:
+        query_content: CodeQL 查询内容
+        database_path: CodeQL 数据库路径
+        language: 可选的显式语言
+        output_dir: 可选的输出目录
+
+    Returns:
+        包含以下内容的字典：
+        - success (bool): 执行是否成功
+        - output (str): 查询输出或错误消息
+        - result_file (str): 结果文件路径
+    """
     # 在执行前验证数据库
     is_valid, validation_error = validate_codeql_database(database_path)
     if not is_valid:
@@ -669,24 +737,67 @@ def run_query_and_decode_to_text(
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         bqrs_path = pack_dir / f"result_{timestamp}.bqrs"
 
-        result = subprocess.run(
+        # 确保日志目录存在
+        log_file = pack_dir / 'codeql_verbose.log'
+        log_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[{log_timestamp}] 执行 codeql query run\n")
+            f.write(f"{'='*80}\n")
+
+        # 执行 codeql query run，添加 --verbose 参数
+        import threading
+        process = subprocess.Popen(
             [
                 'codeql', 'query', 'run',
+                '--verbose',
                 str(query_file),
                 '--database', database_path,
                 f'--output={str(bqrs_path)}',
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600,
+            bufsize=1,
         )
 
-        if result.returncode != 0:
+        stdout_lines = []
+        stderr_lines = []
+
+        # 实时读取并输出 stdout 和 stderr
+        def read_stdout():
+            for line in process.stdout:
+                stdout_lines.append(line)
+                print(line, end='', flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        def read_stderr():
+            for line in process.stderr:
+                stderr_lines.append(line)
+                print(line, end='', file=sys.stderr, flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        stdout_thread = threading.Thread(target=read_stdout)
+        stderr_thread = threading.Thread(target=read_stderr)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # 等待进程完成
+        returncode = process.wait(timeout=600)
+        stdout_thread.join()
+        stderr_thread.join()
+
+        stdout = ''.join(stdout_lines)
+        stderr = ''.join(stderr_lines)
+
+        if returncode != 0:
             parts: List[str] = []
-            if result.stderr:
-                parts.append(result.stderr.strip())
-            if result.stdout:
-                parts.append(result.stdout.strip())
+            if stderr:
+                parts.append(stderr.strip())
+            if stdout:
+                parts.append(stdout.strip())
 
             combined_error = '\n'.join(filter(None, parts)) or 'Unknown CodeQL run error'
 
@@ -712,30 +823,70 @@ def run_query_and_decode_to_text(
                 'result_file': None,
             }
 
-        decode = subprocess.run(
+        # 执行 codeql bqrs decode，添加 --verbose 参数
+        log_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[{log_timestamp}] 执行 codeql bqrs decode\n")
+            f.write(f"{'='*80}\n")
+
+        decode_process = subprocess.Popen(
             [
                 'codeql', 'bqrs', 'decode',
+                '--verbose',
                 '--format=table',
                 str(bqrs_path),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=300,
+            bufsize=1,
         )
 
-        if decode.returncode != 0:
+        decode_stdout_lines = []
+        decode_stderr_lines = []
+
+        # 实时读取并输出 stdout 和 stderr
+        def read_decode_stdout():
+            for line in decode_process.stdout:
+                decode_stdout_lines.append(line)
+                print(line, end='', flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        def read_decode_stderr():
+            for line in decode_process.stderr:
+                decode_stderr_lines.append(line)
+                print(line, end='', file=sys.stderr, flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        decode_stdout_thread = threading.Thread(target=read_decode_stdout)
+        decode_stderr_thread = threading.Thread(target=read_decode_stderr)
+        decode_stdout_thread.start()
+        decode_stderr_thread.start()
+
+        # 等待进程完成
+        decode_returncode = decode_process.wait(timeout=300)
+        decode_stdout_thread.join()
+        decode_stderr_thread.join()
+
+        decode_stdout = ''.join(decode_stdout_lines)
+        decode_stderr = ''.join(decode_stderr_lines)
+
+        if decode_returncode != 0:
             parts: List[str] = []
-            if decode.stderr:
-                parts.append(decode.stderr.strip())
-            if decode.stdout:
-                parts.append(decode.stdout.strip())
+            if decode_stderr:
+                parts.append(decode_stderr.strip())
+            if decode_stdout:
+                parts.append(decode_stdout.strip())
             return {
                 'success': False,
                 'output': '\n'.join(filter(None, parts)) or 'Unknown BQRS decode error',
                 'result_file': None,
             }
 
-        content = decode.stdout or ''
+        content = decode_stdout or ''
         out_dir = Path(output_dir) if output_dir else Path('./temp/search_temp')
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
