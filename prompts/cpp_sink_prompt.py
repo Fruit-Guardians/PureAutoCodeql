@@ -47,6 +47,7 @@ def build_cpp_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = 
    核心：严格根据diff文件中的代码更改，对比分析源代码，找出并确认Sink点，一般Sink点就在diff对应的文件中，禁止再搜索其他文件！！！。
 
    约束：禁止搜索与diff无关的文件。禁止一次性读取整个大文件（>1000行），必须分段读取。
+   额外约束：调用文件搜索或内容搜索时，必须仅匹配 C/C++ 源文件（.c .cc .cpp .cxx .h .hh .hpp .hxx）。
 
    生成分析报告
 
