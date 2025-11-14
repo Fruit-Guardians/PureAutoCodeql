@@ -10,6 +10,27 @@ Java CodeQL中没有DataFlow::CallNode类型
 DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
 使用mc.getMethod()访问方法调用对应的方法
 
+## CodeQL生成规则 (CRITICAL)
+
+- **导入规范**
+  - 必须：`import java`
+  - 必须：`import semmle.code.java.dataflow.DataFlow`, `import semmle.code.java.dataflow.TaintTracking`
+  - 视需要：`import semmle.code.java.dataflow.FlowSources`
+- **配置与模块**
+  - 使用 `module VulnConfig implements DataFlow::ConfigSig`
+  - 使用 `module Flow = TaintTracking::Global<VulnConfig>;` 并 `import Flow::PathGraph`
+- **类型与节点约定**
+  - 方法调用使用 `MethodCall`（不要使用 `MethodAccess`/不存在的类型）
+  - Sink 通常为参数：`sink.asExpr() = mc.getAnArgument()`，不要将整个调用作为 sink
+- **Select 语句**
+  - 使用 7 参数格式，例如：
+    `select sink.getNode(), src, sink, "message", src, "source", sink, "sink"`
+- **空谓词返回**
+  - 使用 `none()`，不要使用 `false`
+- **禁止事项**
+  - ❌ 不使用 `java.lang` 等内部包限定作为约束条件
+  - ❌ 不发明不存在类型（如 `DataFlow::CallNode`）
+
 - **sink点定义原则（重要）**：
   - **必须优先定义Sink点分析报告中的sink点**
   - **禁止直接使用底层调用作为限制条件**：

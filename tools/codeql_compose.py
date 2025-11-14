@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Callable
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
 from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
 from agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
+from agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
@@ -78,6 +80,7 @@ class CodeQLComposeTool(BaseTool):
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
         fix_inplace_agent_cls: Type[CodeQLFixInplaceAgent] = CodeQLFixInplaceAgent,
         syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
+        breakpoint_detect_agent_cls: Type[CodeQLBreakpointAgent] = CodeQLBreakpointAgent,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -90,8 +93,31 @@ class CodeQLComposeTool(BaseTool):
         self._error_agent_cls = error_agent_cls
         self._fix_inplace_agent_cls = fix_inplace_agent_cls
         self._syntax_session_cls = syntax_session_cls
+        self._breakpoint_detect_agent_cls = breakpoint_detect_agent_cls
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
+    
+    def _extract_project_name_from_db_path(self, db_path: str) -> str:
+        """从数据库路径中提取项目名称。
+        
+        例如：从 'projects/CVE-2021-21985/db' 提取 'CVE-2021-21985'
+        """
+        path = Path(db_path)
+        # 如果路径是 projects/xxx/db 的格式，提取 xxx 作为项目名
+        if path.parent.name == "projects":
+            return path.name
+        # 如果路径是 projects/xxx/db 的格式，提取 xxx 作为项目名
+        elif path.parent.parent.name == "projects" and path.name == "db":
+            return path.parent.name
+        # 如果无法从路径提取，尝试其他方法
+        else:
+            # 尝试从路径中找到包含 "projects" 的部分
+            parts = path.parts
+            for i, part in enumerate(parts):
+                if part == "projects" and i + 1 < len(parts):
+                    return parts[i + 1]
+            # 如果都找不到，返回空字符串
+            return ""
 
     def _get_kb_context(self, requirement: str, project_root: Path, language: str) -> Dict[str, str]:
         """Return structured KB context for the given language, if available."""
@@ -379,9 +405,13 @@ class CodeQLComposeTool(BaseTool):
         project_root = Path(__file__).parent.parent
         kb_context: Dict[str, str] = self._get_kb_context(requirement, project_root, target_language)
 
+        # 从数据库路径提取项目名称
+        project_name = self._extract_project_name_from_db_path(self.default_database_path)
+        
         gen_agent = self._gen_agent_cls(self.analyzer)
         error_agent = self._error_agent_cls(self.analyzer)
         fix_inplace_agent = self._fix_inplace_agent_cls(self.analyzer)
+        breakpoint_detect_agent = self._breakpoint_detect_agent_cls(self.analyzer, source_root="projects", project_name=project_name)
 
         ql_template = self._load_ql_template(target_language)
         round_index = 1
@@ -454,6 +484,7 @@ class CodeQLComposeTool(BaseTool):
                         kb_reference_snippets=kb_context.get("kb_reference_snippets"),
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
+                    '''
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
                     gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
@@ -463,6 +494,46 @@ class CodeQLComposeTool(BaseTool):
                         return final_result
 
                     current_ql = self._extract_codeql_from_response(gen_result.content)
+                    '''
+                    
+                    #debug
+                    current_ql = '''/**
+ * @kind path-problem
+ * @name CVE-2025-27101: XWiki URL Shortener Access Control Bypass
+ * @description Detects the access control bypass vulnerability (CVE-2025-27101) in XWiki's URL Shortener application, where users with only VIEW permission could create arbitrary wiki pages due to missing existence and rights checks when resolving shortened URLs.
+ * @id java/xwiki/cve-2025-27101
+ * @tags security, external/cwe/cwe-639, cve-2025-27101
+ * @problem.severity error
+ * @precision high
+ */
+
+import java
+import semmle.code.java.dataflow.DataFlow
+import semmle.code.java.dataflow.TaintTracking
+import semmle.code.java.dataflow.FlowSources
+
+module VulnConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node src) {
+    exists(Method md | md.hasQualifiedName("org.obiba.opal.web", "FilesResource", "updateFile") and src.asParameter() = md.getAParameter())
+  }
+
+  predicate isSink(DataFlow::Node sink) {
+    // Sink: Document creation in URL shortener
+    exists(MethodCall mdc|mdc.getEnclosingCallable().getName() = "copyFrom" and mdc.getMethod().getName() = "copyFrom" and mdc.getNumArgument() = 2 and sink.asExpr() = mdc.getAnArgument())
+  }
+
+  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {none()}
+}
+
+module Flow = TaintTracking::Global<VulnConfig>;
+import Flow::PathGraph
+
+from Flow::PathNode src, Flow::PathNode sink
+where Flow::flowPath(src, sink)
+select sink.getNode(), src, sink,
+  "Access control bypass: User input flows to document creation without proper existence check",
+  src, "source", sink, "sink"'''
+                    #debug
                     if not current_ql:
                         is_success = False
                         final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
@@ -514,6 +585,74 @@ class CodeQLComposeTool(BaseTool):
                     
                     is_result_empty = is_empty_result(sarif_path)
                     paths_count = count_dataflow_paths(sarif_path, json_path)
+
+                    #断流点查找
+                    if is_result_empty:
+                        print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，进行断流点查找，正在执行断流查找codeql语句")
+                        from .extract_ql import extract_ql_predicate, Get_Breakpoint
+                        #组装断流点查询语句
+                        ql_predicates = extract_ql_predicate(current_ql)
+                        breakpoint_current_ql = Get_Breakpoint(ql_predicates)
+                        print("语句为"+breakpoint_current_ql)
+
+                        #执行断流点查询
+                        exec_result = execute_codeql_query(
+                                breakpoint_current_ql,
+                                self.default_database_path,
+                                target_language,
+                                query_file,
+                                alert="alert"  # 添加alert参数，执行简单查询而不进行路径分析
+                            )
+                        
+                        #借助agent开始分析断流点并且生成断流条件
+                        print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{round_index}轮）")
+                        
+                        # 提取CodeQL查询结果
+                        codeql_output = exec_result.get('output', '')
+                        
+                        # 如果有解析后的结果，使用解析后的结果；否则使用原始输出
+                        if exec_result.get('results') and len(exec_result.get('results')) > 0:
+                            # 如果results是解析后的JSON，将其转换为字符串
+                            if isinstance(exec_result.get('results'), (list, dict)):
+                                codeql_results = json.dumps(exec_result.get('results'), indent=2)
+                            else:
+                                codeql_results = str(exec_result.get('results'))
+                        else:
+                            # 如果没有解析后的结果，使用原始输出
+                            codeql_results = codeql_output
+                        
+                        # 使用断点检测代理分析结果
+                        breakpoint_result = await breakpoint_detect_agent.detect_breakpoints(
+                            codeql_results=codeql_results,
+                            language=target_language,
+                            show_thinking=show_thinking,
+                            event_callback=event_callback,
+                            agent_name="CodeQLComposeTool_BreakpointDetect",
+                            agent_type="codeql_compose_breakpoint_detect"
+                        )
+                        
+                        if not breakpoint_result.success:
+                            print(f"❌ [CodeQLComposeTool] 断点检测失败: {breakpoint_result.error}")
+                            # 继续执行，不中断整个流程
+                        else:
+                            print(f"✅ [CodeQLComposeTool] 断点检测完成")
+                            print(f"📄 [CodeQLComposeTool] 断点分析结果:\n{breakpoint_result.content}")
+                            
+                            # 这里可以将断点分析结果保存到文件或进行其他处理
+                            try:
+                                # 保存断点分析结果到文件
+                                breakpoint_result_file = pack_root / "breakpoint_analysis.md"
+                                with open(breakpoint_result_file, 'w', encoding='utf-8') as f:
+                                    f.write(f"# CodeQL断点分析结果\n\n")
+                                    f.write(f"## 原始查询\n```ql\n{current_ql}\n```\n\n")
+                                    f.write(f"## 断流点查询\n```ql\n{breakpoint_current_ql}\n```\n\n")
+                                    f.write(f"## 断流点分析结果\n{breakpoint_result.content}\n")
+                                print(f"💾 [CodeQLComposeTool] 断点分析结果已保存到: {breakpoint_result_file}")
+                                exit("测试完成")
+                            except Exception as save_error:
+                                print(f"⚠️ [CodeQLComposeTool] 保存断点分析结果时出错: {save_error}")
+                        
+                        # 继续执行后续流程
                     
                     # 记录路径数量到日志
                     logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")

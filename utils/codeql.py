@@ -316,7 +316,189 @@ dependencies:
     return query_file
 
 
-def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None , query_file: Optional[Path] = None) -> Dict[str, Any]:
+def run_simple_query(query_content: str, database_path: str, language: Optional[str] = None, query_file: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    执行简单的CodeQL查询，不进行路径分析。
+
+    Args:
+        query_content: 要执行的CodeQL查询字符串。
+        database_path: CodeQL数据库的路径。
+        language: 可选的显式语言（'java'、'python'、'c'）。如果省略，则从查询中自动检测。
+        query_file: 可选的查询文件路径。
+
+    Returns:
+        包含以下内容的字典：
+        - success (bool): 执行是否成功
+        - output (str): 查询输出或错误消息
+        - results (List): 如果成功则包含解析结果，否则为空列表
+        - result_file (str): 结果文件的路径
+    """
+    # 在执行前验证数据库
+    is_valid, validation_error = validate_codeql_database(database_path)
+    if not is_valid:
+        return {
+            'success': False,
+            'output': f"数据库验证失败:\n{validation_error}",
+            'results': [],
+            'result_file': None,
+            'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+        }
+
+    try:
+        open(query_file,'w').write(query_content)
+        
+        # 准备输出目录
+        output_dir = Path('./output')
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # 如果/output不可写，则回退到当前工作目录
+            output_dir = Path.cwd() / 'output'
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        bqrs_path = output_dir / f'result_{timestamp}.bqrs'
+
+        start_time = time.time()
+
+        # 使用`codeql query run`执行简单查询
+        result = subprocess.run(
+            [
+                'codeql', 'query', 'run',
+                str(query_file),
+                '--database', database_path,
+                f'--output={str(bqrs_path)}',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        # 计算并显示实际执行时间
+        execution_time = time.time() - start_time
+        print(f"✅ CodeQL简单查询执行完成! 用时: {execution_time:.2f}秒")
+        print("📊 正在处理查询结果...")
+
+        if result.returncode != 0:
+            # 合并stderr和stdout以捕获所有错误信息
+            error_output = []
+            if result.stderr:
+                error_output.append(result.stderr.strip())
+            if result.stdout:
+                error_output.append(result.stdout.strip())
+
+            combined_error = '\n'.join(filter(None, error_output))
+
+            # 检查是否为数据库相关错误
+            if is_database_error(combined_error):
+                enhanced_error = (
+                    f"数据库错误:\n"
+                    f"{combined_error}\n\n"
+                    f"建议:\n"
+                    f"1. 检查数据库路径是否正确: {database_path}\n"
+                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
+                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
+                )
+                return {
+                    'success': False,
+                    'output': enhanced_error,
+                    'results': [],
+                    'result_file': None,
+                    'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+                }
+
+            return {
+                'success': False,
+                'output': combined_error or 'Unknown CodeQL execution error',
+                'results': [],
+                'result_file': None,
+                'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+            }
+
+        # 解码BQRS文件为JSON格式，以便detect_breakpoints方法能够正确解析
+        decode_result = subprocess.run(
+            [
+                'codeql', 'bqrs', 'decode',
+                '--format=json',
+                str(bqrs_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if decode_result.returncode != 0:
+            # 合并stderr和stdout以捕获所有错误信息
+            error_output = []
+            if decode_result.stderr:
+                error_output.append(decode_result.stderr.strip())
+            if decode_result.stdout:
+                error_output.append(decode_result.stdout.strip())
+
+            combined_error = '\n'.join(filter(None, error_output))
+            return {
+                'success': False,
+                'output': f"BQRS解码失败: {combined_error}",
+                'results': [],
+                'result_file': None,
+                'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+            }
+
+        # 保存结果到文件
+        result_file = output_dir / f'result_{timestamp}.txt'
+        result_content = decode_result.stdout or 'No results.'
+        result_file.write_text(result_content, encoding='utf-8')
+
+        # 尝试解析结果为JSON格式，如果失败则保持原始文本
+        parsed_results = None
+        try:
+            # 尝试解析为JSON
+            if result_content.strip().startswith('{') or result_content.strip().startswith('['):
+                parsed_results = json.loads(result_content)
+        except (json.JSONDecodeError, AttributeError):
+            # 如果不是JSON格式，保持原始文本
+            pass
+
+        return {
+            'success': True,
+            'output': result_content,
+            'results': parsed_results if parsed_results is not None else [],  # 如果解析成功则返回解析后的结果
+            'result_file': str(result_file),
+            'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'output': 'CodeQL简单查询执行超时（600秒）。这可能表示查询复杂或性能问题。',
+            'results': [],
+            'result_file': None,
+            'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+        }
+    except FileNotFoundError:
+        return {
+            'success': False,
+            'output': '未找到CodeQL CLI。请确保CodeQL已正确安装并在PATH中可访问。',
+            'results': [],
+            'result_file': None,
+            'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+        }
+    except Exception as e:
+        # 捕获详细的错误信息，包括潜在的QL编译错误
+        error_msg = f'CodeQL简单查询执行失败: {str(e)}'
+        if hasattr(e, '__cause__') and e.__cause__:
+            error_msg += f'\nCause: {str(e.__cause__)}'
+
+        return {
+            'success': False,
+            'output': error_msg,
+            'results': [],
+            'result_file': None,
+            'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
+        }
+
+
+def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None , query_file: Optional[Path] = None, alert: Optional[str] = None) -> Dict[str, Any]:
     """
     对指定的数据库执行CodeQL查询。
 
@@ -324,6 +506,8 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         query_content: 要执行的CodeQL查询字符串。
         database_path: CodeQL数据库的路径。
         language: 可选的显式语言（'java'、'python'、'c'）。如果省略，则从查询中自动检测。
+        query_file: 可选的查询文件路径。
+        alert: 可选参数，当设置为'alert'时，执行简单查询而不进行路径分析。
 
     Returns:
         包含以下内容的字典：
@@ -342,6 +526,10 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             'sarif_path': None,
         }
 
+    # 如果指定了alert参数，执行简单查询
+    if alert == 'alert':
+        return run_simple_query(query_content, database_path, language, query_file)
+    
     sarif_path: Optional[Path] = None
     try:
         open(query_file,'w').write(query_content)
