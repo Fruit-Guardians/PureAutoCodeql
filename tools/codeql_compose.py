@@ -484,7 +484,7 @@ class CodeQLComposeTool(BaseTool):
                         kb_reference_snippets=kb_context.get("kb_reference_snippets"),
                         relevant_tags=kb_context.get("relevant_tags"),
                     )
-                    '''
+                    
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
                     gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
@@ -494,46 +494,7 @@ class CodeQLComposeTool(BaseTool):
                         return final_result
 
                     current_ql = self._extract_codeql_from_response(gen_result.content)
-                    '''
                     
-                    #debug
-                    current_ql = '''/**
- * @kind path-problem
- * @name CVE-2025-27101: XWiki URL Shortener Access Control Bypass
- * @description Detects the access control bypass vulnerability (CVE-2025-27101) in XWiki's URL Shortener application, where users with only VIEW permission could create arbitrary wiki pages due to missing existence and rights checks when resolving shortened URLs.
- * @id java/xwiki/cve-2025-27101
- * @tags security, external/cwe/cwe-639, cve-2025-27101
- * @problem.severity error
- * @precision high
- */
-
-import java
-import semmle.code.java.dataflow.DataFlow
-import semmle.code.java.dataflow.TaintTracking
-import semmle.code.java.dataflow.FlowSources
-
-module VulnConfig implements DataFlow::ConfigSig {
-  predicate isSource(DataFlow::Node src) {
-    exists(Method md | md.hasQualifiedName("org.obiba.opal.web", "FilesResource", "updateFile") and src.asParameter() = md.getAParameter())
-  }
-
-  predicate isSink(DataFlow::Node sink) {
-    // Sink: Document creation in URL shortener
-    exists(MethodCall mdc|mdc.getEnclosingCallable().getName() = "copyFrom" and mdc.getMethod().getName() = "copyFrom" and mdc.getNumArgument() = 2 and sink.asExpr() = mdc.getAnArgument())
-  }
-
-  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {none()}
-}
-
-module Flow = TaintTracking::Global<VulnConfig>;
-import Flow::PathGraph
-
-from Flow::PathNode src, Flow::PathNode sink
-where Flow::flowPath(src, sink)
-select sink.getNode(), src, sink,
-  "Access control bypass: User input flows to document creation without proper existence check",
-  src, "source", sink, "sink"'''
-                    #debug
                     if not current_ql:
                         is_success = False
                         final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
@@ -590,69 +551,166 @@ select sink.getNode(), src, sink,
                     if is_result_empty:
                         print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，进行断流点查找，正在执行断流查找codeql语句")
                         from .extract_ql import extract_ql_predicate, Get_Breakpoint
-                        #组装断流点查询语句
-                        ql_predicates = extract_ql_predicate(current_ql)
-                        breakpoint_current_ql = Get_Breakpoint(ql_predicates)
-                        print("语句为"+breakpoint_current_ql)
-
-                        #执行断流点查询
-                        exec_result = execute_codeql_query(
-                                breakpoint_current_ql,
-                                self.default_database_path,
-                                target_language,
-                                query_file,
-                                alert="alert"  # 添加alert参数，执行简单查询而不进行路径分析
-                            )
                         
-                        #借助agent开始分析断流点并且生成断流条件
-                        print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{round_index}轮）")
+                        # 初始化断流点添加计数器
+                        breakpoint_add_count = 0
+                        max_breakpoint_attempts = 3
+                        original_ql = current_ql  # 保存原始查询
                         
-                        # 提取CodeQL查询结果
-                        codeql_output = exec_result.get('output', '')
-                        
-                        # 如果有解析后的结果，使用解析后的结果；否则使用原始输出
-                        if exec_result.get('results') and len(exec_result.get('results')) > 0:
-                            # 如果results是解析后的JSON，将其转换为字符串
-                            if isinstance(exec_result.get('results'), (list, dict)):
-                                codeql_results = json.dumps(exec_result.get('results'), indent=2)
-                            else:
-                                codeql_results = str(exec_result.get('results'))
-                        else:
-                            # 如果没有解析后的结果，使用原始输出
-                            codeql_results = codeql_output
-                        
-                        # 使用断点检测代理分析结果
-                        breakpoint_result = await breakpoint_detect_agent.detect_breakpoints(
-                            codeql_results=codeql_results,
-                            language=target_language,
-                            show_thinking=show_thinking,
-                            event_callback=event_callback,
-                            agent_name="CodeQLComposeTool_BreakpointDetect",
-                            agent_type="codeql_compose_breakpoint_detect"
-                        )
-                        
-                        if not breakpoint_result.success:
-                            print(f"❌ [CodeQLComposeTool] 断点检测失败: {breakpoint_result.error}")
-                            # 继续执行，不中断整个流程
-                        else:
-                            print(f"✅ [CodeQLComposeTool] 断点检测完成")
-                            print(f"📄 [CodeQLComposeTool] 断点分析结果:\n{breakpoint_result.content}")
+                        while breakpoint_add_count < max_breakpoint_attempts and is_result_empty:
+                            breakpoint_add_count += 1
+                            print(f"🔍 [CodeQLComposeTool] 断流点条件添加尝试 {breakpoint_add_count}/{max_breakpoint_attempts}")
                             
-                            # 这里可以将断点分析结果保存到文件或进行其他处理
-                            try:
-                                # 保存断点分析结果到文件
-                                breakpoint_result_file = pack_root / "breakpoint_analysis.md"
-                                with open(breakpoint_result_file, 'w', encoding='utf-8') as f:
-                                    f.write(f"# CodeQL断点分析结果\n\n")
-                                    f.write(f"## 原始查询\n```ql\n{current_ql}\n```\n\n")
-                                    f.write(f"## 断流点查询\n```ql\n{breakpoint_current_ql}\n```\n\n")
-                                    f.write(f"## 断流点分析结果\n{breakpoint_result.content}\n")
-                                print(f"💾 [CodeQLComposeTool] 断点分析结果已保存到: {breakpoint_result_file}")
-                                exit("测试完成")
-                            except Exception as save_error:
-                                print(f"⚠️ [CodeQLComposeTool] 保存断点分析结果时出错: {save_error}")
+                            #组装断流点查询语句
+                            ql_predicates = extract_ql_predicate(current_ql)
+                            breakpoint_current_ql = Get_Breakpoint(ql_predicates)
+                            print("断流点查询语句为: "+breakpoint_current_ql)
+
+                            #执行断流点查询
+                            exec_result = execute_codeql_query(
+                                    breakpoint_current_ql,
+                                    self.default_database_path,
+                                    target_language,
+                                    query_file,
+                                    alert="alert"  # 添加alert参数，执行简单查询而不进行路径分析
+                                )
+                            
+                            #借助agent开始分析断流点并且生成断流条件
+                            print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{breakpoint_add_count}次尝试）")
+                            
+                            # 提取CodeQL查询结果
+                            codeql_output = exec_result.get('output', '')
+                            
+                            # 如果有解析后的结果，使用解析后的结果；否则使用原始输出
+                            if exec_result.get('results') and len(exec_result.get('results')) > 0:
+                                # 如果results是解析后的JSON，将其转换为字符串
+                                if isinstance(exec_result.get('results'), (list, dict)):
+                                    codeql_results = json.dumps(exec_result.get('results'), indent=2)
+                                else:
+                                    codeql_results = str(exec_result.get('results'))
+                            else:
+                                # 如果没有解析后的结果，使用原始输出
+                                codeql_results = codeql_output
+                            
+                            # 使用断点检测代理分析结果 - 第一步：分析断流点基本信息
+                            print(f"🔍 [CodeQLComposeTool] 第一步：分析断流点基本信息")
+                            breakpoint_analysis_result = await breakpoint_detect_agent.analyze_breakpoints(
+                                codeql_results=codeql_results,
+                                language=target_language,
+                                show_thinking=show_thinking,
+                                event_callback=event_callback,
+                                agent_name=f"CodeQLComposeTool_BreakpointAnalysis_{breakpoint_add_count}",
+                                agent_type="codeql_compose_breakpoint_analysis"
+                            )
+                            
+                            if not breakpoint_analysis_result.success:
+                                print(f"❌ [CodeQLComposeTool] 断流点分析失败: {breakpoint_analysis_result.error}")
+                                # 继续执行，不中断整个流程
+                                break
+                            else:
+                                print(f"✅ [CodeQLComposeTool] 断流点分析完成")
+                                print(f"📄 [CodeQLComposeTool] 断流点基本信息:\n{breakpoint_analysis_result.content}")
+                                
+                                # 第二步：生成isAdditionalFlowStep条件
+                                print(f"🔧 [CodeQLComposeTool] 第二步：生成isAdditionalFlowStep条件")
+                                flowstep_result = await breakpoint_detect_agent.generate_flowstep(
+                                    breakpoint_analysis=breakpoint_analysis_result.content,
+                                    language=target_language,
+                                    show_thinking=show_thinking,
+                                    event_callback=event_callback,
+                                    agent_name=f"CodeQLComposeTool_FlowstepGeneration_{breakpoint_add_count}",
+                                    agent_type="codeql_compose_flowstep_generation"
+                                )
+                                
+                                if not flowstep_result.success:
+                                    print(f"❌ [CodeQLComposeTool] isAdditionalFlowStep条件生成失败: {flowstep_result.error}")
+                                    break
+                                else:
+                                    print(f"✅ [CodeQLComposeTool] isAdditionalFlowStep条件生成完成")
+                                    print(f"📄 [CodeQLComposeTool] 生成的条件:\n{flowstep_result.content}")
+                                    
+                                    # 提取生成的isAdditionalFlowStep条件
+                                    import re
+                                    flowstep_pattern = r"```ql\s*\n(?:predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{)?(.*?)(?:\}\s*)?```"
+                                    flowstep_match = re.search(flowstep_pattern, flowstep_result.content, re.DOTALL)
+                                    
+                                    if flowstep_match:
+                                        new_flowstep_condition = flowstep_match.group(1).strip()
+                                        print(f"🔧 [CodeQLComposeTool] 提取的条件: {new_flowstep_condition}")
+                                        
+                                        # 更新当前查询的isAdditionalFlowStep条件
+                                        isadd_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{.*?\}"
+                                        if re.search(isadd_pattern, current_ql, re.DOTALL):
+                                            # 如果已存在isAdditionalFlowStep，替换其内容
+                                            if breakpoint_add_count == 1:
+                                                # 第一次添加，使用新生成的条件
+                                                current_ql = re.sub(isadd_pattern, f"predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {{{new_flowstep_condition}}}", current_ql, flags=re.DOTALL)
+                                            else:
+                                                # 后续添加，将新条件与现有条件合并
+                                                existing_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{(.*?)\}"
+                                                existing_match = re.search(existing_pattern, current_ql, re.DOTALL)
+                                                if existing_match:
+                                                    existing_condition = existing_match.group(1).strip()
+                                                    # 合并条件，使用or连接
+                                                    merged_condition = f"({existing_condition}) or ({new_flowstep_condition})"
+                                                    current_ql = re.sub(isadd_pattern, f"predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {{{merged_condition}}}", current_ql, flags=re.DOTALL)
+                                        else:
+                                            # 如果不存在isAdditionalFlowStep，添加它
+                                            current_ql = current_ql.replace(
+                                                "predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {none()}",
+                                                f"predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {{{new_flowstep_condition}}}"
+                                            )
+                                        
+                                        # 保存更新后的查询到文件
+                                        query_file.write_text(current_ql, encoding='utf-8')
+                                        print(f"💾 [CodeQLComposeTool] 已更新查询文件，添加断流点条件（第{breakpoint_add_count}次）")
+                                        
+                                        # 重新执行查询
+                                        print(f"🔄 [CodeQLComposeTool] 重新执行查询，添加断流点条件后（第{breakpoint_add_count}次）")
+                                        exec_result = self._lsp_and_execute(
+                                            current_ql=current_ql,
+                                            target_language=target_language,
+                                            query_file=query_file,
+                                            lsp_service=lsp_service,
+                                        )
+                                        
+                                        # 检查执行结果
+                                        if exec_result.get('success', False):
+                                            # 更新结果状态
+                                            is_result_empty = is_empty_result(exec_result.get('sarif_path'))
+                                            paths_count = count_dataflow_paths(exec_result.get('sarif_path'), exec_result.get('json_path'))
+                                            
+                                            if not is_result_empty:
+                                                print(f"✅ [CodeQLComposeTool] 添加断流点条件后查询成功，找到 {paths_count} 条路径")
+                                                break
+                                            else:
+                                                print(f"⚠️ [CodeQLComposeTool] 添加断流点条件后查询结果仍为空，继续尝试")
+                                        else:
+                                            print(f"❌ [CodeQLComposeTool] 添加断流点条件后查询执行失败")
+                                            break
+                                    else:
+                                        print(f"❌ [CodeQLComposeTool] 无法从生成结果中提取isAdditionalFlowStep条件")
+                                        break
+                                    
+                                    # 保存完整的断流点分析结果到文件
+                                    try:
+                                        breakpoint_result_file = pack_root / f"breakpoint_analysis_{breakpoint_add_count}.md"
+                                        with open(breakpoint_result_file, 'w', encoding='utf-8') as f:
+                                            f.write(f"# CodeQL断流点分析结果（第{breakpoint_add_count}次）\n\n")
+                                            f.write(f"## 原始查询\n```ql\n{original_ql}\n```\n\n")
+                                            f.write(f"## 当前查询\n```ql\n{current_ql}\n```\n\n")
+                                            f.write(f"## 断流点查询\n```ql\n{breakpoint_current_ql}\n```\n\n")
+                                            f.write(f"## 断流点基本信息\n{breakpoint_analysis_result.content}\n\n")
+                                            f.write(f"## isAdditionalFlowStep条件\n{flowstep_result.content}\n")
+                                        print(f"💾 [CodeQLComposeTool] 断流点分析结果已保存到: {breakpoint_result_file}")
+                                    except Exception as save_error:
+                                        print(f"⚠️ [CodeQLComposeTool] 保存断流点分析结果时出错: {save_error}")
                         
-                        # 继续执行后续流程
+                        # 如果达到最大尝试次数仍为空，进入CodeQL放宽流程
+                        if is_result_empty and breakpoint_add_count >= max_breakpoint_attempts:
+                            print(f"⚠️ [CodeQLComposeTool] 已尝试{max_breakpoint_attempts}次添加断流点条件，结果仍为空，将进入CodeQL放宽流程")
+                            # 这里可以添加进入CodeQL放宽流程的逻辑
+                            # 目前先继续执行原有流程
                     
                     # 记录路径数量到日志
                     logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")

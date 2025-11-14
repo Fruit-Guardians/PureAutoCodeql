@@ -24,15 +24,24 @@ class CodeQLBreakpointAgent:
         self.analyzer = analyzer
         self.source_root = source_root
         self.project_name = project_name
-        # 始终使用断点检测提示词
+        # 使用断点分析提示词
+        self.analysis_prompt_file = (
+            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_analysis.md"
+        )
+        # 使用断点流步骤提示词
+        self.flowstep_prompt_file = (
+            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_flowstep.md"
+        )
+        # 保留原始提示词作为备用
         self.prompt_file = prompt_file or (
             Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_detect.md"
         )
 
-    def _load_prompt(self) -> str:
+    def _load_prompt(self, prompt_file: Optional[Path] = None) -> str:
         """从markdown文件加载提示词模板内容。"""
         try:
-            return self.prompt_file.read_text(encoding="utf-8")
+            file_to_load = prompt_file or self.prompt_file
+            return file_to_load.read_text(encoding="utf-8")
         except Exception as e:
             return f"加载提示词文件时出错: {e}"
 
@@ -77,6 +86,14 @@ class CodeQLBreakpointAgent:
                     abs_path = os.path.join(source_dir, file_path)
             else:
                 abs_path = file_path
+            
+            # 检查父目录是否存在，如果不存在则创建
+            parent_dir = os.path.dirname(abs_path)
+            if parent_dir and not os.path.exists(parent_dir):
+                try:
+                    os.makedirs(parent_dir, exist_ok=True)
+                except Exception as e:
+                    return f"错误: 无法创建父目录 {parent_dir}: {str(e)}"
                 
             if not os.path.exists(abs_path):
                 return f"错误: 在{abs_path}处未找到文件"
@@ -156,6 +173,61 @@ class CodeQLBreakpointAgent:
         
         return '\n'.join(context_parts)
 
+    def build_analysis_prompt(
+        self,
+        codeql_results: str,
+        source_nodes: Optional[List[Dict]] = None,
+        sink_nodes: Optional[List[Dict]] = None,
+        language: str = "java",
+    ) -> str:
+        """构建断流点分析提示词。
+        
+        参数:
+            codeql_results: CodeQL查询执行的结果
+            source_nodes: 源节点列表(可选，如果未提供将从结果中提取)
+            sink_nodes: 汇节点列表(可选，如果未提供将从结果中提取)
+            language: 目标编程语言
+        """
+        # 如果未提供节点则提取
+        if source_nodes is None or sink_nodes is None:
+            extracted_source, extracted_sink = self._extract_nodes_from_results(codeql_results)
+            source_nodes = source_nodes or extracted_source
+            sink_nodes = sink_nodes or extracted_sink
+        
+        # 构建源码目录信息
+        if self.project_name:
+            source_dir_info = f"projects/{self.project_name}/source_code"
+        else:
+            source_dir_info = "projects/xxx/source_code (请根据实际情况替换xxx为项目名称)"
+        
+        template = self._load_prompt(self.analysis_prompt_file)
+        values = {
+            "CODEQL_RESULTS": codeql_results or "",
+            "SOURCE_NODES": json.dumps(source_nodes, indent=2) if source_nodes else "[]",
+            "SINK_NODES": json.dumps(sink_nodes, indent=2) if sink_nodes else "[]",
+            "LANGUAGE": language or "java",
+            "SOURCE_DIR": source_dir_info,
+        }
+        return self._fill_placeholders(template, values)
+
+    def build_flowstep_prompt(
+        self,
+        breakpoint_analysis: str,
+        language: str = "java",
+    ) -> str:
+        """构建isAdditionalFlowStep条件生成提示词。
+        
+        参数:
+            breakpoint_analysis: 断流点分析结果（JSON格式）
+            language: 目标编程语言
+        """
+        template = self._load_prompt(self.flowstep_prompt_file)
+        values = {
+            "BREAKPOINT_ANALYSIS": breakpoint_analysis or "",
+            "LANGUAGE": language or "java",
+        }
+        return self._fill_placeholders(template, values)
+
     def build_prompt(
         self,
         codeql_results: str,
@@ -163,7 +235,7 @@ class CodeQLBreakpointAgent:
         sink_nodes: Optional[List[Dict]] = None,
         language: str = "java",
     ) -> str:
-        """构建包含CodeQL结果和节点信息的最终提示词。
+        """构建包含CodeQL结果和节点信息的最终提示词（保留原始方法以保持兼容性）。
         
         参数:
             codeql_results: CodeQL查询执行的结果
@@ -197,6 +269,182 @@ class CodeQLBreakpointAgent:
         }
         return self._fill_placeholders(template, values)
 
+    async def analyze_breakpoints(
+        self,
+        codeql_results: str,
+        language: str = "java",
+        source_nodes: Optional[List[Dict]] = None,
+        sink_nodes: Optional[List[Dict]] = None,
+        show_thinking: bool = False,
+        event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
+    ) -> "AgentResult":
+        """分析CodeQL查询结果以检测断流点（第一步）。
+        
+        参数:
+            codeql_results: CodeQL查询执行的结果
+            language: 目标编程语言
+            source_nodes: 源节点列表(可选)
+            sink_nodes: 汇节点列表(可选)
+            show_thinking: 是否显示思考过程
+            event_callback: 事件回调
+            agent_name: 代理名称
+            agent_type: 代理类型
+        """
+        try:
+            _agent_name = agent_name or "CodeQL断流点分析代理"
+            _agent_type = agent_type or "codeql_breakpoint_analysis"
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始CodeQL断流点分析（{language}）",
+                    "data": {"language": language}
+                })
+            
+            # 如果未提供节点则提取
+            if source_nodes is None or sink_nodes is None:
+                extracted_source, extracted_sink = self._extract_nodes_from_results(codeql_results)
+                source_nodes = source_nodes or extracted_source
+                sink_nodes = sink_nodes or extracted_sink
+            
+            prompt = self.build_analysis_prompt(
+                codeql_results=codeql_results,
+                source_nodes=source_nodes,
+                sink_nodes=sink_nodes,
+                language=language,
+            )
+            
+            result = await self.analyzer.run_agent(
+                prompt, 
+                show_thinking=show_thinking, 
+                event_callback=event_callback
+            )
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL断流点分析完成（{language}）",
+                    "data": {"success": result.success, "language": language}
+                })
+            
+            return result
+            
+        except Exception as e:
+            if event_callback:
+                from datetime import datetime
+                _agent_name = agent_name or "CodeQL断流点分析代理"
+                _agent_type = agent_type or "codeql_breakpoint_analysis"
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"CodeQL断流点分析失败: {str(e)}",
+                    "data": {"error": str(e)}
+                })
+            
+            from dataclasses import dataclass
+
+            @dataclass
+            class AgentResult:
+                content: str
+                success: bool
+                error: str = None
+
+            return AgentResult(content="", success=False, error=str(e))
+
+    async def generate_flowstep(
+        self,
+        breakpoint_analysis: str,
+        language: str = "java",
+        show_thinking: bool = False,
+        event_callback = None,
+        agent_name: str = None,
+        agent_type: str = None,
+    ) -> "AgentResult":
+        """基于断流点分析结果生成isAdditionalFlowStep条件（第二步）。
+        
+        参数:
+            breakpoint_analysis: 断流点分析结果（JSON格式）
+            language: 目标编程语言
+            show_thinking: 是否显示思考过程
+            event_callback: 事件回调
+            agent_name: 代理名称
+            agent_type: 代理类型
+        """
+        try:
+            _agent_name = agent_name or "CodeQL流步骤生成代理"
+            _agent_type = agent_type or "codeql_flowstep_generation"
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_start",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"开始生成isAdditionalFlowStep条件（{language}）",
+                    "data": {"language": language}
+                })
+            
+            prompt = self.build_flowstep_prompt(
+                breakpoint_analysis=breakpoint_analysis,
+                language=language,
+            )
+            
+            result = await self.analyzer.run_agent(
+                prompt, 
+                show_thinking=show_thinking, 
+                event_callback=event_callback
+            )
+            
+            if event_callback:
+                from datetime import datetime
+                await event_callback({
+                    "type": "agent_complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"isAdditionalFlowStep条件生成完成（{language}）",
+                    "data": {"success": result.success, "language": language}
+                })
+            
+            return result
+            
+        except Exception as e:
+            if event_callback:
+                from datetime import datetime
+                _agent_name = agent_name or "CodeQL流步骤生成代理"
+                _agent_type = agent_type or "codeql_flowstep_generation"
+                await event_callback({
+                    "type": "error",
+                    "timestamp": datetime.now().isoformat(),
+                    "agent_name": _agent_name,
+                    "agent_type": _agent_type,
+                    "message": f"isAdditionalFlowStep条件生成失败: {str(e)}",
+                    "data": {"error": str(e)}
+                })
+            
+            from dataclasses import dataclass
+
+            @dataclass
+            class AgentResult:
+                content: str
+                success: bool
+                error: str = None
+
+            return AgentResult(content="", success=False, error=str(e))
+
     async def detect_breakpoints(
         self,
         codeql_results: str,
@@ -208,7 +456,7 @@ class CodeQLBreakpointAgent:
         agent_name: str = None,
         agent_type: str = None,
     ) -> "AgentResult":
-        """分析CodeQL查询结果以检测断点并生成isAdditionalFlowStep条件。
+        """分析CodeQL查询结果以检测断点并生成isAdditionalFlowStep条件（两步流程）。
         
         参数:
             codeql_results: CodeQL查询执行的结果
@@ -235,23 +483,29 @@ class CodeQLBreakpointAgent:
                     "data": {"language": language}
                 })
             
-            # 如果未提供节点则提取
-            if source_nodes is None or sink_nodes is None:
-                extracted_source, extracted_sink = self._extract_nodes_from_results(codeql_results)
-                source_nodes = source_nodes or extracted_source
-                sink_nodes = sink_nodes or extracted_sink
-            
-            prompt = self.build_prompt(
+            # 第一步：分析断流点
+            analysis_result = await self.analyze_breakpoints(
                 codeql_results=codeql_results,
+                language=language,
                 source_nodes=source_nodes,
                 sink_nodes=sink_nodes,
-                language=language,
+                show_thinking=show_thinking,
+                event_callback=event_callback,
+                agent_name=f"{_agent_name}-分析",
+                agent_type=f"{_agent_type}-analysis"
             )
             
-            result = await self.analyzer.run_agent(
-                prompt, 
-                show_thinking=show_thinking, 
-                event_callback=event_callback
+            if not analysis_result.success:
+                return analysis_result
+            
+            # 第二步：生成isAdditionalFlowStep条件
+            flowstep_result = await self.generate_flowstep(
+                breakpoint_analysis=analysis_result.content,
+                language=language,
+                show_thinking=show_thinking,
+                event_callback=event_callback,
+                agent_name=f"{_agent_name}-流步骤",
+                agent_type=f"{_agent_type}-flowstep"
             )
             
             if event_callback:
@@ -262,10 +516,10 @@ class CodeQLBreakpointAgent:
                     "agent_name": _agent_name,
                     "agent_type": _agent_type,
                     "message": f"CodeQL断点检测分析完成（{language}）",
-                    "data": {"success": result.success, "language": language}
+                    "data": {"success": flowstep_result.success, "language": language}
                 })
             
-            return result
+            return flowstep_result
             
         except Exception as e:
             if event_callback:

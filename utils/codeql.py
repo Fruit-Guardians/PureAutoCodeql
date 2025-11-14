@@ -360,33 +360,78 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         bqrs_path = output_dir / f'result_{timestamp}.bqrs'
 
+        # 确定日志目录（从 query_file 路径提取）
+        log_dir = query_file.parent if query_file else Path('./temp/codeql_temp') / datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / 'codeql_simple_verbose.log'
+
+        # 写入命令信息到日志文件头部
+        log_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[{log_timestamp}] 执行 codeql query run (简单查询)\n")
+            f.write(f"{'='*80}\n")
+
         start_time = time.time()
 
-        # 使用`codeql query run`执行简单查询
-        result = subprocess.run(
+        # 使用`codeql query run`执行简单查询，添加实时日志输出
+        import threading
+        process = subprocess.Popen(
             [
                 'codeql', 'query', 'run',
                 str(query_file),
                 '--database', database_path,
                 f'--output={str(bqrs_path)}',
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600
+            bufsize=1,
         )
+
+        stdout_lines = []
+        stderr_lines = []
+
+        # 实时读取并输出 stdout 和 stderr
+        def read_stdout():
+            for line in process.stdout:
+                stdout_lines.append(line)
+                print(line, end='', flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        def read_stderr():
+            for line in process.stderr:
+                stderr_lines.append(line)
+                print(line, end='', file=sys.stderr, flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        stdout_thread = threading.Thread(target=read_stdout)
+        stderr_thread = threading.Thread(target=read_stderr)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # 等待进程完成
+        returncode = process.wait(timeout=600)
+        stdout_thread.join()
+        stderr_thread.join()
+
+        stdout = ''.join(stdout_lines)
+        stderr = ''.join(stderr_lines)
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
         print(f"✅ CodeQL简单查询执行完成! 用时: {execution_time:.2f}秒")
         print("📊 正在处理查询结果...")
 
-        if result.returncode != 0:
+        if returncode != 0:
             # 合并stderr和stdout以捕获所有错误信息
             error_output = []
-            if result.stderr:
-                error_output.append(result.stderr.strip())
-            if result.stdout:
-                error_output.append(result.stdout.strip())
+            if stderr:
+                error_output.append(stderr.strip())
+            if stdout:
+                error_output.append(stdout.strip())
 
             combined_error = '\n'.join(filter(None, error_output))
 
@@ -400,6 +445,7 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
                     f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
                     f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
                 )
+                print(f"CodeQL简单查询执行失败，数据库错误: \n {enhanced_error}")
                 return {
                     'success': False,
                     'output': enhanced_error,
@@ -408,6 +454,7 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
                     'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
                 }
 
+            print(f"CodeQL简单查询执行失败，错误: \n {combined_error}")
             return {
                 'success': False,
                 'output': combined_error or 'Unknown CodeQL execution error',
@@ -417,26 +464,59 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
             }
 
         # 解码BQRS文件为JSON格式，以便detect_breakpoints方法能够正确解析
-        decode_result = subprocess.run(
+        decode_process = subprocess.Popen(
             [
                 'codeql', 'bqrs', 'decode',
                 '--format=json',
                 str(bqrs_path),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=300,
+            bufsize=1,
         )
 
-        if decode_result.returncode != 0:
+        decode_stdout_lines = []
+        decode_stderr_lines = []
+
+        # 实时读取并输出解码过程的 stdout 和 stderr
+        def read_decode_stdout():
+            for line in decode_process.stdout:
+                decode_stdout_lines.append(line)
+                print(line, end='', flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        def read_decode_stderr():
+            for line in decode_process.stderr:
+                decode_stderr_lines.append(line)
+                print(line, end='', file=sys.stderr, flush=True)
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(line)
+
+        decode_stdout_thread = threading.Thread(target=read_decode_stdout)
+        decode_stderr_thread = threading.Thread(target=read_decode_stderr)
+        decode_stdout_thread.start()
+        decode_stderr_thread.start()
+
+        # 等待解码进程完成
+        decode_returncode = decode_process.wait(timeout=300)
+        decode_stdout_thread.join()
+        decode_stderr_thread.join()
+
+        decode_stdout = ''.join(decode_stdout_lines)
+        decode_stderr = ''.join(decode_stderr_lines)
+
+        if decode_returncode != 0:
             # 合并stderr和stdout以捕获所有错误信息
             error_output = []
-            if decode_result.stderr:
-                error_output.append(decode_result.stderr.strip())
-            if decode_result.stdout:
-                error_output.append(decode_result.stdout.strip())
+            if decode_stderr:
+                error_output.append(decode_stderr.strip())
+            if decode_stdout:
+                error_output.append(decode_stdout.strip())
 
             combined_error = '\n'.join(filter(None, error_output))
+            print(f"BQRS解码失败: {combined_error}")
             return {
                 'success': False,
                 'output': f"BQRS解码失败: {combined_error}",
@@ -447,7 +527,7 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
 
         # 保存结果到文件
         result_file = output_dir / f'result_{timestamp}.txt'
-        result_content = decode_result.stdout or 'No results.'
+        result_content = decode_stdout or 'No results.'
         result_file.write_text(result_content, encoding='utf-8')
 
         # 尝试解析结果为JSON格式，如果失败则保持原始文本
