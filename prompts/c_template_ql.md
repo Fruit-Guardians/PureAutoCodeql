@@ -217,6 +217,27 @@ module VulnConfig implements DataFlow::ConfigSig {
       n1.asExpr() = aoe.getOperand() and
       n2.asExpr() = aoe
     )
+    or
+    // 加法运算传播：操作数到加法结果的传播 (例如: a -> a + b)
+    // ⚠️ 用于追踪算术运算中的污点传播
+    exists(AddExpr add |
+      n1.asExpr() = add.getAnOperand() and
+      n2.asExpr() = add
+    )
+    or
+    // 乘法运算传播：操作数到乘法结果的传播 (例如: n -> 12 * n)
+    // ⚠️ 用于追踪偏移计算等场景中的污点传播
+    exists(MulExpr mul |
+      n1.asExpr() = mul.getAnOperand() and
+      n2.asExpr() = mul
+    )
+    or
+    // 类型转换传播：被转换表达式到转换结果的传播 (例如: x -> (int)x)
+    // ⚠️ 用于追踪类型转换中的污点传播
+    exists(Cast cast |
+      n1.asExpr() = cast.getExpr() and
+      n2.asExpr() = cast
+    )
   }
   
   /** 可选：净化器（如果不需要，可以省略或使用 none()） */
