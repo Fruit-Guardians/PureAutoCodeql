@@ -395,8 +395,6 @@ class PathFeatureExtractor:
     def _generate_smart_mappings(self, normalized_path: str) -> List[str]:
         """生成智能路径映射候选"""
         candidates = []
-
-        # 1. 移除常见的反编译前缀（支持Windows路径）
         decompiled_prefixes = [
             "out/decode/classes/",
             "out/classes/",

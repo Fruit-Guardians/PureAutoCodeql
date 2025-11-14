@@ -238,6 +238,114 @@ module VulnConfig implements DataFlow::ConfigSig {
       n1.asExpr() = cast.getExpr() and
       n2.asExpr() = cast
     )
+    or
+    // 减法运算传播：操作数到减法结果的传播 (例如: a -> a - b)
+    // ⚠️ 用于追踪算术运算中的污点传播
+    exists(Expr e |
+      e instanceof SubExpr and
+      n1.asExpr() = e.(SubExpr).getAnOperand() and
+      n2.asExpr() = e
+    )
+    or
+    // 除法运算传播：操作数到除法结果的传播 (例如: a -> a / b)
+    // ⚠️ 用于追踪算术运算中的污点传播
+    exists(Expr e |
+      e instanceof DivExpr and
+      n1.asExpr() = e.(DivExpr).getAnOperand() and
+      n2.asExpr() = e
+    )
+    or
+    // 取模运算传播：操作数到取模结果的传播 (例如: a -> a % b)
+    // ⚠️ 用于追踪大小计算等场景中的污点传播
+    exists(Expr e |
+      e instanceof ModExpr and
+      n1.asExpr() = e.(ModExpr).getAnOperand() and
+      n2.asExpr() = e
+    )
+    or
+    // 移位运算传播：操作数到移位结果的传播 (例如: a -> a << b)
+    // ⚠️ 用于追踪大小计算等场景中的污点传播
+    exists(Expr e |
+      e instanceof ShiftExpr and
+      n1.asExpr() = e.(ShiftExpr).getAnOperand() and
+      n2.asExpr() = e
+    )
+    or
+    // 赋值运算传播：右侧操作数到赋值表达式的传播 (例如: x -> (y = x))
+    // ⚠️ 用于追踪变量赋值中的污点传播
+    exists(Assignment assign |
+      n1.asExpr() = assign.getRValue() and
+      n2.asExpr() = assign
+    )
+    or
+    // 逻辑运算传播：操作数到逻辑结果的传播 (例如: a -> a && b)
+    // ⚠️ 用于追踪条件判断中的污点传播
+    exists(LogicalBinaryExpr la |
+      la instanceof LogicalAndExpr and
+      n1.asExpr() = la.getAnOperand() and
+      n2.asExpr() = la
+    )
+    or
+    exists(LogicalBinaryExpr lo |
+      lo instanceof LogicalOrExpr and
+      n1.asExpr() = lo.getAnOperand() and
+      n2.asExpr() = lo
+    )
+    or
+    // 比较运算传播：操作数到比较结果的传播 (例如: a -> a > b)
+    // ⚠️ 用于追踪条件判断中的污点传播
+    exists(ComparisonExpr comp |
+      n1.asExpr() = comp.getAnOperand() and
+      n2.asExpr() = comp
+    )
+    or
+    // 条件运算传播：条件或结果到条件表达式的传播 (例如: a -> a ? b : c)
+    // ⚠️ 用于追踪三元运算符中的污点传播
+    exists(ConditionalExpr cond |
+      (n1.asExpr() = cond.getCondition() or 
+       n1.asExpr() = cond.getThen() or 
+       n1.asExpr() = cond.getElse()) and
+      n2.asExpr() = cond
+    )
+    or
+    // 逗号运算传播：左侧或右侧操作数到逗号表达式的传播 (例如: a -> (a, b))
+    // ⚠️ 用于追踪逗号运算符中的污点传播
+    exists(CommaExpr comma |
+      n1.asExpr() = comma.getAnOperand() and
+      n2.asExpr() = comma
+    )
+    or
+    // 函数调用返回值传播：参数到函数调用表达式的传播
+    // ⚠️ 用于追踪函数调用返回值中的污点传播
+    exists(FunctionCall fc |
+      exists(int i |
+        n1.asExpr() = fc.getArgument(i) and
+        n2.asExpr() = fc
+      )
+    )
+    or
+    // 成员访问传播：对象到成员访问的传播 (例如: obj -> obj.member)
+    // ⚠️ 用于追踪对象成员访问中的污点传播
+    exists(MemberAccessExpr mae |
+      n1.asExpr() = mae.getQualifier() and
+      n2.asExpr() = mae
+    )
+    or
+    // 指针算术传播：指针到指针加减法的传播 (例如: p -> p + offset)
+    // ⚠️ 用于追踪指针算术中的污点传播
+    exists(AddExpr pae |
+      pae instanceof PointerArithmeticExpr and
+      n1.asExpr() = pae.getAnOperand() and
+      n2.asExpr() = pae
+    )
+    or
+    // 大小计算传播：表达式到sizeof结果的传播
+    // ⚠️ 用于追踪大小计算中的污点传播
+    exists(UnaryExpr soe |
+      soe instanceof SizeofExpr and
+      n1.asExpr() = soe.getOperand() and
+      n2.asExpr() = soe
+    )
   }
   
   /** 可选：净化器（如果不需要，可以省略或使用 none()） */
