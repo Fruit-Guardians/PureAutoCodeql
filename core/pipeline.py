@@ -73,7 +73,11 @@ class CVEAnalysisStep(AnalysisStep):
         from config import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
-        await analyzer.initialize()
+        await analyzer.initialize(
+            event_callback=context.event_callback,
+            language=context.language,
+            workspace_path=str(context.case_paths.source_code)
+        )
 
         cve_agent = CVEAnalysisAgent(analyzer)
         intel_prompt = context.intel_bundle.prompt_block() if context.intel_bundle else None
@@ -108,7 +112,11 @@ class SinkAnalysisStep(AnalysisStep):
         from config import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
-        await analyzer.initialize()
+        await analyzer.initialize(
+            event_callback=context.event_callback,
+            language=context.language,
+            workspace_path=str(context.case_paths.source_code)
+        )
 
         sink_agent = UnifiedSinkPathAgent(analyzer, context.case_paths.source_code)
 
@@ -143,7 +151,11 @@ class SourceAnalysisStep(AnalysisStep):
         from config import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
-        await analyzer.initialize()
+        await analyzer.initialize(
+            event_callback=context.event_callback,
+            language=context.language,
+            workspace_path=str(context.case_paths.source_code)
+        )
 
         source_agent = UnifiedSourceAnalysisAgent(
             analyzer,
@@ -197,7 +209,11 @@ class CodeQLGenerationStep(AnalysisStep):
         from config import LLMRole
         think_config = _get_llm_config_from_context(context, LLMRole.THINK)
         codeql_analyzer = MultiAgentAnalyzer(think_config)
-        await codeql_analyzer.initialize()
+        await codeql_analyzer.initialize(
+            event_callback=context.event_callback,
+            language=context.language,
+            workspace_path=str(context.case_paths.source_code)
+        )
 
         codeql_tool = CodeQLComposeTool(
             analyzer=codeql_analyzer,

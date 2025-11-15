@@ -1,0 +1,94 @@
+# PureAutoCodeQL LLM 配置文件
+# 只需修改这个文件即可完成所有配置，无需修改代码！
+
+# ============================================================================
+# 内置服务商 API Keys
+# ============================================================================
+[builtin_keys]
+deepseek = "sk-db40a5fe5d494abaa2516893821c65a1"
+siliconflow = "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld"
+zhipu = "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy"
+kimi = "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny"
+gemini = "AIzaSyDS-Moyzuf1sUdAUsw9bkr1z_cZMVdyvpc"
+java_home = "C:\\Program Files\\BellSoft\\LibericaJDK-22"
+
+
+# ============================================================================
+# 自定义服务商（可选）
+# ============================================================================
+[[custom_providers]]
+name = "my_ollama"
+display_name = "本地 Ollama 示例"
+api_key = "ollama"
+base_url = "http://localhost:11434/v1"
+think_model = "deepseek-r1:latest"
+chat_model = "qwen2.5:latest"
+description = "这是一个示例自定义提供商，演示如何配置本地 Ollama 模型"
+
+# 你的自定义 API 服务
+[[custom_providers]]
+name = "minimax2"
+display_name = "Minimax"
+api_key = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJHcm91cE5hbWUiOiJvcnhpYWluIiwiVXNlck5hbWUiOiJvcnhpYWluIiwiQWNjb3VudCI6IiIsIlN1YmplY3RJRCI6IjE5ODYzNjkwNzc5MzI3Mjg4MzAiLCJQaG9uZSI6IjE3NzA5Mzc2MDM4IiwiR3JvdXBJRCI6IjE5ODYzNjkwNzc5MjQzNDAyMjIiLCJQYWdlTmFtZSI6IiIsIk1haWwiOiIiLCJDcmVhdGVUaW1lIjoiMjAyNS0xMS0xNSAxODo0Nzo0MyIsIlRva2VuVHlwZSI6MSwiaXNzIjoibWluaW1heCJ9.WTiUaWPTwT38Ruat1K99BWJOnF6m6ZKXXaldrzM5UKoWU7qQXCHxND6LG_oiCyE0sShpN194lyintf1LU4QKN-G2_pSisHr68p_5CZmyeHKzTNsor2bsVves8MIHouulcGDrPethoP0Qo0OFckkCXP4G15yaWJkBR9br_z6VPRc-BC1p2Wu3r4ph-hX6qeYKERWi9RZwrOAHYyqlZzHF1WwjtS4G9L3YXalxwFwk2KUYMo7dM9T5uIsbOpg9AFNBxY_P3xmFDupm2IXTRKedmEO9d2DHGJ9msZGhMjsl0orA5zXo_cBz7OuI0OF8uk7UTmX2sxBm7ZcqhKEJk3lf0w"
+base_url = "https://api.minimaxi.com/v1"
+think_model = "MiniMax-M2"             
+chat_model = "MiniMax-M2"         
+description = "Minimax"
+
+# 你的自定义 API 服务
+[[custom_providers]]
+name = "kat"
+display_name = "我的自定义 API"
+api_key = "sk_LJxznN136qAECfgjQkP2Z2F8RwNzMaqtZXtrFAwub0Y"
+base_url = "https://api.ppinfra.com/openai/v1"
+think_model = "deepseek/deepseek-v3.2-exp"             
+chat_model = "minimax/minimax-m2"         
+description = "自定义 API 服务"
+
+
+# ============================================================================
+# 全局设置（可选）
+# ============================================================================
+[settings]
+default_provider = "deepseek"
+
+# CodeQL 安装路径配置
+# 如果不配置，系统会自动尝试查找常见位置
+# codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
+
+# Java 语言服务器配置
+[mcp_language_server.java]
+# LSP 可执行文件路径（支持相对路径和绝对路径）
+# Windows 示例：
+lsp_executable = "C:\\Projects\\Pure\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
+# Linux/macOS 示例：
+# lsp_executable = "/home/orxiain/project/Temp/Pure/utils/lsp/jdt-language-server/bin/jdtls"
+
+# 参数模板（占位符: {workspace}, {lsp}, {java_executable}）
+# "--" 之前是 MCP 参数, "--" 之后是传给 LSP 的参数
+# 注意：路径可能包含空格，需要用引号包裹
+args_template = "--workspace \"{workspace}\" --lsp \"{lsp}\" -- --java-executable \"{java_executable}\""
+
+# Java 可执行文件路径（留空则从 builtin_keys.java_home 自动获取）
+java_executable = "C:\\Program Files\\BellSoft\\LibericaJDK-22\\bin\\java.exe"
+
+# Python 语言服务器配置
+[mcp_language_server.python]
+# LSP 可执行文件（可以是 PATH 中的命令名或完整路径）
+lsp_executable = "pyright-langserver"
+
+# 参数模板（占位符: {workspace}, {lsp}）
+args_template = "--workspace {workspace} --lsp {lsp} -- --stdio"
+
+# C/C++ 语言服务器配置
+[mcp_language_server.cpp]
+# LSP 可执行文件（可以是 PATH 中的命令名或完整路径）
+lsp_executable = "/home/orxiain/project/Temp/Pure/utils/lsp/ast-grep"
+
+# 参数模板（占位符: {workspace}, {lsp}, {compile_commands_dir}）
+# 基础配置（不指定 compile_commands_dir）：
+args_template = "--workspace {workspace} --lsp {lsp} -- lsp"
+# 如需指定编译命令目录，可修改为：
+# args_template = "--workspace {workspace} --lsp {lsp} -- --compile-commands-dir={compile_commands_dir}"
+
+# 编译命令目录（可选，用于 C/C++ 项目）

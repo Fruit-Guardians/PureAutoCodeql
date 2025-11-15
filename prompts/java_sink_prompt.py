@@ -75,7 +75,25 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
             Sink应该定位在: RESTUtils.java 第129行的IOUtils.copy(request.getInputStream(), os)
             ```
 
-3.  **工具优先 (Tool-First):** **必须**使用 `searchfile` 工具来定位和读取文件。
+3.  **工具优先 (Tool-First):** **必须**使用工具来定位和分析代码：
+    * **LSP工具（推荐优先使用）**：如果可用，使用 language-server 提供的高级分析能力：
+        - `definition`: 查找符号（函数/方法/类）的定义位置
+          * 参数：`symbolName` - 要查找的符号名称
+          * 返回：符号的定义位置和完整实现代码
+          * 例如：`definition(symbolName="ResourceAdaptor")`
+        - `references`: 查找符号的所有引用位置（追踪调用链）
+          * 参数：`symbolName` - 要查找引用的符号名称
+          * 返回：所有引用该符号的文件和位置列表
+          * 例如：`references(symbolName="valid")`
+          * **这是反向追踪数据流的核心工具**
+        - `hover`: 获取指定位置的类型和文档信息
+          * 参数：`filePath`, `line`, `column`
+          * 用于理解变量类型、方法签名等
+        - 这些工具能精确定位代码位置，避免手动搜索和猜测
+    * **基础工具**（LSP不可用时使用）：
+        - `searchfile`: 文件名搜索
+        - `server-filesystem`: 读取文件内容
+        - `ripgrep`: 文本搜索
 
 4.  **自主执行 (Autonomous Execution):** 你可以直接调用工具并按步骤执行，无需事先征求同意，直到输出最终报告。
 
@@ -98,13 +116,28 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
     * 审查 `{cve_analysis}` 和 `{diff_path}`。
     * 重点关注diff中的代码变化，将其作为定位Sink点的**关键线索**。
 
-2.  **定位文件 (Locate File):**
-    * 根据 `{source_path}` 和diff分析，使用 `searchfile` 工具找到包含潜在Sink点的具体Java文件。
-    * (捷径: 如果diff已明确显示文件名，请直接使用 `searchfile` 定位该文件。)
+2.  **定位文件与函数 (Locate File & Function):**
+    * **优先使用LSP工具**（如果可用）：
+        - 如果diff中提到具体的类名或方法名，使用 `definition` 工具精确定位
+        - 例如：`definition(symbolName="ResourceAdaptor")`
+        - 这会返回 ResourceAdaptor 类的定义位置和完整代码
+        - 比文件搜索更准确，能直接获取代码实现
+    * **备用方案**：使用 `searchfile` 工具找到包含潜在Sink点的具体Java文件
     * 约束：调用文件搜索或内容搜索时，必须仅匹配 `.java` 文件，禁止返回非 Java 源文件。
 
 3.  **审计代码 (Audit Code):**
-    * 使用文件读取工具，获取目标文件的完整内容。
+    * **使用LSP工具进行深度分析**（推荐工作流）：
+        - **第一步：定位目标符号**
+          * 使用 `definition(symbolName="MethodName")` 获取方法的完整定义和代码
+          * 例如：`definition(symbolName="valid")` 查看 valid 方法的实现
+        - **第二步：追踪调用链**
+          * 使用 `references(symbolName="MethodName")` 查找该方法的所有调用位置
+          * 返回所有文件和行号，可以看到方法在哪里被使用
+          * 例如：如果diff修复了 `valid(path)`，使用 `references(symbolName="valid")` 查看哪里调用了验证
+        - **第三步：理解类型信息**
+          * 使用 `hover(filePath="...", line=X, column=Y)` 了解特定位置的类型信息
+          * 可以查看参数类型、返回值类型等
+    * **备用方案**：只有在LSP不可用时才使用文件读取工具获取完整内容
     * **核心步骤:**
         1. 找到diff中修改的具体行号和方法
         2. 识别添加了什么验证逻辑（例如：`valid(path)`, `sanitize()`, 参数检查等）
@@ -112,6 +145,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
             - 如果是**纯路径遍历**：Sink就是验证逻辑所保护的代码位置
             - 如果是**文件上传/写入**（包括通过路径遍历实现的）：
                 * 从diff修复位置开始，继续追踪调用链
+                * **使用 `lsp_find_references` 追踪方法调用链**
                 * 找到最终的文件写入操作（`IOUtils.copy`, `FileOutputStream.write`等）
                 * 这些文件写入操作才是Sink点
         4. 对于文件上传漏洞，必须追踪到实际的I/O操作

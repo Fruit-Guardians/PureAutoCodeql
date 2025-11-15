@@ -363,7 +363,7 @@ class AgentResult:
     error: Optional[str] = None
 
 
-def _limit_tool_output_tokens(output: Any, token_limit: int = 10000) -> Any:
+def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: str = None) -> Any:
     """限制工具输出的Token数量，确保不超过指定限制。
 
     支持两种返回格式：
@@ -371,7 +371,25 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000) -> Any:
     2. 元组 (content, artifact)：保持元组格式，只截断content部分
     
     对于代码文件，采用智能截断策略，尝试保留函数定义区域。
+    
+    Args:
+        output: 工具输出结果
+        token_limit: Token限制数量
+        tool_name: 工具名称，用于特殊处理（如LSP MCP工具使用8000限制）
     """
+    # LSP MCP 工具使用 8000 token 限制
+    # 检测条件：
+    # 1. 工具名包含 'language-server' (MCP服务器名称)
+    # 2. 工具名包含 'lsp' (如 lsp_function_lookup)
+    # 3. 工具名是常见的LSP操作 (definition, hover, references等)
+    lsp_tool_keywords = ['language-server', 'lsp', 'definition', 'hover', 'references', 
+                         'symbols', 'completion', 'signature', 'document_symbol', 
+                         'workspace_symbol', 'goto_definition']
+    
+    if tool_name and any(keyword in tool_name.lower() for keyword in lsp_tool_keywords):
+        token_limit = 8000
+        logger = get_logger(__name__)
+        logger.debug(f"🔧 LSP MCP工具 '{tool_name}' 使用8000 Token限制")
     import re
     
     # 检查是否是 (content, artifact) 元组格式
@@ -766,7 +784,11 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
 
 
 class MultiAgentAnalyzer:
-    """用于漏洞分析工作流的多Agent分析器。"""
+    """
+    用于漏洞分析工作流的多Agent分析器
+    
+    支持动态集成 LSP MCP 服务器,根据语言类型提供高级代码分析能力。
+    """
 
     def __init__(self, config: LLMConfig = None):
         """初始化多Agent分析器。"""
@@ -777,30 +799,62 @@ class MultiAgentAnalyzer:
         self.tools = None
         self.retry_tracker = AgentRetryTracker()
 
-    async def initialize(self, event_callback=None) -> None:
-        """初始化LLM和MCP客户端以便在多个Agent之间复用。"""
+    async def initialize(self, event_callback=None, language: str = None, workspace_path: str = None) -> None:
+        """
+        初始化LLM和MCP客户端以便在多个Agent之间复用
+        
+        Args:
+            event_callback: 可选的事件回调函数
+            language: 可选的语言类型 (java/python/cpp/c),用于启用对应的 LSP MCP 服务
+            workspace_path: 可选的工作空间路径,用于 LSP 服务器初始化
+        """
+        logger = get_logger(__name__)
         self.llm = RetryableChatOpenAI(self.config, self.retry_tracker, event_callback)
 
-        self.mcp_client = MultiServerMCPClient(
-            {
-                "filesystem": {
-                    "command": "npx",
-                    "args": [
-                        "-y",
-                        "@modelcontextprotocol/server-filesystem",
-                        str(Path.cwd()),
-                    ],
-                    "transport": "stdio",
-                },
-                "ripgrep": {
-                    "command": "node",
-                    "args": [str(Path(__file__).parent.parent / "tools" / "mcp_ripgrep" / "dist" / "index.js")],
-                    "transport": "stdio",
-                },
-            }
-        )
+        mcp_servers = {
+            "filesystem": {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-filesystem",
+                    str(Path.cwd()),
+                ],
+                "transport": "stdio",
+            },
+            "ripgrep": {
+                "command": "node",
+                "args": [str(Path(__file__).parent.parent / "tools" / "mcp_ripgrep" / "dist" / "index.js")],
+                "transport": "stdio",
+            },
+        }
+        
+        if language and workspace_path:
+            try:
+                from services.mcp_language_config import MCPLanguageConfigService
+                
+                lsp_config_service = MCPLanguageConfigService()
+                if lsp_config_service.is_language_supported(language):
+                    lsp_config = lsp_config_service.get_language_server_config(
+                        language, workspace_path
+                    )
+                    mcp_servers["language-server"] = lsp_config
+                    logger.info(f"✓ 已添加 {language} LSP MCP 配置")
+                else:
+                    logger.info(f"ℹ️  语言 {language} 不支持 LSP MCP")
+            except Exception as e:
+                logger.warning(f"⚠️  LSP MCP 配置失败,继续使用基础 MCP: {e}")
+        
+        self.mcp_client = MultiServerMCPClient(mcp_servers)
 
-        self.tools = await self.mcp_client.get_tools()
+        try:
+            self.tools = await self.mcp_client.get_tools()
+        except Exception as e:
+            logger.error(f"❌ MCP 工具加载失败: {e}")
+            logger.error(f"配置的 MCP 服务器: {list(mcp_servers.keys())}")
+            # 尝试逐个服务器测试
+            for server_name in mcp_servers.keys():
+                logger.error(f"  - {server_name}: {mcp_servers[server_name]}")
+            raise
         
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
         from tools.lsp_lookup_tool import LSPFunctionLookupTool
@@ -823,8 +877,10 @@ class MultiAgentAnalyzer:
                     def wrapped_run(*args, **kwargs):
                         logger = get_logger(__name__)
                         logger.debug(f"🔧 调用工具 {name} (sync)")
+                        
+                        # 同步工具暂不添加超时（主要是 MCP 工具使用异步）
                         result = original_func(*args, **kwargs)
-                        return _limit_tool_output_tokens(result)
+                        return _limit_tool_output_tokens(result, tool_name=name)
                     return wrapped_run
 
                 t._run = create_wrapped_run(original_run, tool_name)
@@ -837,8 +893,29 @@ class MultiAgentAnalyzer:
                     async def wrapped_arun(*args, **kwargs):
                         logger = get_logger(__name__)
                         logger.debug(f"🔧 调用工具 {name} (async)")
-                        result = await original_func(*args, **kwargs)
-                        return _limit_tool_output_tokens(result)
+                        
+                        # 为 MCP 工具添加 30 秒超时
+                        timeout_seconds = 30
+                        try:
+                            result = await asyncio.wait_for(
+                                original_func(*args, **kwargs),
+                                timeout=timeout_seconds
+                            )
+                            return _limit_tool_output_tokens(result, tool_name=name)
+                        except asyncio.TimeoutError:
+                            logger.warning(f"⏱️ 工具 {name} 调用超时 (>{timeout_seconds}秒)")
+                            timeout_msg = (
+                                f"工具调用超时: '{name}' 执行时间超过 {timeout_seconds} 秒。\n"
+                                f"可能原因:\n"
+                                f"1. LSP 服务器响应缓慢\n"
+                                f"2. 工作空间文件过多\n"
+                                f"3. 网络或系统资源问题\n\n"
+                                f"建议: 尝试使用更具体的查询参数，或检查 LSP 服务器状态。"
+                            )
+                            return (timeout_msg, None)
+                        except Exception as e:
+                            logger.error(f"❌ 工具 {name} 调用失败: {e}")
+                            raise
                     return wrapped_arun
 
                 t._arun = create_wrapped_arun(original_arun, tool_name)
@@ -914,8 +991,8 @@ class MultiAgentAnalyzer:
                         action = event.get("data", {}).get("action")
                         if action and hasattr(action, "tool"):
                             print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
-                            if hasattr(action, "tool_input") and action.tool_input:
-                                print(f"   工具输入: {action.tool_input}")
+                            # if hasattr(action, "tool_input") and action.tool_input:
+                            #     print(f"   工具输入: {action.tool_input}")
 
                     elif event_name == "on_tool_start":
                         # 工具开始执行
