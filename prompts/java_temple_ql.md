@@ -10,6 +10,10 @@ Java CodeQL中没有DataFlow::CallNode类型
 DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
 使用mc.getMethod()访问方法调用对应的方法
 
+注意Sink点无论如何只有一个，不要使用or连接多个sink点
+
+`hasQualifiedName`方法，该方法只存在于`RefType`类中
+
 ## CodeQL生成规则 (CRITICAL)
 
 - **导入规范**
