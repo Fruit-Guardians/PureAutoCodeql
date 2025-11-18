@@ -41,39 +41,87 @@ DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
     - ❌ 禁止：`Runtime.exec()`, `java.lang.reflect.Method.invoke()`, `java.lang` 包下的函数等
     - ❌ 禁止：使用 `mc.getMethod().getDeclaringType().hasQualifiedName("java.lang.reflect", "Method")` 作为限制条件
     - ✅ 要求：只限制到 Sink 点报告给出的具体函数调用
+  
+  - **🔴 致命错误：区分 MethodCall 和 ConstructorCall**：
+    - **MethodCall**：仅代表普通方法调用（如 `obj.getName()`）
+    - **ConstructorCall**：代表构造函数调用（如 `new File(...)`）
+    - ❌ **错误**：使用 `MethodCall` 捕获构造函数
+      ```ql
+      exists(MethodCall mc |
+        mc.getMethod().hasName("File")  // 错误：构造函数不是 MethodCall
+      )
+      ```
+    - ✅ **正确**：使用 `ConstructorCall` 捕获构造函数
+      ```ql
+      exists(ConstructorCall cc |
+        cc.getConstructedType().hasQualifiedName("java.io", "File") and
+        sink.asExpr() = cc.getArgument(0)
+      )
+      ```
+  
+  - **🔴 关键错误：避免将中间节点定义为 Sink（短路效应）**：
+    - **问题**：如果将污点传播路径中的中间步骤（如 `entry.getName()`）定义为 Sink，会导致分析在中间节点就停止，无法追踪到真正的危险点
+    - ❌ **错误示例**：
+      ```ql
+      // 错误：将 getName() 定义为 Sink
+      exists(MethodCall mc |
+        mc.getMethod().hasName("getName") and
+        sink.asExpr() = mc  // 这会导致分析在此停止
+      )
+      ```
+    - ✅ **正确做法**：
+      - 只将真正的危险操作定义为 Sink（如 `new File(userInput)`）
+      - 中间步骤（如 `getName()`）应该在 `isAdditionalFlowStep` 中处理污点传播
+      - 让污点追踪引擎自然地追踪数据流到最终的危险点
+  
   - **三种方法精确定位 sink 点**（使用 AND 组合确保精确性）：
     1. **被调用的方法名**：`mc.getEnclosingCallable().hasName("invokeService")` - 用于锁定 sink 点所在的上层方法
-    2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` - 用于锁定具体的危险方法调用
+    2. **当前方法调用名**：`mc.getMethod().hasName("invoke")` 或构造函数：`cc.getConstructedType().hasQualifiedName("java.io", "File")` - 用于锁定具体的危险方法调用
     3. **Java 文件路径匹配**：`mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java")` - 用于锁定具体文件
   
   - **🔴 关键：Sink 节点的正确定义方式**：
-    - **对于反射调用、命令执行等漏洞，必须将方法的参数作为 sink，而不是方法调用本身**
-    - ✅ **正确**：`sink.asExpr() = mc.getAnArgument()` - 污点数据流向方法参数
-    - ❌ **错误**：`sink.asExpr() = mc` - 污点数据流向整个方法调用
-    - **原因**：在数据流分析中，污点数据通常流向危险方法的参数（如 `invoke(method, obj, args)`），而不是方法调用表达式本身
+    - **对于方法调用（MethodCall）：必须将方法的参数作为 sink**
+      - ✅ **正确**：`sink.asExpr() = mc.getAnArgument()` - 污点数据流向方法参数
+      - ❌ **错误**：`sink.asExpr() = mc` - 污点数据流向整个方法调用
+      - **原因**：污点数据通常流向危险方法的参数（如 `invoke(method, obj, args)`）
+    
+    - **对于构造函数调用（ConstructorCall）：将构造函数的参数作为 sink**
+      - ✅ **正确**：`sink.asExpr() = cc.getArgument(0)` - 污点数据流向构造函数参数
+      - ❌ **错误**：`sink.asExpr() = cc` - 污点数据流向整个构造函数调用
+    
     - **适用场景**：
-      - 反射调用：`Method.invoke()`, `Constructor.newInstance()`
-      - 命令执行：`Runtime.exec()`, `ProcessBuilder.command()`
-      - SQL注入：`Statement.execute()`, `PreparedStatement.executeQuery()`
-      - 文件操作：`FileInputStream()`, `FileOutputStream()`
-      - 等所有接受用户输入作为参数的危险方法
+      - 反射调用（MethodCall）：`Method.invoke()`, `Constructor.newInstance()`
+      - 命令执行（MethodCall）：`Runtime.exec()`, `ProcessBuilder.command()`
+      - SQL注入（MethodCall）：`Statement.execute()`, `PreparedStatement.executeQuery()`
+      - 文件操作（ConstructorCall）：`new FileInputStream()`, `new FileOutputStream()`, `new File()`
+      - 等所有接受用户输入作为参数的危险方法或构造函数
   
   - **示例对比**：
     ```ql
-    // ❌ 错误示例 - 无法检测到数据流
+    // ❌ 错误示例1 - 使用 MethodCall 捕获构造函数
     exists(MethodCall mc |
-      mc.getEnclosingCallable().hasName("invokeService") and
-      mc.getMethod().hasName("invoke") and
-      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
-      sink.asExpr() = mc  // 错误：将整个方法调用作为sink
+      mc.getMethod().hasName("File") and  // 错误：构造函数不是 MethodCall
+      sink.asExpr() = mc.getAnArgument()
     )
     
-    // ✅ 正确示例 - 能够检测到数据流
+    // ✅ 正确示例1 - 使用 ConstructorCall 捕获构造函数
+    exists(ConstructorCall cc |
+      cc.getEnclosingCallable().hasName("uploadFile") and
+      cc.getConstructedType().hasQualifiedName("java.io", "File") and
+      sink.asExpr() = cc.getArgument(1)  // 正确：构造函数参数作为sink
+    )
+    
+    // ❌ 错误示例2 - 将中间节点定义为 Sink
+    exists(MethodCall mc |
+      mc.getMethod().hasName("getName") and
+      sink.asExpr() = mc  // 错误：导致分析在中间步骤停止
+    )
+    
+    // ✅ 正确示例2 - 只定义真正的危险点为 Sink
     exists(MethodCall mc |
       mc.getEnclosingCallable().hasName("invokeService") and
       mc.getMethod().hasName("invoke") and
-      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
-      sink.asExpr() = mc.getAnArgument()  // 正确：将方法参数作为sink
+      sink.asExpr() = mc.getAnArgument()  // 正确：方法参数作为sink
     )
     ```
   
@@ -81,7 +129,9 @@ DataFlow节点主要用于isSource、isSink、isAdditionalFlowStep参数
     - 不允许使用内部包（如 java.lang）作为限制条件
     - 如果代码段有多次调用同名方法，可以添加包名或其他条件进一步限制
     - Sink 点报告中的 sink 点是必需的，必须精确匹配报告中的调用位置
-    - **默认情况下，对于所有危险方法调用，都应该使用 `mc.getAnArgument()` 作为 sink 节点**
+    - **对于 MethodCall，使用 `mc.getAnArgument()` 作为 sink 节点**
+    - **对于 ConstructorCall，使用 `cc.getArgument(N)` 作为 sink 节点**
+    - **绝不将中间传播步骤（如 getter 方法）定义为 Sink**
 - 确保查询逻辑严谨，避免误报
 
 #### 编写约束
@@ -144,60 +194,72 @@ module VulnConfig implements DataFlow::ConfigSig {
   predicate isSink(DataFlow::Node sink) {
     // TODO: 定义Java sinks
     // 使用三种方法精确定位sink点（根据报告中的具体调用位置）：
-    // 1. mc.getEnclosingCallable().hasName("xxx") - 被调用的方法名
-    // 2. mc.getMethod().hasName("xxx") - 当前方法调用名
-    // 3. mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%XxxController.java") - 文件路径
-    // 🔴 重要：使用 mc.getAnArgument() 将方法参数作为sink，而不是整个方法调用
+    // 1. mc/cc.getEnclosingCallable().hasName("xxx") - 被调用的方法名
+    // 2. mc.getMethod().hasName("xxx") 或 cc.getConstructedType().hasQualifiedName("pkg", "Class") - 当前调用
+    // 3. mc/cc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%XxxController.java") - 文件路径
+    // 🔴 重要：区分 MethodCall 和 ConstructorCall
+    // 🔴 关键：不要将中间传播步骤（如 getName()）定义为 Sink
     
+    // 示例1：普通方法调用 (MethodCall)
     exists(MethodCall mc |
-      // 方法1: 用被调用的方法去锁定这个sink点
       mc.getEnclosingCallable().hasName("invokeService") and
-      // 方法2: 用当前方法调用名去锁定
       mc.getMethod().hasName("invoke") and
-      // 方法3: 用Java文件路径去锁定
       mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%ProxygenController.java") and
-      // 🔴 关键：将方法参数作为sink，而不是方法调用本身
-      sink.asExpr() = mc.getAnArgument()
+      sink.asExpr() = mc.getAnArgument()  // 方法参数作为sink
     )
-    // 如果有多个sink点，使用 or 连接
     or
-    exists(MethodCall mc |
-      mc.getEnclosingCallable().hasName("anotherMethod") and
-      mc.getMethod().hasName("dangerousCall") and
-      mc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%AnotherController.java") and
-      // 同样使用 mc.getAnArgument()
-      sink.asExpr() = mc.getAnArgument()
+    // 示例2：构造函数调用 (ConstructorCall)
+    exists(ConstructorCall cc |
+      cc.getEnclosingCallable().hasName("uploadFile") and
+      cc.getConstructedType().hasQualifiedName("java.io", "File") and
+      cc.getEnclosingCallable().getDeclaringType().getFile().getAbsolutePath().matches("%FileController.java") and
+      sink.asExpr() = cc.getArgument(1)  // 构造函数参数作为sink
+    )
+    or
+    // 示例3：另一个构造函数 (ConstructorCall)
+    exists(ConstructorCall cc |
+      cc.getEnclosingCallable().hasName("writeFile") and
+      cc.getConstructedType().hasQualifiedName("java.io", "FileOutputStream") and
+      sink.asExpr() = cc.getArgument(0)  // 构造函数参数作为sink
     )
   }
 
-  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    // Handle data flow through ProxygenSerializer deserialization
+  predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
+    // 示例1：方法调用的污点传播（从参数到返回值）
     exists(MethodCall mc , Expr arg|
       mc.getMethod().getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
       (
         mc.getMethod().hasName("xxx") or
         mc.getMethod().hasName("xxx")
       ) and
-    arg = mc.getAnArgument() and
-    src.asExpr() = arg and
-    dst.asExpr() = mc
+      arg = mc.getAnArgument() and
+      node1.asExpr() = arg and
+      node2.asExpr() = mc
+    )
+    or
+    // 示例2：构造函数的污点传播（从参数到对象）
+    exists(ConstructorCall c |
+      c.getCallee().hasQualifiedName("org.apache.commons.compress.archivers.tar","TarArchiveInputStream","TarArchiveInputStream") and
+      node1.asExpr() = c.getArgument(0) and
+      node2.asExpr() = c
+    )
+    or
+    // 示例3：Getter 方法的污点传播（从对象到返回值）
+    // 注意：这里是传播步骤，不是 Sink 定义
+    exists(MethodCall mc |
+      mc.getMethod().hasName("getName") and
+      mc.getMethod().getDeclaringType().hasQualifiedName("org.apache.commons.compress.archivers.tar", "TarArchiveEntry") and
+      node1.asExpr() = mc.getQualifier() and  // 源头是 entry 对象
+      node2.asExpr() = mc                      // 目标是 getName() 的返回值
     )
   }
 }
 
-//predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
-    exists(MethodCall ma |
-      ma.getMethod().hasQualifiedName("org.springframework.beans.factory", "BeanFactory", "getBean") and
-      node1.asExpr() = ma.getArgument(0) and
-      node2.asExpr() = ma
-    )
-  //}
-
-module Flow = TaintTracking::Global`<VulnConfig>`;
+module Flow = TaintTracking::Global<VulnConfig>;
 import Flow::PathGraph
 
 from Flow::PathNode src, Flow::PathNode sink
 where Flow::flowPath(src, sink)
 select sink.getNode(), src, sink,
-  "`<diagnostic message>`",
+  "<diagnostic message>",
   src, "source", sink, "sink"

@@ -18,6 +18,7 @@ from langchain_openai import ChatOpenAI
 
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 from utils.logger import get_logger
+from services.agent_mcp_config import AgentMCPConfigService
 
 
 class APIErrorClassifier:
@@ -799,7 +800,13 @@ class MultiAgentAnalyzer:
         self.tools = None
         self.retry_tracker = AgentRetryTracker()
 
-    async def initialize(self, event_callback=None, language: str = None, workspace_path: str = None) -> None:
+    async def initialize(
+        self,
+        event_callback=None,
+        language: str = None,
+        workspace_path: str = None,
+        agent_type: str = "default",
+    ) -> None:
         """
         初始化LLM和MCP客户端以便在多个Agent之间复用
         
@@ -807,43 +814,19 @@ class MultiAgentAnalyzer:
             event_callback: 可选的事件回调函数
             language: 可选的语言类型 (java/python/cpp/c),用于启用对应的 LSP MCP 服务
             workspace_path: 可选的工作空间路径,用于 LSP 服务器初始化
+            agent_type: 可选的 Agent 类型标识,用于未来按 Agent 定制 MCP 配置,默认值保证向后兼容
         """
         logger = get_logger(__name__)
         self.llm = RetryableChatOpenAI(self.config, self.retry_tracker, event_callback)
 
-        mcp_servers = {
-            "filesystem": {
-                "command": "npx",
-                "args": [
-                    "-y",
-                    "@modelcontextprotocol/server-filesystem",
-                    str(Path.cwd()),
-                ],
-                "transport": "stdio",
-            },
-            "ripgrep": {
-                "command": "node",
-                "args": [str(Path(__file__).parent.parent / "tools" / "mcp_ripgrep" / "dist" / "index.js")],
-                "transport": "stdio",
-            },
-        }
-        
-        if language and workspace_path:
-            try:
-                from services.mcp_language_config import MCPLanguageConfigService
-                
-                lsp_config_service = MCPLanguageConfigService()
-                if lsp_config_service.is_language_supported(language):
-                    lsp_config = lsp_config_service.get_language_server_config(
-                        language, workspace_path
-                    )
-                    mcp_servers["language-server"] = lsp_config
-                    logger.info(f"✓ 已添加 {language} LSP MCP 配置")
-                else:
-                    logger.info(f"ℹ️  语言 {language} 不支持 LSP MCP")
-            except Exception as e:
-                logger.warning(f"⚠️  LSP MCP 配置失败,继续使用基础 MCP: {e}")
-        
+        # 使用 Agent 级别 MCP 配置服务构造 mcp_servers, 保持默认行为与原实现一致
+        mcp_config_service = AgentMCPConfigService()
+        mcp_servers = mcp_config_service.get_config_for_agent(
+            agent_type=agent_type,
+            language=language,
+            workspace_path=workspace_path,
+        )
+
         self.mcp_client = MultiServerMCPClient(mcp_servers)
 
         try:
@@ -1005,30 +988,10 @@ class MultiAgentAnalyzer:
                             print()
                             ai_streaming = False
                         
-                        # 对于 ripgrep/search 工具，显示命令信息
-                        if tool_name in ("ripgrep", "search"):
-                            # 尝试从不同位置获取输入参数
-                            if isinstance(tool_input, dict):
-                                pattern = tool_input.get("pattern", "")
-                                path = tool_input.get("path", "")
-                            else:
-                                # 尝试从 event.data 中获取
-                                event_data = event.get("data", {})
-                                if isinstance(event_data, dict):
-                                    pattern = event_data.get("pattern", "")
-                                    path = event_data.get("path", "")
-                                else:
-                                    pattern = ""
-                                    path = ""
-                            
-                            if pattern and path:
-                                # 构建命令显示
-                                cmd_display = f"rg -n '{pattern[:30]}{'...' if len(pattern) > 30 else ''}' '{path[:40]}{'...' if len(path) > 40 else ''}'"
-                                print(f"🔧 {tool_name} ({cmd_display}) → ", end="", flush=True)
-                            else:
-                                print(f"🔧 {tool_name} → ", end="", flush=True)
-                        else:
-                            print(f"🔧 {tool_name} → ", end="", flush=True)
+                        # 打印工具输入参数
+                        print(f"🔧 {tool_name}")
+                        print(f"   📥 请求参数: {tool_input}")
+                        print(f"   ⏳ 执行中 → ", end="", flush=True)
 
                     elif event_name == "on_tool_end":
                         # 工具执行完成，在同一行显示结果
