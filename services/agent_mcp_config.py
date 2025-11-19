@@ -34,10 +34,11 @@ AGENT_TYPES: Dict[str, str] = {
 }
 
 AGENT_MCP_PROFILES: Dict[str, list[str]] = {
-    "cve_analysis": ["filesystem", "ripgrep", "language-server"],
+    "cve_analysis": [],
     "unified_sink_path": ["filesystem", "ripgrep", "language-server"],
-    "unified_source_analysis": ["language-server"],
-    "source_analysis": ["language-server"],
+    # "unified_source_analysis": ["language-server"]
+    "unified_source_analysis": ["language-server", "ripgrep"],
+    "source_analysis": ["language-server", "ripgrep"],
     "codeql_gen": ["filesystem", "ripgrep", "language-server"],
     "codeql_error": ["filesystem", "ripgrep", "language-server"],
     "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
@@ -49,17 +50,11 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
 class AgentMCPConfigService:
     """
     Agent 级别的 MCP 配置管理服务。
-
-    第一阶段：所有 Agent 共用相同的默认 MCP 配置（filesystem、ripgrep、可选 language-server）。
-    未来可以在此基础上为不同 agent_type 定制差异化配置。
     """
 
     def __init__(self, language_config_service: Optional[MCPLanguageConfigService] = None):
         """
         初始化配置服务。
-
-        Args:
-            language_config_service: 可选的语言服务器配置服务，便于在测试中注入。
         """
         self._language_config_service = language_config_service or MCPLanguageConfigService()
 
@@ -69,12 +64,6 @@ class AgentMCPConfigService:
         language: Optional[str] = None,
         workspace_path: Optional[str] = None,
     ) -> Dict[str, Dict]:
-        """
-        返回指定 Agent 的 MCP 服务器配置。
-
-        根据每个 Agent 类型在 AGENT_MCP_PROFILES 中定义的配置，
-        组合相应的 MCP 服务器。
-        """
         # 获取Agent对应的MCP配置文件，如果不存在则使用默认配置
         profile = AGENT_MCP_PROFILES.get(agent_type, AGENT_MCP_PROFILES["default"])
 
@@ -86,12 +75,13 @@ class AgentMCPConfigService:
             if not workspace_path:
                 logger.warning("⚠️  filesystem MCP 需要 workspace_path 参数")
             else:
+                workspace_path_str = str(workspace_path).replace("source_code", "")
                 mcp_servers["filesystem"] = {
                     "command": "npx",
                     "args": [
                         "-y",
                         "@modelcontextprotocol/server-filesystem",
-                        str(workspace_path),
+                        workspace_path_str,
                     ],
                     "transport": "stdio",
                 }

@@ -921,8 +921,11 @@ class MultiAgentAnalyzer:
     async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> AgentResult:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
-            if not self.llm or not self.tools:
-                await self.initialize(event_callback)
+            # 只在尚未初始化LLM时自动初始化
+            # 如果调用方已经显式调用 initialize() 并设置了自定义 agent_type / MCP 配置，
+            # 即便 tools 为空也不应在此使用默认参数覆盖之前的配置。
+            if not self.llm:
+                await self.initialize(event_callback=event_callback)
 
             agent = create_agent(self.llm, self.tools)
             content_parts = []
