@@ -37,12 +37,12 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "cve_analysis": [],
     "unified_sink_path": ["filesystem", "ripgrep", "language-server"],
     # "unified_source_analysis": ["language-server"]
-    "unified_source_analysis": ["language-server", "ripgrep"],
-    "source_analysis": ["language-server", "ripgrep"],
-    "codeql_gen": ["filesystem", "ripgrep", "language-server"],
-    "codeql_error": ["filesystem", "ripgrep", "language-server"],
-    "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
-    "codeql_breakpoint_detect": ["filesystem", "ripgrep", "language-server"],
+    "unified_source_analysis": ["tree_sitter", "language-server"],
+    "source_analysis": ["tree_sitter", "language-server"],
+    "codeql_gen": [],
+    "codeql_error": ["ripgrep"],
+    "codeql_fix_inplace": ["filesystem", "ripgrep"],
+    "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
     "default": ["filesystem", "ripgrep", "language-server"],
 }
 
@@ -67,6 +67,19 @@ class AgentMCPConfigService:
         # 获取Agent对应的MCP配置文件，如果不存在则使用默认配置
         profile = AGENT_MCP_PROFILES.get(agent_type, AGENT_MCP_PROFILES["default"])
 
+        # 针对 Source 分析类 Agent,根据语言调整 MCP 组合策略
+        normalized_language = (language or "").lower()
+        if agent_type in {"unified_source_analysis", "source_analysis"} and normalized_language:
+            if normalized_language == "java":
+                # Java: 使用 ripgrep + language-server,不启用 tree_sitter
+                profile = ["ripgrep", "language-server"]
+            elif normalized_language == "python":
+                # Python: 使用 tree_sitter + language-server
+                profile = ["tree_sitter", "language-server"]
+            elif normalized_language in {"c", "cpp", "c++"}:
+                # C/C++: 仅使用 tree_sitter,不启用 language-server
+                profile = ["tree_sitter"]
+
         # 构建完整的MCP服务器配置
         mcp_servers: Dict[str, Dict] = {}
 
@@ -76,12 +89,17 @@ class AgentMCPConfigService:
                 logger.warning("⚠️  filesystem MCP 需要 workspace_path 参数")
             else:
                 workspace_path_str = str(workspace_path).replace("source_code", "")
+                workspace_path_obj = Path(workspace_path_str)
+                parents = workspace_path_obj.parents
+                repo_root = parents[1] if len(parents) > 1 else workspace_path_obj.parent
+                temp_codeql_path = repo_root / "temp" / "codeql_temp"
                 mcp_servers["filesystem"] = {
                     "command": "npx",
                     "args": [
                         "-y",
                         "@modelcontextprotocol/server-filesystem",
                         workspace_path_str,
+                        str(temp_codeql_path),
                     ],
                     "transport": "stdio",
                 }
@@ -101,6 +119,23 @@ class AgentMCPConfigService:
                 ],
                 "transport": "stdio",
             }
+
+        # 添加 tree_sitter MCP
+        if "tree_sitter" in profile:
+            if not workspace_path:
+                logger.warning("⚠️  tree_sitter MCP 需要 workspace_path 参数")
+            else:
+                mcp_servers["tree_sitter"] = {
+                    "command": "uv",
+                    "args": [
+                        "--directory",
+                        str(workspace_path),
+                        "run",
+                        "-m",
+                        "mcp_server_tree_sitter.server",
+                    ],
+                    "transport": "stdio",
+                }
 
         # 添加语言服务器MCP
         if "language-server" in profile and language and workspace_path:

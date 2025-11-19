@@ -38,7 +38,7 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
 
 可用工具：
 - **LSP工具（推荐优先使用）**：
-注意！ 指定文档位置需要使用绝对路径！
+注意！ 指定文档位置的 `filePath` 必须使用绝对路径（例如：`/home/orxiain/Projects/Github/Pure2/projects/CVE-2022-26125/source_code/...`）。
   * `definition`: 查找符号的定义位置
     - 参数：`symbolName` - 要查找的符号名称
     - 返回：符号的定义位置和完整实现代码
@@ -50,8 +50,18 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
   * `hover`: 获取指定位置的类型和文档信息
     - 参数：`filePath`, `line`, `column`
     - 用于理解参数类型、函数签名等
-- **基础工具**（LSP不可用时使用）：
-  * server-filesystem：读取文件内容
+- **MCP Tree-sitter 代码分析服务器**：
+  * 使用前必须通过 `register_project_tool` 用 **绝对路径** 注册项目根目录，例如：
+    - `register_project_tool(path="/home/orxiain/Projects/Github/Pure2/projects/CVE-2022-26125/source_code", name="CVE-2022-26125", description="CVE-2022-26125 source_code project")`
+  * 注册成功后，后续所有 tree-sitter 命令中的 `project` 参数必须使用注册时的名称（例如 `"CVE-2022-26125"`）：
+    - `list_files(project="CVE-2022-26125", pattern="**/*.{file_extension}")`
+    - `get_ast(project="CVE-2022-26125", path="相对路径/到/文件.{file_extension}", max_depth=5, include_text=True)`
+    - `find_text(project="CVE-2022-26125", pattern="函数名或关键字", file_pattern="**/*.{file_extension}")`
+    - `run_query(project="CVE-2022-26125", query="(function_definition ...)", file_path="相对路径/到/文件.{file_extension}", language="{language}")`
+    - `get_symbols(project="CVE-2022-26125", file_path="相对路径/到/文件.{file_extension}")`
+  * MCP Tree-sitter 的 `path`/`file_path` 参数是 **相对注册 project 根目录的相对路径**，但注册时的 `path` 必须是绝对路径。
+- **基础工具**（LSP 或 tree-sitter 不可用时使用）：
+  * server-filesystem：读取文件内容（注意：`read_text_file` 的 `path` 也推荐使用绝对路径以避免歧义）
   * ripgrep：快速搜索文件内容
 
 行动指令（严格按照顺序执行）：
@@ -63,7 +73,7 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
      * 例如：`references(symbolName="parse_request")`
    - **第三步**：使用 `hover` 理解输入参数的类型
      * 查看具体位置的变量类型信息
-3. 结合路径列表，聚焦可能接收用户控制数据的函数或方法（{language_instructions}）。
+3. 结合路径列表，聚焦可能接收用户控制数据的函数或方法（{language_instructions}）。必要时，先使用 MCP Tree-sitter 的 `register_project_tool` 正确注册项目根目录，再通过 `list_files` / `find_text` / `get_ast` / `run_query` 等命令精确定位候选函数。
 4. 给出每个候选的理由与置信度（high/medium/low）。
 5. 使用LSP工具快速定位，避免盲目搜索
 
@@ -92,12 +102,14 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
 }}
 
 规则：
+- 使用 MCP Tree-sitter 工具前，必须确保已经通过 `register_project_tool` 使用 **绝对路径** 注册当前分析的源码目录（例如：`/home/orxiain/Projects/Github/Pure2/projects/CVE-2022-26125/source_code`）。
+- 在调用 tree-sitter 相关命令时，`project` 名必须与注册时完全一致；命令中的 `path`/`file_path` 必须是相对于注册根目录的相对路径。
 - 文件/内容搜索时，必须将文件后缀限制为项目语言：Java(.java)、Python(.py)、C/C++(.c .cc .cpp .cxx .h .hh .hpp .hxx)。
 - 若没有发现候选函数，请输出：{{"candidates": []}}
 - **必要时可以使用 server-filesystem 读取文件内容进行补充验证**。
 - 请确保输出为合法可解析的 JSON。
 - 结果应与源码实际位置一致。
- - 使用 `server-filesystem` 的 `read_text_file` 时，不要同时设置 `head` 与 `tail`；如需同时查看文件顶部与底部，请分两次分别读取并标注来源。
+- 使用 `server-filesystem` 的 `read_text_file` 时，不要同时设置 `head` 与 `tail`；如需同时查看文件顶部与底部，请分两次分别读取并标注来源。
 """
 
 

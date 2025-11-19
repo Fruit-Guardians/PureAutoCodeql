@@ -68,4 +68,5 @@ projects/CVE-2024-8412/
 projects/CVE*
 *.zip
 projects/*.zip
-projects/C_QL
+projects/C_Qi
+utils/lsp

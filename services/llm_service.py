@@ -8,12 +8,15 @@ import functools
 import json
 import random
 import time
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_mcp_adapters.sessions import create_session
 from langchain_openai import ChatOpenAI
 
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
@@ -799,6 +802,8 @@ class MultiAgentAnalyzer:
         self.mcp_client = None
         self.tools = None
         self.retry_tracker = AgentRetryTracker()
+        self._mcp_sessions = {}
+        self._session_stack = None
 
     async def initialize(
         self,
@@ -828,15 +833,33 @@ class MultiAgentAnalyzer:
         )
 
         self.mcp_client = MultiServerMCPClient(mcp_servers)
+        self.tools = []
+
+        self._mcp_sessions = {}
+        self._session_stack = AsyncExitStack()
 
         try:
-            self.tools = await self.mcp_client.get_tools()
+            for server_name, connection in mcp_servers.items():
+                if server_name == "tree_sitter":
+                    session = await self._session_stack.enter_async_context(
+                        create_session(connection)
+                    )
+                    await session.initialize()
+                    self._mcp_sessions[server_name] = session
+                    server_tools = await load_mcp_tools(session, connection=connection)
+                else:
+                    server_tools = await load_mcp_tools(None, connection=connection)
+
+                self.tools.extend(server_tools)
         except Exception as e:
             logger.error(f"❌ MCP 工具加载失败: {e}")
             logger.error(f"配置的 MCP 服务器: {list(mcp_servers.keys())}")
-            # 尝试逐个服务器测试
             for server_name in mcp_servers.keys():
                 logger.error(f"  - {server_name}: {mcp_servers[server_name]}")
+            if self._session_stack is not None:
+                await self._session_stack.aclose()
+                self._session_stack = None
+                self._mcp_sessions = {}
             raise
 
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
@@ -918,7 +941,24 @@ class MultiAgentAnalyzer:
 
         logger.info(f"✓ 完成包装 {len(self.tools)} 个工具")
 
-    async def run_agent(self, prompt: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> AgentResult:
+
+    async def aclose(self) -> None:
+        if self._session_stack is not None:
+            try:
+                await self._session_stack.aclose()
+            finally:
+                self._session_stack = None
+                self._mcp_sessions = {}
+
+    async def run_agent(
+        self,
+        prompt: str,
+        show_thinking: bool = True,
+        event_callback=None,
+        agent_name: str = None,
+        agent_type: str = None,
+        recursion_limit: int = 300, # 思考的最大递归深度
+    ) -> AgentResult:
         """使用给定的提示词运行单个Agent，可选择显示思考过程。"""
         try:
             # 只在尚未初始化LLM时自动初始化
@@ -937,7 +977,9 @@ class MultiAgentAnalyzer:
             ai_streaming = False  # 跟踪AI是否正在流式输出
 
             async for event in agent.astream_events(
-                {"messages": [("user", prompt)]}, version="v1", config={"recursion_limit": 100}
+                {"messages": [("user", prompt)]},
+                version="v1",
+                config={"recursion_limit": recursion_limit},
             ):
                 event_name = event.get("event")
 

@@ -16,7 +16,7 @@ class MCPLanguageConfigService:
     负责为不同语言生成 LSP MCP 服务器配置,从 config/keys.toml 读取语言特定的配置参数。
     """
 
-    SUPPORTED_LANGUAGES = {"java", "python", "cpp", "c"}
+    SUPPORTED_LANGUAGES = {"java", "python"}
 
     def __init__(self, config_provider=None):
         """
@@ -235,46 +235,4 @@ class MCPLanguageConfigService:
             "transport": "stdio"
         }
 
-    def _generate_cpp_config(self, workspace_path: str) -> dict:
-        lang_config = self._get_lang_config_section("cpp")
-
-        lsp_executable = lang_config.get("lsp_executable", "clangd")
-
-        if "/" in lsp_executable or "\\" in lsp_executable:
-            lsp_executable = self._normalize_path(lsp_executable)
-            if not os.path.exists(lsp_executable):
-                logger.warning(f"C/C++ LSP 可执行文件不存在: {lsp_executable}")
-
-        compile_commands_dir = lang_config.get("compile_commands_dir", "")
-
-        if compile_commands_dir:
-            args_template = lang_config.get(
-                "args_template",
-                "--workspace {workspace} --lsp {lsp} -- --compile-commands-dir={compile_commands_dir}"
-            )
-            args = self._format_args_from_template(
-                args_template,
-                workspace=workspace_path,
-                lsp=lsp_executable,
-                compile_commands_dir=compile_commands_dir
-            )
-        else:
-            args_template = lang_config.get(
-                "args_template",
-                "--workspace {workspace} --lsp {lsp}"
-            )
-            args = self._format_args_from_template(
-                args_template,
-                workspace=workspace_path,
-                lsp=lsp_executable
-            )
-
-       # 最终LSP MCP配置返回
-        return {
-            "command": self._get_mcp_command(),
-            "args": args,
-            "transport": "stdio",
-            "env": {
-                "LOG_LEVEL": "DEBUG"
-            }
-        }
+    # C/C++ LSP MCP 支持已退役,不再提供 _generate_cpp_config 实现
