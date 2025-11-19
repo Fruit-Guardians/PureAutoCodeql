@@ -154,7 +154,8 @@ class SourceAnalysisStep(AnalysisStep):
         await analyzer.initialize(
             event_callback=context.event_callback,
             language=context.language,
-            workspace_path=str(context.case_paths.source_code)
+            workspace_path=str(context.case_paths.source_code),
+            agent_type=self.name  # 传递 agent_type 参数
         )
 
         source_agent = UnifiedSourceAnalysisAgent(

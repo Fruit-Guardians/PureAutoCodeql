@@ -38,6 +38,7 @@ SOURCE_ANALYSIS_BASE_PROMPT = """你是一名资深的 CodeQL 安全研究员与
 
 可用工具：
 - **LSP工具（推荐优先使用）**：
+注意！ 指定文档位置需要使用绝对路径！
   * `definition`: 查找符号的定义位置
     - 参数：`symbolName` - 要查找的符号名称
     - 返回：符号的定义位置和完整实现代码

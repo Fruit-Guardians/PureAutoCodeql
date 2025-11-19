@@ -370,9 +370,9 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
     支持两种返回格式：
     1. 单个值：直接返回截断后的字符串
     2. 元组 (content, artifact)：保持元组格式，只截断content部分
-    
+
     对于代码文件，采用智能截断策略，尝试保留函数定义区域。
-    
+
     Args:
         output: 工具输出结果
         token_limit: Token限制数量
@@ -383,16 +383,16 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
     # 1. 工具名包含 'language-server' (MCP服务器名称)
     # 2. 工具名包含 'lsp' (如 lsp_function_lookup)
     # 3. 工具名是常见的LSP操作 (definition, hover, references等)
-    lsp_tool_keywords = ['language-server', 'lsp', 'definition', 'hover', 'references', 
-                         'symbols', 'completion', 'signature', 'document_symbol', 
+    lsp_tool_keywords = ['language-server', 'lsp', 'definition', 'hover', 'references',
+                         'symbols', 'completion', 'signature', 'document_symbol',
                          'workspace_symbol', 'goto_definition']
-    
+
     if tool_name and any(keyword in tool_name.lower() for keyword in lsp_tool_keywords):
         token_limit = 8000
         logger = get_logger(__name__)
         logger.debug(f"🔧 LSP MCP工具 '{tool_name}' 使用8000 Token限制")
     import re
-    
+
     # 检查是否是 (content, artifact) 元组格式
     is_tuple_format = isinstance(output, tuple) and len(output) == 2
 
@@ -435,7 +435,7 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
         tokens = encoding.encode(text)
-        
+
         # 对于代码文件，尝试智能截断：保留更多中间区域
         if is_code_file and len(tokens) > token_limit * 2:
             # 代码文件：头部(15%) + 中间关键区域(70%) + 尾部(15%)
@@ -443,7 +443,7 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
             first_token_count = int(token_limit * 0.15)
             middle_token_count = int(token_limit * 0.70)
             last_token_count = int(token_limit * 0.15)
-            
+
             first_tokens = tokens[:first_token_count]
             # 中间区域：从总长度的25%到75%之间
             total_tokens = len(tokens)
@@ -451,11 +451,11 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
             middle_end = middle_start + middle_token_count
             middle_tokens = tokens[middle_start:middle_end] if middle_end < total_tokens else tokens[middle_start:]
             last_tokens = tokens[-last_token_count:]
-            
+
             first_part = encoding.decode(first_tokens)
             middle_part = encoding.decode(middle_tokens)
             last_part = encoding.decode(last_tokens)
-            
+
             truncated_text = (
                 f"[Token限制: 输出共{token_count}个Token，已截断至{token_limit}个Token（代码文件智能截断）]\n\n"
                 f"{first_part}\n\n"
@@ -479,20 +479,20 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
     except Exception as e:
         logger.warning(f"Token截断失败，使用字符截断: {e}")
         char_limit = token_limit * 4
-        
+
         if is_code_file:
             # 代码文件：保留更多中间区域
             first_char_count = int(char_limit * 0.15)
             middle_char_count = int(char_limit * 0.70)
             last_char_count = int(char_limit * 0.15)
-            
+
             total_chars = len(text)
             first_part = text[:first_char_count]
             middle_start = int(total_chars * 0.25)
             middle_end = middle_start + middle_char_count
             middle_part = text[middle_start:middle_end] if middle_end < total_chars else text[middle_start:]
             last_part = text[-last_char_count:]
-            
+
             truncated_text = (
                 f"[Token限制: 输出约{token_count}个Token，已截断（代码文件智能截断）]\n\n"
                 f"{first_part}\n\n... [中间区域] ...\n\n{middle_part}\n\n...\n\n{last_part}"
@@ -750,21 +750,21 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
     if is_ripgrep:
         # 显示 ripgrep 搜索结果的详细信息
         output_str = str(output)
-        
+
         # 提取 content='...' 中的内容
         content_match = re.search(r"content='((?:[^'\\]|\\.)*)'", output_str)
         if content_match:
             content = content_match.group(1)
             content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
             output_str = content
-        
+
         # 处理转义字符
         if '\\n' in output_str and '\n' not in output_str:
             output_str = output_str.replace('\\n', '\n')
-        
+
         lines = [line.strip() for line in output_str.splitlines() if line.strip()]
         line_count = len(lines)
-        
+
         if "no matches found" in output_str.lower() or line_count == 0:
             print("🔍 搜索结果: 未找到匹配")
         else:
@@ -787,7 +787,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
 class MultiAgentAnalyzer:
     """
     用于漏洞分析工作流的多Agent分析器
-    
+
     支持动态集成 LSP MCP 服务器,根据语言类型提供高级代码分析能力。
     """
 
@@ -809,7 +809,7 @@ class MultiAgentAnalyzer:
     ) -> None:
         """
         初始化LLM和MCP客户端以便在多个Agent之间复用
-        
+
         Args:
             event_callback: 可选的事件回调函数
             language: 可选的语言类型 (java/python/cpp/c),用于启用对应的 LSP MCP 服务
@@ -838,11 +838,13 @@ class MultiAgentAnalyzer:
             for server_name in mcp_servers.keys():
                 logger.error(f"  - {server_name}: {mcp_servers[server_name]}")
             raise
-        
+
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
-        from tools.lsp_lookup_tool import LSPFunctionLookupTool
-        lsp_lookup_tool = LSPFunctionLookupTool()
-        self.tools.append(lsp_lookup_tool)
+        # 只有当配置包含 ripgrep 时才添加 LSPFunctionLookupTool（因为该工具依赖 ripgrep）
+        if "ripgrep" in mcp_servers:
+            from tools.lsp_lookup_tool import LSPFunctionLookupTool
+            lsp_lookup_tool = LSPFunctionLookupTool()
+            self.tools.append(lsp_lookup_tool)
 
         # Wrap all tools with token limiting
         logger = get_logger(__name__)
@@ -860,7 +862,7 @@ class MultiAgentAnalyzer:
                     def wrapped_run(*args, **kwargs):
                         logger = get_logger(__name__)
                         logger.debug(f"🔧 调用工具 {name} (sync)")
-                        
+
                         # 同步工具暂不添加超时（主要是 MCP 工具使用异步）
                         result = original_func(*args, **kwargs)
                         return _limit_tool_output_tokens(result, tool_name=name)
@@ -876,7 +878,7 @@ class MultiAgentAnalyzer:
                     async def wrapped_arun(*args, **kwargs):
                         logger = get_logger(__name__)
                         logger.debug(f"🔧 调用工具 {name} (async)")
-                        
+
                         # 为 MCP 工具添加 30 秒超时
                         timeout_seconds = 30
                         try:
@@ -982,12 +984,12 @@ class MultiAgentAnalyzer:
                         tool_name = event.get("name", "")
                         current_tool = tool_name
                         tool_input = event.get("data", {}).get("input", {})
-                        
+
                         # 如果AI正在流式输出，先换行
                         if ai_streaming:
                             print()
                             ai_streaming = False
-                        
+
                         # 打印工具输入参数
                         print(f"🔧 {tool_name}")
                         print(f"   📥 请求参数: {tool_input}")

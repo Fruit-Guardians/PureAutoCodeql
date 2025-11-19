@@ -7,7 +7,6 @@ from utils.logger import get_logger
 from services.mcp_language_config import MCPLanguageConfigService
 
 if TYPE_CHECKING:
-    # 仅用于类型检查，避免运行时引入循环依赖
     from agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
     from agents.unified_sink_path_agent import UnifiedSinkPathAgent as _UnifiedSinkPathAgent
     from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent as _UnifiedSourceAnalysisAgent
@@ -24,8 +23,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# Phase 1: 为避免运行时循环导入，这里仅保存“Agent 类型字符串 → 完整类路径”的映射。
-# 如需从类型字符串获取实际类，可在调用侧按需懒加载 import。
 AGENT_TYPES: Dict[str, str] = {
     "cve_analysis": "agents.cve_analysis_agent.CVEAnalysisAgent",
     "unified_sink_path": "agents.unified_sink_path_agent.UnifiedSinkPathAgent",
@@ -34,6 +31,18 @@ AGENT_TYPES: Dict[str, str] = {
     "codeql_error": "agents.codeql_gen_agents.codeql_error_agent.CodeQLErrorAgent",
     "codeql_fix_inplace": "agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
     "codeql_breakpoint_detect": "agents.codeql_gen_agents.codeql_breakpoint_detect_agent.CodeQLBreakpointAgent",
+}
+
+AGENT_MCP_PROFILES: Dict[str, list[str]] = {
+    "cve_analysis": ["filesystem", "ripgrep", "language-server"],
+    "unified_sink_path": ["filesystem", "ripgrep", "language-server"],
+    "unified_source_analysis": ["language-server"],
+    "source_analysis": ["language-server"],
+    "codeql_gen": ["filesystem", "ripgrep", "language-server"],
+    "codeql_error": ["filesystem", "ripgrep", "language-server"],
+    "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
+    "codeql_breakpoint_detect": ["filesystem", "ripgrep", "language-server"],
+    "default": ["filesystem", "ripgrep", "language-server"],
 }
 
 
@@ -63,36 +72,33 @@ class AgentMCPConfigService:
         """
         返回指定 Agent 的 MCP 服务器配置。
 
-        当前阶段忽略 agent_type，所有 Agent 使用相同的默认配置，
-        但保留参数以便未来扩展为按 Agent 定制配置。
+        根据每个 Agent 类型在 AGENT_MCP_PROFILES 中定义的配置，
+        组合相应的 MCP 服务器。
         """
-        # Phase 1: 所有 Agent 使用相同的默认配置
-        return self._get_default_mcp_config(language=language, workspace_path=workspace_path)
+        # 获取Agent对应的MCP配置文件，如果不存在则使用默认配置
+        profile = AGENT_MCP_PROFILES.get(agent_type, AGENT_MCP_PROFILES["default"])
 
-    def _get_default_mcp_config(
-        self,
-        language: Optional[str] = None,
-        workspace_path: Optional[str] = None,
-    ) -> Dict[str, Dict]:
-        """
-        构造默认的 MCP 服务器配置。
+        # 构建完整的MCP服务器配置
+        mcp_servers: Dict[str, Dict] = {}
 
-        逻辑与 `MultiAgentAnalyzer.initialize` 中当前实现保持一致：
-        - filesystem MCP
-        - ripgrep MCP
-        - 可选 language-server（取决于 language / workspace_path 以及配置是否可用）
-        """
-        mcp_servers: Dict[str, Dict] = {
-            "filesystem": {
-                "command": "npx",
-                "args": [
-                    "-y",
-                    "@modelcontextprotocol/server-filesystem",
-                    str(Path.cwd()),
-                ],
-                "transport": "stdio",
-            },
-            "ripgrep": {
+        # 添加文件系统MCP
+        if "filesystem" in profile:
+            if not workspace_path:
+                logger.warning("⚠️  filesystem MCP 需要 workspace_path 参数")
+            else:
+                mcp_servers["filesystem"] = {
+                    "command": "npx",
+                    "args": [
+                        "-y",
+                        "@modelcontextprotocol/server-filesystem",
+                        str(workspace_path),
+                    ],
+                    "transport": "stdio",
+                }
+
+        # 添加ripgrep MCP
+        if "ripgrep" in profile:
+            mcp_servers["ripgrep"] = {
                 "command": "node",
                 "args": [
                     str(
@@ -104,10 +110,10 @@ class AgentMCPConfigService:
                     )
                 ],
                 "transport": "stdio",
-            },
-        }
+            }
 
-        if language and workspace_path:
+        # 添加语言服务器MCP
+        if "language-server" in profile and language and workspace_path:
             try:
                 language_config = self._language_config_service
                 if language_config.is_language_supported(language):
@@ -118,7 +124,7 @@ class AgentMCPConfigService:
                     logger.info(f"ℹ️  语言 {language} 不支持 LSP MCP")
             except Exception as e:  # pragma: no cover - 防御性日志记录
                 logger.warning(f"⚠️  LSP MCP 配置失败,继续使用基础 MCP: {e}")
+        elif "language-server" in profile:
+            logger.warning("⚠️  language-server MCP 需要 language 和 workspace_path 参数")
 
         return mcp_servers
-
-
