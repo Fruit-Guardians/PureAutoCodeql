@@ -326,6 +326,72 @@ class CodeQLComposeTool(BaseTool):
             result += f"\nPreview:\n\n```\n{execution.preview}\n```"
         return result
 
+    def _build_error_tidy_markdown(
+        self,
+        project_name: str,
+        language: str,
+        task_id: str,
+        created_at: str,
+        error_rounds: list[Dict[str, Any]],
+        final_ql: str,
+    ) -> str:
+        """构建错误整理 Markdown 文档内容。
+
+        文档包含：
+        - 头部项目信息（项目、语言、时间戳、任务ID）
+        - 按轮次组织的错误信息（错误QL、错误日志/LSP诊断、错误分析）
+        - 最终正确的QL代码
+        """
+
+        lines: list[str] = []
+
+        lines.append("# CodeQL 错误整理文档")
+        lines.append("")
+
+        # 文档头部信息
+        lines.append("## 基本信息")
+        lines.append(f"- 项目: {project_name or '(unknown)'}")
+        lines.append(f"- 语言: {language}")
+        lines.append(f"- 任务ID: {task_id}")
+        lines.append(f"- 生成时间: {created_at}")
+        lines.append("")
+
+        # 按轮次组织错误信息
+        lines.append("## 错误修复轮次")
+        for item in error_rounds:
+            round_no = item.get("round")
+            error_ql = item.get("error_ql", "")
+            error_log = item.get("error_log", "")
+            error_analysis = item.get("error_analysis", "")
+
+            lines.append(f"### 第 {round_no} 轮")
+
+            if error_ql:
+                lines.append("#### 错误QL")
+                lines.append("```ql")
+                lines.append(error_ql)
+                lines.append("```")
+
+            if error_log:
+                lines.append("#### 错误日志 / LSP 诊断")
+                lines.append("```")
+                lines.append(error_log)
+                lines.append("```")
+
+            if error_analysis:
+                lines.append("#### 错误分析")
+                lines.append(error_analysis)
+
+            lines.append("")
+
+        # 最终正确的QL代码
+        lines.append("## 最终正确的QL代码")
+        lines.append("```ql")
+        lines.append(final_ql)
+        lines.append("```")
+
+        return "\n".join(lines)
+
     def _load_ql_template(self, lang: str) -> str:
         try:
             target = (lang or "").lower()
@@ -423,6 +489,9 @@ class CodeQLComposeTool(BaseTool):
         retry_count = 0  # 当前重试次数
         max_retries = 3  # 最大重试次数
         retry_history = []  # 记录重试历史（仅用于日志）
+
+        # 错误整理文档所需的每轮错误信息
+        error_rounds: list[Dict[str, Any]] = []
 
         query_file = create_temporary_qlpack("", language=target_language, task_id=task_id)
         pack_root = query_file.parent
@@ -745,6 +814,28 @@ class CodeQLComposeTool(BaseTool):
                         retry_summary = ""
                         if retry_count > 0:
                             logger.info(f"[重试成功] 第 {retry_count} 次重试找到 {paths_count} 条路径")
+
+                    # 如果经历过至少一轮错误修复（round_index > 1 且有错误记录），生成错误整理文档
+                    if round_index > 1 and error_rounds:
+                        try:
+                            error_tidy_dir = project_root / "temp" / "error_tidy_temp"
+                            error_tidy_dir.mkdir(parents=True, exist_ok=True)
+
+                            created_at = datetime.now().isoformat()
+                            tidy_markdown = self._build_error_tidy_markdown(
+                                project_name=project_name,
+                                language=target_language,
+                                task_id=task_id,
+                                created_at=created_at,
+                                error_rounds=error_rounds,
+                                final_ql=current_ql,
+                            )
+
+                            tidy_file = error_tidy_dir / f"error_tidy_{task_id}.md"
+                            tidy_file.write_text(tidy_markdown, encoding="utf-8")
+                            print(f"💾 [CodeQLComposeTool] 错误整理文档已保存到: {tidy_file}")
+                        except Exception as tidy_error:
+                            print(f"⚠️ [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
                     
                     mode_now = (exec_mode or 'analyze').lower()
 
@@ -857,6 +948,14 @@ class CodeQLComposeTool(BaseTool):
                     return final_result
 
                 print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+
+                # 记录当前轮次的错误信息，用于后续生成错误整理文档
+                error_rounds.append({
+                    "round": round_index,
+                    "error_ql": current_ql,
+                    "error_log": exec_result.get('output', ''),
+                    "error_analysis": error_analysis.content,
+                })
 
                 prev_original_ql = current_ql
                 round_index += 1

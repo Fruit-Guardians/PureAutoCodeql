@@ -80,26 +80,29 @@ class CVEAnalysisStep(AnalysisStep):
             agent_type="cve_analysis",
         )
 
-        cve_agent = CVEAnalysisAgent(analyzer)
-        intel_prompt = context.intel_bundle.prompt_block() if context.intel_bundle else None
+        try:
+            cve_agent = CVEAnalysisAgent(analyzer)
+            intel_prompt = context.intel_bundle.prompt_block() if context.intel_bundle else None
 
-        print("=== CVE Analysis ===")
-        result = await cve_agent.analyze_cve(
-            Path(context.cve_assets.json_path),
-            intel_prompt=intel_prompt,
-            show_thinking=context.show_thinking,
-            event_callback=context.event_callback,
-            agent_name=self.agent_name,
-            agent_type=self.name
-        )
+            print("=== CVE Analysis ===")
+            result = await cve_agent.analyze_cve(
+                Path(context.cve_assets.json_path),
+                intel_prompt=intel_prompt,
+                show_thinking=context.show_thinking,
+                event_callback=context.event_callback,
+                agent_name=self.agent_name,
+                agent_type=self.name
+            )
 
-        if not result.success:
-            print(f"CVE analysis failed: {result.error}")
-        elif not context.show_thinking:
-            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
-            print(result.content)
+            if not result.success:
+                print(f"CVE analysis failed: {result.error}")
+            elif not context.show_thinking:
+                # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
+                print(result.content)
 
-        return result
+            return result
+        finally:
+            await analyzer.aclose()
 
 
 class SinkAnalysisStep(AnalysisStep):
@@ -119,26 +122,29 @@ class SinkAnalysisStep(AnalysisStep):
             workspace_path=str(context.case_paths.source_code)
         )
 
-        sink_agent = UnifiedSinkPathAgent(analyzer, context.case_paths.source_code)
+        try:
+            sink_agent = UnifiedSinkPathAgent(analyzer, context.case_paths.source_code)
 
-        print(f"=== {context.language.title()} Sink Path Analysis ===")
-        result = await sink_agent.analyze_paths(
-            context.language,
-            context.get_result("cve_analysis").content if context.has_result("cve_analysis") else "",
-            str(context.cve_assets.diff_path) if context.cve_assets.diff_path else "",
-            show_thinking=context.show_thinking,
-            event_callback=context.event_callback,
-            agent_name=self.agent_name,
-            agent_type=self.name
-        )
+            print(f"=== {context.language.title()} Sink Path Analysis ===")
+            result = await sink_agent.analyze_paths(
+                context.language,
+                context.get_result("cve_analysis").content if context.has_result("cve_analysis") else "",
+                str(context.cve_assets.diff_path) if context.cve_assets.diff_path else "",
+                show_thinking=context.show_thinking,
+                event_callback=context.event_callback,
+                agent_name=self.agent_name,
+                agent_type=self.name
+            )
 
-        if not result.success:
-            print(f"{context.language.title()} sink analysis failed: {result.error}")
-        elif not context.show_thinking:
-            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
-            print(result.content)
+            if not result.success:
+                print(f"{context.language.title()} sink analysis failed: {result.error}")
+            elif not context.show_thinking:
+                # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
+                print(result.content)
 
-        return result
+            return result
+        finally:
+            await analyzer.aclose()
 
 
 class SourceAnalysisStep(AnalysisStep):
@@ -159,29 +165,32 @@ class SourceAnalysisStep(AnalysisStep):
             agent_type=self.name  # 传递 agent_type 参数
         )
 
-        source_agent = UnifiedSourceAnalysisAgent(
-            analyzer,
-            context.case_paths.source_code,
-            str(context.case_paths.db)
-        )
+        try:
+            source_agent = UnifiedSourceAnalysisAgent(
+                analyzer,
+                context.case_paths.source_code,
+                str(context.case_paths.db)
+            )
 
-        print(f"=== {context.language.title()} Source Analysis ===")
-        result = await source_agent.analyze_sources(
-            context.language,
-            context.get_result("sink_analysis").content if context.has_result("sink_analysis") else "",
-            show_thinking=context.show_thinking,
-            event_callback=context.event_callback,
-            agent_name=self.agent_name,
-            agent_type=self.name
-        )
+            print(f"=== {context.language.title()} Source Analysis ===")
+            result = await source_agent.analyze_sources(
+                context.language,
+                context.get_result("sink_analysis").content if context.has_result("sink_analysis") else "",
+                show_thinking=context.show_thinking,
+                event_callback=context.event_callback,
+                agent_name=self.agent_name,
+                agent_type=self.name
+            )
 
-        if not result.success:
-            print(f"{context.language.title()} source analysis failed: {result.error}")
-        elif not context.show_thinking:
-            # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
-            print(result.content)
+            if not result.success:
+                print(f"{context.language.title()} source analysis failed: {result.error}")
+            elif not context.show_thinking:
+                # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
+                print(result.content)
 
-        return result
+            return result
+        finally:
+            await analyzer.aclose()
 
 
 class CodeQLGenerationStep(AnalysisStep):
@@ -217,40 +226,43 @@ class CodeQLGenerationStep(AnalysisStep):
             workspace_path=str(context.case_paths.source_code)
         )
 
-        codeql_tool = CodeQLComposeTool(
-            analyzer=codeql_analyzer,
-            database_path=str(context.case_paths.db),
-            language=context.language,
-        )
+        try:
+            codeql_tool = CodeQLComposeTool(
+                analyzer=codeql_analyzer,
+                database_path=str(context.case_paths.db),
+                language=context.language,
+            )
 
-        print("=== CodeQL Query Generation ===")
-        print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
-        compose_output = await codeql_tool._arun(
-            codeql_requirement,
-            show_thinking=context.show_thinking,
-            event_callback=context.event_callback,
-            agent_name=self.agent_name,
-            agent_type=self.name
-        )
-        print(compose_output)
+            print("=== CodeQL Query Generation ===")
+            print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
+            compose_output = await codeql_tool._arun(
+                codeql_requirement,
+                show_thinking=context.show_thinking,
+                event_callback=context.event_callback,
+                agent_name=self.agent_name,
+                agent_type=self.name
+            )
+            print(compose_output)
 
-        # Normalize output into AgentResult for downstream consumers
-        if isinstance(compose_output, AgentResult):
-            return compose_output
+            # Normalize output into AgentResult for downstream consumers
+            if isinstance(compose_output, AgentResult):
+                return compose_output
 
-        if isinstance(compose_output, str):
-            normalized = compose_output.strip().lower()
-            if normalized.startswith("error") or normalized.startswith("failed"):
-                return AgentResult(content="", success=False, error=compose_output)
+            if isinstance(compose_output, str):
+                normalized = compose_output.strip().lower()
+                if normalized.startswith("error") or normalized.startswith("failed"):
+                    return AgentResult(content="", success=False, error=compose_output)
 
-            return AgentResult(content=compose_output, success=True)
+                return AgentResult(content=compose_output, success=True)
 
-        # Fallback: treat unexpected payload as failure with repr for debugging
-        return AgentResult(
-            content="",
-            success=False,
-            error=f"Unexpected CodeQL generation output type: {type(compose_output).__name__}"
-        )
+            # Fallback: treat unexpected payload as failure with repr for debugging
+            return AgentResult(
+                content="",
+                success=False,
+                error=f"Unexpected CodeQL generation output type: {type(compose_output).__name__}"
+            )
+        finally:
+            await codeql_analyzer.aclose()
 
 
 class AnalysisPipeline:
