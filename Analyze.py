@@ -707,11 +707,11 @@ def parse_arguments() -> argparse.Namespace:
         help="指定源代码路径（用于--md-file模式生成source点分析报告）"
     )
     parser.add_argument(
-<<<<<<< HEAD
         "--enable-error-tidy",
         action="store_true",
         help="启用错误整理功能（实验性）"
-=======
+    )
+    parser.add_argument(
         "--import-case-id",
         type=str,
         dest="import_case_id",
@@ -752,7 +752,6 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         dest="import_build_workdir",
         help="搭配 --import-project 使用，设置构建命令工作目录"
->>>>>>> dd2b0b50585e5a5047bd55ed14f51e67ba977b6a
     )
 
     parser.set_defaults(stream=True)
