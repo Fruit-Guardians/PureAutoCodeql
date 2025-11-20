@@ -5,11 +5,12 @@
 # 内置服务商 API Keys
 # ============================================================================
 [builtin_keys]
-deepseek = "sk-5f09a827bfeb4392acfae82fa32f973d"
+deepseek = "sk-db40a5fe5d494abaa2516893821c65a1"
 siliconflow = "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld"
 zhipu = "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy"
 kimi = "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny"
 gemini = "AIzaSyDS-Moyzuf1sUdAUsw9bkr1z_cZMVdyvpc"
+java_home = "E:\\1devEnv\\JDK\\21"
 
 
 # ============================================================================
@@ -26,12 +27,12 @@ description = "这是一个示例自定义提供商，演示如何配置本地 O
 
 # 你的自定义 API 服务
 [[custom_providers]]
-name = "my_gemini"
+name = "qwen2"
 display_name = "我的自定义 API"
-api_key = "sk-XkDIFNs9X3Edm604fMwI9KZffQtedAkfRaqMTKaKM35qIbdW"
-base_url = "http://27.106.110.32:2052/v1"
-think_model = "gemini-2.5-pro"             
-chat_model = "gemini-2.5-pro"         
+api_key = "sk-f823393a56e34c868cdf91555fc5a3ba"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+think_model = "qwen3-max"
+chat_model = "qwen3-max"
 description = "自定义 API 服务"
 
 # 你的自定义 API 服务
@@ -40,8 +41,8 @@ name = "kat"
 display_name = "我的自定义 API"
 api_key = "rOmnc36lCjC6bbUP5D9vdIG2issxRCcqM7KJzotZOGs"
 base_url = "https://wanqing.streamlakeapi.com/api/gateway/v1/endpoints/chat/completions"
-think_model = "KAT-Coder-Pro V1"             
-chat_model = "KAT-Coder-Pro V1"         
+think_model = "KAT-Coder-Pro V1"
+chat_model = "KAT-Coder-Pro V1"
 description = "自定义 API 服务"
 
 
@@ -49,7 +50,7 @@ description = "自定义 API 服务"
 # 全局设置（可选）
 # ============================================================================
 [settings]
-# default_provider = "siliconflow"
+default_provider = "qwen2"
 
 # 覆盖默认推理模型（不设置则使用服务商默认）
 default_think_model = "deepseek-ai/DeepSeek-R1"
@@ -59,5 +60,31 @@ default_chat_model = "deepseek-ai/DeepSeek-V3.1-Terminus"
 
 # CodeQL 安装路径配置
 # 如果不配置，系统会自动尝试查找常见位置
-codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
+# codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
 
+# CodeQL 安装路径配置
+# 如果不配置，系统会自动尝试查找常见位置
+# codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
+
+# Java 语言服务器配置
+[mcp_language_server.java]
+# LSP 可执行文件路径（支持相对路径和绝对路径）
+# Windows 示例：
+# lsp_executable = "C:\\Projects\\Pure\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
+# Linux/macOS 示例：
+lsp_executable = "E:\\1devEnv\\CODE\\project\\PureAutoCodeql\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
+
+# 参数模板（占位符: {workspace}, {lsp}, {java_executable}）
+# "--" 之前是 MCP 参数, "--" 之后是传给 LSP 的参数
+# 注意：路径可能包含空格，需要用引号包裹
+args_template = "--workspace \"{workspace}\" --lsp \"{lsp}\" -- --java-executable \"{java_executable}\""
+
+# Java 可执行文件路径（留空则从 builtin_keys.java_home 自动获取）
+java_executable = "E:\\1devEnv\\JDK\\21\\bin\\java.exe"
+
+# Python 语言服务器配置
+[mcp_language_server.python]
+# LSP 可执行文件（可以是 PATH 中的命令名或完整路径）
+lsp_executable = "pyright-langserver"
+# 参数模板（占位符: {workspace}, {lsp}）
+args_template = "--workspace {workspace} --lsp {lsp} -- --stdio"
