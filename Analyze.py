@@ -11,6 +11,7 @@ from config import list_available_providers, get_llm_config_by_provider, LLMRole
 from tools.codeql_compose import CodeQLComposeTool
 from services.llm_service import MultiAgentAnalyzer
 from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from utils.project_importer import import_project, ProjectImportResult
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -490,6 +491,60 @@ async def validate_case(case_id: str) -> bool:
         return False
 
 
+def run_project_import(
+    source_path: str,
+    case_id: Optional[str] = None,
+    overwrite: bool = False,
+    language: Optional[str] = None,
+    skip_codeql: bool = False,
+) -> None:
+    """导入外部CVE项目目录"""
+    print_user_info(f"🚚 开始导入目录: {source_path}")
+    if case_id:
+        print_user_info(f"🎯 指定案例ID: {case_id}")
+    if overwrite:
+        print_user_warning("⚠️  已启用覆盖模式，若同名案例存在将被替换")
+    if skip_codeql:
+        print_user_warning("⏭️  将跳过 CodeQL 数据库创建")
+
+    try:
+        result: ProjectImportResult = import_project(
+            source_path=source_path,
+            case_id=case_id,
+            overwrite=overwrite,
+            language=language,
+            create_codeql_db=not skip_codeql,
+        )
+    except FileNotFoundError as exc:
+        print_user_error(f"❌ 输入路径不存在: {exc}")
+        logger.error(f"导入失败: {exc}")
+        return
+    except ValueError as exc:
+        print_user_error(f"❌ 参数错误: {exc}")
+        logger.error(f"导入失败: {exc}")
+        return
+    except Exception as exc:  # pylint: disable=broad-except
+        print_user_error(f"❌ 导入失败: {exc}")
+        logger.exception("导入失败")
+        return
+
+    print_user_success("✅ 导入完成")
+    print_user_info(f"   📁 案例ID: {result.case_id}")
+    print_user_info(f"   📂 目标路径: {result.target_path}")
+    if result.language:
+        print_user_info(f"   💻 语言: {result.language}")
+    if result.metadata_files:
+        print_user_info(f"   🗂️  元数据: {', '.join(result.metadata_files)}")
+    if not skip_codeql:
+        if result.codeql_created:
+            print_user_success("   🧱 CodeQL 数据库创建成功")
+        else:
+            print_user_warning("   ⚠️ CodeQL 数据库未创建")
+            if result.codeql_error:
+                print_user_error(f"      原因: {result.codeql_error}")
+    print_user_info("📣 现在可以使用 --case 运行分析或调用 API 继续操作")
+
+
 
 def parse_arguments() -> argparse.Namespace:
     """解析命令行参数"""
@@ -541,6 +596,12 @@ def parse_arguments() -> argparse.Namespace:
         "--list-models",
         action="store_true",
         help="列出硅基流动的所有可用模型"
+    )
+    group.add_argument(
+        "--import-project",
+        type=str,
+        metavar="PATH",
+        help="导入外部CVE目录 (例如: C:\\Targets\\CVE-2025-54381)"
     )
 
     # 可选参数
@@ -623,6 +684,30 @@ def parse_arguments() -> argparse.Namespace:
         dest="src_path",
         help="指定源代码路径（用于--md-file模式生成source点分析报告）"
     )
+    parser.add_argument(
+        "--import-case-id",
+        type=str,
+        dest="import_case_id",
+        help="搭配 --import-project 使用，自定义案例ID"
+    )
+    parser.add_argument(
+        "--import-overwrite",
+        action="store_true",
+        dest="import_overwrite",
+        help="搭配 --import-project 使用，若案例已存在则覆盖"
+    )
+    parser.add_argument(
+        "--import-language",
+        type=str,
+        dest="import_language",
+        help="搭配 --import-project 使用，指定语言（默认自动检测）"
+    )
+    parser.add_argument(
+        "--import-skip-codeql",
+        action="store_true",
+        dest="import_skip_codeql",
+        help="搭配 --import-project 使用，跳过 CodeQL 数据库创建"
+    )
 
     parser.set_defaults(stream=True)
 
@@ -666,6 +751,14 @@ async def main() -> None:
             list_available_cases()
         elif args.validate:
             await validate_case(args.validate)
+        elif args.import_project:
+            run_project_import(
+                source_path=args.import_project,
+                case_id=args.import_case_id,
+                overwrite=args.import_overwrite,
+                language=args.import_language,
+                skip_codeql=args.import_skip_codeql,
+            )
         elif args.case:
             print(f"🚀 PureAutoCodeQL 启动")
             print(f"🎯 分析案例: {args.case}")

@@ -10,12 +10,20 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from api.config import get_config
-from api.models import FileInfo, ProjectDetail, ProjectFilesResponse, ProjectInfo
+from api.models import (
+    FileInfo,
+    ProjectDetail,
+    ProjectFilesResponse,
+    ProjectImportRequest,
+    ProjectImportResponse,
+    ProjectInfo,
+)
 from utils.case import (
     CasePaths,
     discover_cve_assets,
     resolve_case,
 )
+from utils.project_importer import import_project
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -177,6 +185,42 @@ async def list_projects(
                 )
     
     return projects
+
+
+@router.post("/import", response_model=ProjectImportResponse)
+async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImportResponse:
+    """
+    导入外部CVE项目。
+    
+    自动整理目录结构并尝试创建CodeQL数据库。
+    """
+    try:
+        result = import_project(
+            payload.source_path,
+            case_id=payload.case_id,
+            overwrite=payload.overwrite,
+            language=payload.language,
+            create_codeql_db=not payload.skip_codeql,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Project import failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Import failed: {exc}") from exc
+
+    project_detail = await get_project_detail(result.case_id)
+
+    return ProjectImportResponse(
+        case_id=result.case_id,
+        target_path=result.target_path,
+        language=result.language,
+        metadata_files=result.metadata_files,
+        codeql_created=result.codeql_created,
+        codeql_error=result.codeql_error,
+        project=project_detail,
+    )
 
 
 @router.get("/{case_id}", response_model=ProjectDetail)

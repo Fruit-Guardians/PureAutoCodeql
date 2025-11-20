@@ -51,6 +51,12 @@ description = "自定义 API 服务"
 [settings]
 # default_provider = "siliconflow"
 
+# 覆盖默认推理模型（不设置则使用服务商默认）
+default_think_model = "deepseek-ai/DeepSeek-R1"
+
+# 覆盖默认对话模型（不设置则使用服务商默认）
+default_chat_model = "deepseek-ai/DeepSeek-V3.1-Terminus"
+
 # CodeQL 安装路径配置
 # 如果不配置，系统会自动尝试查找常见位置
 codeql_stdlib_path = "/home/orxiain/Software/codeql/codeql"
