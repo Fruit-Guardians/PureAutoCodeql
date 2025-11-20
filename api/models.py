@@ -49,6 +49,33 @@ class ProjectFilesResponse(BaseModel):
     total_count: int = Field(..., description="文件总数")
 
 
+class ProjectImportRequest(BaseModel):
+    """项目导入请求"""
+
+    source_path: str = Field(..., description="待导入目录的绝对路径")
+    case_id: Optional[str] = Field(None, description="覆盖默认的CVE ID")
+    overwrite: bool = Field(False, description="若项目已存在是否覆盖")
+    language: Optional[str] = Field(None, description="指定CodeQL数据库语言（可选）")
+    skip_codeql: bool = Field(False, description="是否跳过CodeQL数据库创建")
+    build_command: Optional[str] = Field(None, description="C/C++ 构建命令，等价于 codeql --command")
+    build_script: Optional[str] = Field(None, description="构建脚本相对路径或绝对路径")
+    build_workdir: Optional[str] = Field(None, description="执行构建命令的工作目录")
+
+
+class ProjectImportResponse(BaseModel):
+    """项目导入响应"""
+
+    case_id: str = Field(..., description="导入后的项目ID")
+    target_path: str = Field(..., description="项目在工作区的路径")
+    language: Optional[str] = Field(None, description="检测或指定的语言")
+    metadata_files: List[str] = Field(default_factory=list, description="已复制的CVE元数据文件")
+    codeql_created: bool = Field(False, description="CodeQL数据库是否创建成功")
+    codeql_error: Optional[str] = Field(None, description="CodeQL数据库创建错误（如有）")
+    project: ProjectDetail = Field(..., description="导入后项目的详细信息")
+    build_command_used: Optional[str] = Field(None, description="实际使用的构建命令（C/C++）")
+    build_workdir: Optional[str] = Field(None, description="构建命令的工作目录")
+
+
 class TaskStatus(str, Enum):
     """任务状态枚举"""
 
