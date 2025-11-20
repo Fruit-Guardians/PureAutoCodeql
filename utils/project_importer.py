@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+import shlex
 from pathlib import Path
 from typing import List, Optional
 
@@ -15,6 +17,7 @@ from utils.case import extract_cve_id
 logger = logging.getLogger(__name__)
 
 SUPPORTED_LANGUAGES = {"python", "java", "cpp"}
+CPP_AUTOGEN_BUILD_DIR = "build"
 
 
 @dataclass
@@ -27,6 +30,17 @@ class ProjectImportResult:
     metadata_files: List[str] = field(default_factory=list)
     codeql_created: bool = False
     codeql_error: Optional[str] = None
+    build_command: Optional[str] = None
+    build_workdir: Optional[str] = None
+
+
+@dataclass
+class BuildPlan:
+    """Resolved build instructions for CodeQL database creation."""
+
+    command: str
+    working_dir: Path
+    description: str = ""
 
 
 def import_project(
@@ -36,6 +50,9 @@ def import_project(
     overwrite: bool = False,
     language: Optional[str] = None,
     create_codeql_db: bool = True,
+    build_command: Optional[str] = None,
+    build_script: Optional[str] = None,
+    build_workdir: Optional[str] = None,
 ) -> ProjectImportResult:
     """Import a CVE project directory into the workspace."""
 
@@ -75,6 +92,7 @@ def import_project(
 
     codeql_created = False
     codeql_error: Optional[str] = None
+    resolved_build: Optional[BuildPlan] = None
     if create_codeql_db:
         codeql_path = shutil.which("codeql")
         if not codeql_path:
@@ -83,7 +101,20 @@ def import_project(
         else:
             try:
                 db_path = target_dir / "db" / detected_language
-                _create_codeql_database(target_dir / "source_code", db_path, detected_language)
+                if detected_language == "cpp":
+                    resolved_build = _resolve_cpp_build_plan(
+                        target_dir=target_dir,
+                        source_dir=target_dir / "source_code",
+                        user_command=build_command,
+                        build_script=build_script,
+                        user_workdir=build_workdir,
+                    )
+                _create_codeql_database(
+                    target_dir / "source_code",
+                    db_path,
+                    detected_language,
+                    build_plan=resolved_build,
+                )
                 codeql_created = True
             except Exception as exc:  # pylint: disable=broad-except
                 codeql_error = str(exc)
@@ -96,6 +127,8 @@ def import_project(
         metadata_files=metadata_files,
         codeql_created=codeql_created,
         codeql_error=codeql_error,
+        build_command=resolved_build.command if resolved_build else build_command,
+        build_workdir=str(resolved_build.working_dir) if resolved_build else build_workdir,
     )
 
 
@@ -181,25 +214,128 @@ def _detect_language(source_dir: Path) -> Optional[str]:
     return language if counts[language] > 0 else None
 
 
-def _create_codeql_database(source_root: Path, db_path: Path, language: str) -> None:
+def _create_codeql_database(
+    source_root: Path,
+    db_path: Path,
+    language: str,
+    *,
+    build_plan: Optional[BuildPlan],
+) -> None:
     cmd = [
         "codeql",
         "database",
         "create",
         str(db_path),
-        f"--language={language}",
-        f"--source-root={source_root}",
+        "--language",
+        language,
         "--overwrite",
     ]
 
-    logger.info("Running CodeQL command: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if language == "cpp":
+        if not build_plan:
+            raise ValueError(
+                "C/C++ 项目必须提供构建命令。请设置 build_command/build_script，或确保存在 CMake/Makefile。"
+            )
+        cmd.extend(["--command", build_plan.command])
+        if build_plan.working_dir:
+            cmd.extend(["--working-dir", str(build_plan.working_dir)])
+    else:
+        cmd.extend(["--source-root", str(source_root)])
 
+    log_path = db_path.parent / "codeql.log"
+    _run_process(cmd, cwd=None, log_path=log_path)
+    logger.info("CodeQL database created at %s", db_path)
+
+
+def _resolve_cpp_build_plan(
+    *,
+    target_dir: Path,
+    source_dir: Path,
+    user_command: Optional[str],
+    build_script: Optional[str],
+    user_workdir: Optional[str],
+) -> BuildPlan:
+    log_path = target_dir / "db" / "build.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if user_command:
+        working_dir = Path(user_workdir).expanduser().resolve() if user_workdir else target_dir
+        if not working_dir.exists():
+            raise ValueError(f"Build working directory does not exist: {working_dir}")
+        logger.info("Using user-provided build command: %s", user_command)
+        return BuildPlan(command=user_command, working_dir=working_dir, description="user")
+
+    if build_script:
+        script_path = Path(build_script)
+        if not script_path.is_absolute():
+            script_path = (target_dir / build_script).resolve()
+        if not script_path.exists():
+            raise ValueError(f"Build script not found: {script_path}")
+        if script_path.suffix in (".sh", ".bash"):
+            command = _format_command(["bash", str(script_path)])
+        elif script_path.suffix == ".ps1":
+            command = _format_command(["pwsh", "-File", str(script_path)])
+        elif script_path.suffix.lower() in (".bat", ".cmd"):
+            command = str(script_path)
+        else:
+            command = str(script_path)
+        logger.info("Using build script: %s", script_path)
+        return BuildPlan(command=command, working_dir=script_path.parent, description="script")
+
+    cmake_lists = source_dir / "CMakeLists.txt"
+    if cmake_lists.exists():
+        build_dir = target_dir / CPP_AUTOGEN_BUILD_DIR
+        configure_cmd = ["cmake", "-S", str(source_dir), "-B", str(build_dir)]
+        _run_process(configure_cmd, cwd=target_dir, log_path=log_path)
+        command = _format_command(["cmake", "--build", str(build_dir)])
+        logger.info("Auto-detected CMake project, build dir: %s", build_dir)
+        return BuildPlan(command=command, working_dir=target_dir, description="cmake")
+
+    make_file = source_dir / "Makefile"
+    if make_file.exists():
+        command = _format_command(["make", "-j"])
+        logger.info("Auto-detected Makefile project.")
+        return BuildPlan(command=command, working_dir=source_dir, description="make")
+
+    raise ValueError(
+        "无法自动推断C/C++构建命令。请提供 build_command 或 build_script。"
+    )
+
+
+def _run_process(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path]) -> None:
+    display = " ".join(cmd)
+    logger.info("Running command: %s (cwd=%s)", display, cwd or os.getcwd())
+    result = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if log_path:
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(f"$ {display}\n")
+            if result.stdout:
+                log_file.write(result.stdout + "\n")
+            if result.stderr:
+                log_file.write(result.stderr + "\n")
     if result.returncode != 0:
         stderr = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"CodeQL database creation failed: {stderr}")
+        raise RuntimeError(f"Command failed ({display}): {stderr}")
 
-    logger.info("CodeQL database created at %s", db_path)
+
+def _format_command(parts: List[str]) -> str:
+    if os.name == "nt":
+        formatted = []
+        for part in parts:
+            if " " in part:
+                formatted.append(f'"{part}"')
+            else:
+                formatted.append(part)
+        return " ".join(formatted)
+    return " ".join(shlex.quote(part) for part in parts)
+
+
 
 
 __all__ = ["import_project", "ProjectImportResult"]

@@ -201,6 +201,9 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
             overwrite=payload.overwrite,
             language=payload.language,
             create_codeql_db=not payload.skip_codeql,
+            build_command=payload.build_command,
+            build_script=payload.build_script,
+            build_workdir=payload.build_workdir,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -220,6 +223,8 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
         codeql_created=result.codeql_created,
         codeql_error=result.codeql_error,
         project=project_detail,
+        build_command_used=result.build_command,
+        build_workdir=result.build_workdir,
     )
 
 

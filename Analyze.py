@@ -497,6 +497,9 @@ def run_project_import(
     overwrite: bool = False,
     language: Optional[str] = None,
     skip_codeql: bool = False,
+    build_command: Optional[str] = None,
+    build_script: Optional[str] = None,
+    build_workdir: Optional[str] = None,
 ) -> None:
     """导入外部CVE项目目录"""
     print_user_info(f"🚚 开始导入目录: {source_path}")
@@ -506,6 +509,12 @@ def run_project_import(
         print_user_warning("⚠️  已启用覆盖模式，若同名案例存在将被替换")
     if skip_codeql:
         print_user_warning("⏭️  将跳过 CodeQL 数据库创建")
+    if build_command:
+        print_user_info(f"⚙️  构建命令: {build_command}")
+    if build_script:
+        print_user_info(f"📜 构建脚本: {build_script}")
+    if build_workdir:
+        print_user_info(f"📂 构建目录: {build_workdir}")
 
     try:
         result: ProjectImportResult = import_project(
@@ -514,6 +523,9 @@ def run_project_import(
             overwrite=overwrite,
             language=language,
             create_codeql_db=not skip_codeql,
+            build_command=build_command,
+            build_script=build_script,
+            build_workdir=build_workdir,
         )
     except FileNotFoundError as exc:
         print_user_error(f"❌ 输入路径不存在: {exc}")
@@ -542,6 +554,10 @@ def run_project_import(
             print_user_warning("   ⚠️ CodeQL 数据库未创建")
             if result.codeql_error:
                 print_user_error(f"      原因: {result.codeql_error}")
+    if result.build_command:
+        print_user_info(f"   ⚙️ 实际构建命令: {result.build_command}")
+    if result.build_workdir:
+        print_user_info(f"   📂 构建工作目录: {result.build_workdir}")
     print_user_info("📣 现在可以使用 --case 运行分析或调用 API 继续操作")
 
 
@@ -708,6 +724,24 @@ def parse_arguments() -> argparse.Namespace:
         dest="import_skip_codeql",
         help="搭配 --import-project 使用，跳过 CodeQL 数据库创建"
     )
+    parser.add_argument(
+        "--import-build-command",
+        type=str,
+        dest="import_build_command",
+        help="搭配 --import-project 使用，指定 C/C++ 构建命令"
+    )
+    parser.add_argument(
+        "--import-build-script",
+        type=str,
+        dest="import_build_script",
+        help="搭配 --import-project 使用，指定构建脚本路径（相对于项目根或绝对路径）"
+    )
+    parser.add_argument(
+        "--import-build-dir",
+        type=str,
+        dest="import_build_workdir",
+        help="搭配 --import-project 使用，设置构建命令工作目录"
+    )
 
     parser.set_defaults(stream=True)
 
@@ -758,6 +792,9 @@ async def main() -> None:
                 overwrite=args.import_overwrite,
                 language=args.import_language,
                 skip_codeql=args.import_skip_codeql,
+                build_command=args.import_build_command,
+                build_script=args.import_build_script,
+                build_workdir=args.import_build_workdir,
             )
         elif args.case:
             print(f"🚀 PureAutoCodeQL 启动")

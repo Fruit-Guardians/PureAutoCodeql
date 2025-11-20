@@ -57,6 +57,9 @@ class ProjectImportRequest(BaseModel):
     overwrite: bool = Field(False, description="若项目已存在是否覆盖")
     language: Optional[str] = Field(None, description="指定CodeQL数据库语言（可选）")
     skip_codeql: bool = Field(False, description="是否跳过CodeQL数据库创建")
+    build_command: Optional[str] = Field(None, description="C/C++ 构建命令，等价于 codeql --command")
+    build_script: Optional[str] = Field(None, description="构建脚本相对路径或绝对路径")
+    build_workdir: Optional[str] = Field(None, description="执行构建命令的工作目录")
 
 
 class ProjectImportResponse(BaseModel):
@@ -69,6 +72,8 @@ class ProjectImportResponse(BaseModel):
     codeql_created: bool = Field(False, description="CodeQL数据库是否创建成功")
     codeql_error: Optional[str] = Field(None, description="CodeQL数据库创建错误（如有）")
     project: ProjectDetail = Field(..., description="导入后项目的详细信息")
+    build_command_used: Optional[str] = Field(None, description="实际使用的构建命令（C/C++）")
+    build_workdir: Optional[str] = Field(None, description="构建命令的工作目录")
 
 
 class TaskStatus(str, Enum):
