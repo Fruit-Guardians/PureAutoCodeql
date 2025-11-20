@@ -27,7 +27,8 @@ async def run_case_analysis(
     think_model: Optional[str] = None,
     chat_model: Optional[str] = None,
     api_key: Optional[str] = None,
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None,
+    enable_error_tidy: bool = False
 ) -> None:
     """
     运行完整的案例分析
@@ -42,6 +43,7 @@ async def run_case_analysis(
         chat_model: 对话模型名称（覆盖默认模型）
         api_key: API Key（覆盖环境变量）
         base_url: Base URL（覆盖环境变量）
+        enable_error_tidy: 是否启用错误整理功能
     """
     # 创建配置
     config = AnalysisConfig(
@@ -52,7 +54,8 @@ async def run_case_analysis(
         think_model=think_model,
         chat_model=chat_model,
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,
+        enable_error_tidy=enable_error_tidy
     )
 
     # 显示模型提供商信息
@@ -120,7 +123,8 @@ async def run_md_direct_codeql(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     database_path: Optional[str] = None,
-    language: str = "java"
+    language: str = "java",
+    enable_error_tidy: bool = False
 ) -> None:
     """
     从MD文件直接生成CodeQL查询
@@ -135,6 +139,7 @@ async def run_md_direct_codeql(
         base_url: Base URL
         database_path: CodeQL数据库路径
         language: 编程语言
+        enable_error_tidy: 是否启用错误整理功能
     """
     # 验证MD文件存在性
     md_path = Path(md_file_path)
@@ -213,7 +218,8 @@ async def run_md_direct_codeql(
             analyzer=analyzer,
             database_path=database_path,
             language=language,
-            max_rounds=5
+            max_rounds=5,
+            enable_error_tidy=enable_error_tidy
         )
         print_user_info(f"🛠️  成功创建CodeQL生成工具")
         print_user_info(f"   📁 数据库路径: {database_path}")
@@ -623,6 +629,11 @@ def parse_arguments() -> argparse.Namespace:
         dest="src_path",
         help="指定源代码路径（用于--md-file模式生成source点分析报告）"
     )
+    parser.add_argument(
+        "--enable-error-tidy",
+        action="store_true",
+        help="启用错误整理功能（实验性）"
+    )
 
     parser.set_defaults(stream=True)
 
@@ -689,7 +700,8 @@ async def main() -> None:
                 think_model=think_model,
                 chat_model=chat_model,
                 api_key=args.api_key,
-                base_url=args.base_url
+                base_url=args.base_url,
+                enable_error_tidy=args.enable_error_tidy
             )
         elif args.md_file:
             print(f"🚀 PureAutoCodeQL 启动")
@@ -747,7 +759,8 @@ async def main() -> None:
                     api_key=args.api_key,
                     base_url=args.base_url,
                     database_path=args.database_path,
-                    language=args.language
+                    language=args.language,
+                    enable_error_tidy=args.enable_error_tidy
                 )
 
     except KeyboardInterrupt:

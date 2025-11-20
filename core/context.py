@@ -134,3 +134,6 @@ class AnalysisConfig:
 
     # Phase 3: 事件回调
     event_callback: Optional[Any] = None
+
+    # 实验性功能
+    enable_error_tidy: bool = False

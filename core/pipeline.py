@@ -231,6 +231,7 @@ class CodeQLGenerationStep(AnalysisStep):
                 analyzer=codeql_analyzer,
                 database_path=str(context.case_paths.db),
                 language=context.language,
+                enable_error_tidy=getattr(context._config, "enable_error_tidy", False)
             )
 
             print("=== CodeQL Query Generation ===")

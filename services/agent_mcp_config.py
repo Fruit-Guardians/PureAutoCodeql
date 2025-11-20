@@ -31,6 +31,7 @@ AGENT_TYPES: Dict[str, str] = {
     "codeql_error": "agents.codeql_gen_agents.codeql_error_agent.CodeQLErrorAgent",
     "codeql_fix_inplace": "agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
     "codeql_breakpoint_detect": "agents.codeql_gen_agents.codeql_breakpoint_detect_agent.CodeQLBreakpointAgent",
+    "template_refinement": "agents.codeql_gen_agents.template_refinement_agent.TemplateRefinementAgent",
 }
 
 AGENT_MCP_PROFILES: Dict[str, list[str]] = {
@@ -43,6 +44,7 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "codeql_error": ["ripgrep"],
     "codeql_fix_inplace": ["filesystem", "ripgrep"],
     "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
+    "template_refinement": ["filesystem"],
     "default": ["filesystem", "ripgrep", "language-server"],
 }
 
@@ -92,17 +94,33 @@ class AgentMCPConfigService:
                 workspace_path_obj = Path(workspace_path_str)
                 parents = workspace_path_obj.parents
                 repo_root = parents[1] if len(parents) > 1 else workspace_path_obj.parent
-                temp_codeql_path = repo_root / "temp" / "codeql_temp"
-                mcp_servers["filesystem"] = {
-                    "command": "npx",
-                    "args": [
-                        "-y",
-                        "@modelcontextprotocol/server-filesystem",
-                        workspace_path_str,
-                        str(temp_codeql_path),
-                    ],
-                    "transport": "stdio",
-                }
+
+                # 添加对于错误整理Agent的MCP配置
+                if agent_type == "template_refinement":
+                    prompts_path = repo_root / "prompts"
+                    mcp_servers["filesystem"] = {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "@modelcontextprotocol/server-filesystem",
+                            str(prompts_path),
+                        ],
+                        "transport": "stdio",
+                    }
+                else:
+                    temp_codeql_path = repo_root / "temp" / "codeql_temp"
+                    prompts_path = repo_root / "prompts"
+                    mcp_servers["filesystem"] = {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "@modelcontextprotocol/server-filesystem",
+                            workspace_path_str,
+                            str(temp_codeql_path),
+                            str(prompts_path),
+                        ],
+                        "transport": "stdio",
+                    }
 
         # 添加ripgrep MCP
         if "ripgrep" in profile:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import json
 import logging
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Callable
 
@@ -23,6 +24,7 @@ from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
 from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
 from agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
 from agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
+from agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
@@ -67,7 +69,8 @@ class CodeQLComposeTool(BaseTool):
     analyzer: Optional[Any] = None
     default_language: str = "java"
     default_database_path: str = ""
-    default_max_rounds: int = 5
+    default_max_rounds: int = 10
+    enable_error_tidy: bool = False
 
     def __init__(
         self,
@@ -75,6 +78,7 @@ class CodeQLComposeTool(BaseTool):
         database_path: str = "",
         language: str = "java",
         max_rounds: int = 5,
+        enable_error_tidy: bool = False,
         *,
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
@@ -88,6 +92,7 @@ class CodeQLComposeTool(BaseTool):
         self.default_database_path = database_path
         self.default_language = language
         self.default_max_rounds = max_rounds
+        self.enable_error_tidy = enable_error_tidy
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
@@ -487,7 +492,7 @@ class CodeQLComposeTool(BaseTool):
         
         # 重试机制相关变量
         retry_count = 0  # 当前重试次数
-        max_retries = 3  # 最大重试次数
+        max_retries = 5  # 最大重试次数
         retry_history = []  # 记录重试历史（仅用于日志）
 
         # 错误整理文档所需的每轮错误信息
@@ -815,8 +820,8 @@ class CodeQLComposeTool(BaseTool):
                         if retry_count > 0:
                             logger.info(f"[重试成功] 第 {retry_count} 次重试找到 {paths_count} 条路径")
 
-                    # 如果经历过至少一轮错误修复（round_index > 1 且有错误记录），生成错误整理文档
-                    if round_index > 1 and error_rounds:
+                    # 如果经历过至少一轮错误修复（round_index > 1 且有错误记录），且开启了错误整理功能，生成错误整理文档
+                    if round_index > 1 and error_rounds and self.enable_error_tidy:
                         try:
                             error_tidy_dir = project_root / "temp" / "error_tidy_temp"
                             error_tidy_dir.mkdir(parents=True, exist_ok=True)
@@ -834,6 +839,36 @@ class CodeQLComposeTool(BaseTool):
                             tidy_file = error_tidy_dir / f"error_tidy_{task_id}.md"
                             tidy_file.write_text(tidy_markdown, encoding="utf-8")
                             print(f"💾 [CodeQLComposeTool] 错误整理文档已保存到: {tidy_file}")
+
+                            # 在不阻塞主流程的前提下异步触发 Template Refinement Agent
+                            if self.analyzer is not None:
+
+                                async def _run_template_refinement() -> None:
+                                    try:
+                                        agent = TemplateRefinementAgent(self.analyzer, language=target_language)
+                                        await agent.refine_template(
+                                            error_tidy_doc=tidy_markdown,
+                                            language=target_language,
+                                            show_thinking=False,
+                                            event_callback=event_callback,
+                                            agent_name="Template Refinement Agent",
+                                            agent_type="template_refinement",
+                                        )
+                                    except Exception as e:
+                                        # 仅记录日志，不影响主流程
+                                        logger.warning(
+                                            f"⚠️ [CodeQLComposeTool] Template Refinement Agent 执行失败: {e}"
+                                        )
+
+                                # 使用 asyncio.create_task 确保异步执行且不阻塞当前工具流程
+                                try:
+                                    asyncio.create_task(_run_template_refinement())
+                                    print("🚀 [CodeQLComposeTool] 已异步触发 Template Refinement Agent")
+                                except RuntimeError as e:
+                                    # 在没有可用事件循环的边缘场景下，静默记录错误
+                                    logger.warning(
+                                        f"⚠️ [CodeQLComposeTool] 无法创建 Template Refinement 异步任务: {e}"
+                                    )
                         except Exception as tidy_error:
                             print(f"⚠️ [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
                     
@@ -882,6 +917,27 @@ class CodeQLComposeTool(BaseTool):
 
                 # 如果语法检查通过但执行失败，继续纠错循环
                 if round_index >= max_iterations:
+                    # 如果还有重试机会，则触发重试机制
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.info(f"[重试触发] 达到最大修复轮次 ({max_iterations}) 仍未修复，开始第 {retry_count}/{max_retries} 次重试")
+                        print(f"🔄 [CodeQLComposeTool] 达到最大修复轮次，开始第 {retry_count}/{max_retries} 次重新生成")
+                        
+                        retry_history.append({
+                            "retry": retry_count,
+                            "round": round_index,
+                            "reason": "修复失败",
+                            "paths_count": 0
+                        })
+                        
+                        # 重置状态，准备重新生成查询
+                        round_index = 1
+                        is_first_round = True
+                        prev_original_ql = None
+                        prev_fix_suggestions = None
+                        
+                        continue
+
                     error_info = self._format_error_info(exec_result.get('output', ''), round_index)
                     is_success = False
                     final_result = (
