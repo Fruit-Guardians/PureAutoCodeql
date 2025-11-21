@@ -94,6 +94,7 @@ class MCPLanguageConfigService:
 
         if not Path(cmd_str).exists():
             logger.warning(f"MCP 可执行文件不存在: {cmd_str}")
+            raise FileNotFoundError(f"MCP executable not found: {cmd_str}")
 
         return cmd_str
 
@@ -135,15 +136,20 @@ class MCPLanguageConfigService:
         builtin_keys = self._config.get("builtin_keys", {})
         return builtin_keys.get(key, default)
 
+    def _escape_path(self, path: str) -> str:
+        """
+        转义路径中的反斜杠,以便 shlex 正确处理
+        在 Windows 上 C:\Path 变为 C:\\Path, shlex 解析后变回 C:\Path
+        在 Linux 上保持不变 (除非路径本身包含反斜杠)
+        """
+        if not path:
+            return ""
+        return path.replace("\\", "\\\\")
+
     def _normalize_path(self, path: str) -> str:
         """
         规范化路径,处理相对路径和绝对路径
-
-        Args:
-            path: 原始路径
-
-        Returns:
-            规范化后的绝对路径
+        返回系统原生的路径格式 (Windows使用反斜杠, Linux使用正斜杠)
         """
         if not path:
             return ""
@@ -175,17 +181,21 @@ class MCPLanguageConfigService:
             raise ValueError("Java LSP 需要配置 java_home 或设置 JAVA_HOME 环境变量")
 
         java_executable = self._get_java_executable(java_home)
+        
+        # 确保 workspace_path 是原生格式
+        workspace_path = str(Path(workspace_path).resolve())
 
         args_template = lang_config.get(
             "args_template",
             "--workspace {workspace} --lsp {lsp} -- --java-executable {java_executable}"
         )
 
+        # 对所有路径参数进行转义，防止 shlex 吞掉反斜杠
         args = self._format_args_from_template(
             args_template,
-            workspace=workspace_path,
-            lsp=lsp_executable,
-            java_executable=java_executable
+            workspace=self._escape_path(workspace_path),
+            lsp=self._escape_path(lsp_executable),
+            java_executable=self._escape_path(java_executable)
         )
 
         return {
@@ -217,6 +227,9 @@ class MCPLanguageConfigService:
             lsp_executable = self._normalize_path(lsp_executable)
             if not os.path.exists(lsp_executable):
                 logger.warning(f"Python LSP 可执行文件不存在: {lsp_executable}")
+        
+        # 确保 workspace_path 是原生格式
+        workspace_path = str(Path(workspace_path).resolve())
 
         args_template = lang_config.get(
             "args_template",
@@ -225,8 +238,8 @@ class MCPLanguageConfigService:
 
         args = self._format_args_from_template(
             args_template,
-            workspace=workspace_path,
-            lsp=lsp_executable
+            workspace=self._escape_path(workspace_path),
+            lsp=self._escape_path(lsp_executable)
         )
 
         return {
