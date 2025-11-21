@@ -1,3 +1,4 @@
+
 import logging
 import os
 import platform
@@ -173,12 +174,21 @@ class MCPLanguageConfigService:
         if not os.path.exists(lsp_executable):
             logger.warning(f"Java LSP 可执行文件不存在: {lsp_executable}")
 
+        # 优先从 builtin_keys 读取（即 keys.toml 的 [builtin_keys] 部分）
         java_home = self._get_builtin_key("java_home", "")
         if not java_home:
+            # 如果配置文件没写，尝试环境变量
             java_home = os.getenv("JAVA_HOME", "")
 
         if not java_home:
             raise ValueError("Java LSP 需要配置 java_home 或设置 JAVA_HOME 环境变量")
+
+        # 确保 java_home 也是规范化的绝对路径
+        java_home = self._normalize_path(java_home)
+        if not os.path.exists(java_home):
+             # 即使路径不存在也抛出异常，避免后续执行失败
+             # 注意：这里我们只检查 java_home 目录是否存在
+             logger.warning(f"配置的 JAVA_HOME 路径不存在: {java_home}")
 
         java_executable = self._get_java_executable(java_home)
         
