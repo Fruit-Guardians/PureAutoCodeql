@@ -15,18 +15,13 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 1.  **Diff优先原则 (Diff-First Analysis) - 有例外情况:**
     * diff文件显示的修复位置**通常就是Sink点所在位置**
     * 首先分析diff中添加了什么验证/检查逻辑
-    * **例外情况 - 文件上传漏洞:**
-        - 如果CVE是文件上传/写入漏洞（即使通过路径遍历实现）
-        - 即使diff在路径验证处添加修复，也要继续追踪
-        - Sink点应该定位在最终的文件写入操作（如`IOUtils.copy()`, `FileOutputStream.write()`）
-        - 原因：对于CodeQL污点分析，我们关注数据最终流向哪里
     * **其他情况:** 以diff修复位置为准，不要过度追踪
 
 2.  **Sink点定义 (Sink Definition) - 根据漏洞类型确定:**
 
     **步骤A: 识别漏洞类型**
     * 仔细阅读CVE描述和diff文件
-    * 判断这是**路径遍历漏洞**还是**文件写入漏洞**
+    * 判断这是什么类型漏洞
 
     **步骤B: 根据类型定位Sink**
 
@@ -37,7 +32,8 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
             - 漏洞危害是"读取任意文件"或"访问受限目录"，而不是写入
         * **Sink定位:** diff文件中**添加路径验证**的位置就是Sink点
 - **sink点定义原则（重要）**：
-  - **需要精确的找到真正进行了危险操作的调用点，而不是将这个危险操作封装的函数作为Sink点,比如myexec(xx)下调用了Runtime.exec(xx)，你的sink点就不应该是myexec(xx)而是Runtime.exec(xx)**
+  - **如果是常规漏洞如命令执行,SQL注入等，需要精确的找到真正进行了危险操作的调用点，而不是将这个危险操作封装的函数作为Sink点,比如myexec(xx)下调用了Runtime.exec(xx)，你的sink点就不应该是myexec(xx)而是Runtime.exec(xx)**
+  - **如果是非常规漏洞如权限绕过，授权绕过等漏洞，不要把注意力放在危险操作执行的地方，而是关注漏洞利用的条件和造成的逻辑错误，比如绕过检查条件，或者利用错误的逻辑流程导致的权限提升的才是真正的sink点，比如字符串拼接错误或者处理错误，切记不要把sink定在真正绕过放行的位置！**
   - **Sink点必须是某个函数的调用处，而非某个函数的声明处**
   - **必须优先定义Sink点分析报告中的sink点**
   - **对于Java反射命令执行**：

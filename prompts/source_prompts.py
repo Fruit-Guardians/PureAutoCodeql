@@ -6,7 +6,7 @@ Source分析相关的提示词模板。
 def get_language_specific_instructions(language: str) -> str:
     """获取特定语言的指令说明。"""
     instructions = {
-        "java": "关注Servlet API、网络请求处理、文件读取等入口点。默认包含CodeQL官方的所有远程输入点Source（RemoteFlowSource），6. 从Sink点函数开始向前反向找被调用点，找到可能的Source点",
+        "java": "关注Servlet API、网络请求处理、文件读取等入口点。默认包含CodeQL官方的所有远程输入点Source（RemoteFlowSource），6. 从Sink点函数开始向前反向找被调用点，找到可能的Source点，最后只挑选出至多两个最可能的Source点",
         "python": "关注Web框架、文件操作、网络请求等输入源，6. 从Sink点函数开始向前反向找被调用点，找到可能的Source点",
         "cpp": "关注网络套接字、文件读取、环境变量等输入函数，6. 在查找Source点的过程中顺便给出需要ql生成isAdditionalFlowStep的步骤，比如加减法乘法运算导致的溢出,或者其他通过偏移等操作进行的流传输，需要给出对应的isAdditionalFlowStep点"
     }
