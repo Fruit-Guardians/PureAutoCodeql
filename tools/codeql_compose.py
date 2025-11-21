@@ -25,6 +25,7 @@ from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
 from agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
 from agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
 from agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
+from agents.codeql_gen_agents.source_sink_fallback_agent import SourceSinkFallbackAgent
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
@@ -72,6 +73,8 @@ class CodeQLComposeTool(BaseTool):
     default_database_path: str = ""
     default_max_rounds: int = 10
     enable_error_tidy: bool = False
+    enable_source_sink_fallback: bool = False
+    fallback_empty_retry_max: int = 5
 
     def __init__(
         self,
@@ -80,12 +83,15 @@ class CodeQLComposeTool(BaseTool):
         language: str = "java",
         max_rounds: int = 5,
         enable_error_tidy: bool = False,
+        enable_source_sink_fallback: bool = False,
+        fallback_empty_retry_max: int = 5,
         *,
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
         fix_inplace_agent_cls: Type[CodeQLFixInplaceAgent] = CodeQLFixInplaceAgent,
         syntax_session_cls: Type[CodeQLSyntaxSession] = CodeQLSyntaxSession,
         breakpoint_detect_agent_cls: Type[CodeQLBreakpointAgent] = CodeQLBreakpointAgent,
+        source_sink_fallback_agent_cls: Type[SourceSinkFallbackAgent] = SourceSinkFallbackAgent,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -94,12 +100,15 @@ class CodeQLComposeTool(BaseTool):
         self.default_language = language
         self.default_max_rounds = max_rounds
         self.enable_error_tidy = enable_error_tidy
+        self.enable_source_sink_fallback = enable_source_sink_fallback
+        self.fallback_empty_retry_max = fallback_empty_retry_max
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
         self._fix_inplace_agent_cls = fix_inplace_agent_cls
         self._syntax_session_cls = syntax_session_cls
         self._breakpoint_detect_agent_cls = breakpoint_detect_agent_cls
+        self._source_sink_fallback_agent_cls = source_sink_fallback_agent_cls
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
     
@@ -332,6 +341,284 @@ class CodeQLComposeTool(BaseTool):
             result += f"\nPreview:\n\n```\n{execution.preview}\n```"
         return result
 
+    # 构建回退 Agent 的上下文
+    @staticmethod
+    def _build_previous_attempts_context(
+        requirement: str,
+        retry_history: list[Dict[str, Any]],
+        error_rounds: list[Dict[str, Any]],
+    ) -> str:
+        """将之前的重试与错误信息整理为回退 Agent 的上下文字符串。"""
+
+        sections: list[str] = []
+
+        if requirement:
+            sections.append("=== Original requirement ===")
+            sections.append(requirement.strip())
+
+        if retry_history:
+            sections.append("\n=== Retry history ===")
+            try:
+                sections.append(json.dumps(retry_history, ensure_ascii=False, indent=2))
+            except Exception:
+                sections.append(str(retry_history))
+
+        if error_rounds:
+            sections.append("\n=== Error rounds ===")
+            try:
+                sections.append(json.dumps(error_rounds, ensure_ascii=False, indent=2))
+            except Exception:
+                sections.append(str(error_rounds))
+
+        return "\n".join(sections)
+
+    async def _run_source_sink_fallback(
+        self,
+        *,
+        fallback_agent: SourceSinkFallbackAgent,
+        target_language: str,
+        cve_analysis_report: Optional[str],
+        source_analysis_report: Optional[str],
+        sink_analysis_report: Optional[str],
+        previous_attempts_context: Optional[str],
+        lsp_service: CodeQLLSPService,
+        query_file: Path,
+        pack_root: Path,
+        task_id: str,
+        exec_mode: str,
+        show_thinking: bool,
+        event_callback,
+        error_agent: CodeQLErrorAgent,
+        fix_inplace_agent: CodeQLFixInplaceAgent,
+        kb_context: Dict[str, Any],
+        ql_template: str,
+    ) -> tuple[str, bool]:
+        """运行 Source-Sink Fallback 工作流。
+
+        返回 (final_result, is_success)。成功与否仅表示回退查询本身是否成功执行，
+        即使结果为空也视为成功（由调用方决定如何解释空结果）。
+        """
+
+        if not self.enable_source_sink_fallback:
+            return (
+                "Source-sink fallback is disabled. Set enable_source_sink_fallback to True to enable it.",
+                False,
+            )
+
+        # 处理空的分析报告，保证占位符安全替换
+        cve_report = (cve_analysis_report or "").strip()
+        source_report = (source_analysis_report or "").strip()
+        sink_report = (sink_analysis_report or "").strip()
+        prev_context = previous_attempts_context or ""
+
+        # 空结果重试配置
+        empty_retry_max = self.fallback_empty_retry_max
+        infinite_empty_retry = empty_retry_max == -1
+        if empty_retry_max is None or empty_retry_max < -1:
+            empty_retry_max = 0
+
+        empty_retry_count = 0
+        attempt = 0
+        # 语法/执行错误重试计数（通过让回退 Agent 重新生成来纠正）
+        error_retry_count = 0
+        max_error_retries = 2
+
+        from services.codeql_execution import CodeQLExecutionResult
+
+        while True:
+            attempt += 1
+            logger.info(
+                f"[SourceSinkFallback] 开始第 {attempt} 次回退查询生成 (empty_retry_max={empty_retry_max})"
+            )
+
+            # 1) 调用回退 Agent 生成仅 source-sink 查询
+            fallback_result = await fallback_agent.generate(
+                language=target_language,
+                cve_analysis_report=cve_report,
+                source_analysis_report=source_report,
+                sink_analysis_report=sink_report,
+                previous_attempts_context=prev_context,
+                show_thinking=show_thinking,
+                event_callback=event_callback,
+                agent_name="Source-Sink Fallback Agent",
+                agent_type="source_sink_fallback",
+            )
+
+            if not getattr(fallback_result, "success", False):
+                msg = getattr(fallback_result, "error", None) or "Unknown fallback agent error"
+                logger.error(f"[SourceSinkFallback] 回退 Agent 生成失败: {msg}")
+                return (f"Source-sink fallback agent failed: {msg}", False)
+
+            fallback_ql = self._extract_codeql_from_response(getattr(fallback_result, "content", ""))
+            if not fallback_ql:
+                logger.error("[SourceSinkFallback] 无法从回退 Agent 响应中提取 CodeQL 代码")
+                return (
+                    "Source-sink fallback agent did not return a valid CodeQL query.",
+                    False,
+                )
+
+            # 2) 保存回退查询到文件和持久化目录
+            query_file.write_text(fallback_ql, encoding="utf-8")
+            metadata = {
+                "task_id": task_id,
+                "language": target_language,
+                "mode": "source_sink_fallback",
+                "fallback_attempt": attempt,
+                "note": "source-sink fallback query",
+            }
+            save_query_to_persistent_dir(
+                query_content=fallback_ql,
+                task_id=task_id,
+                language=target_language,
+                metadata=metadata,
+            )
+
+            # 3) 使用 LSP 进行语法检查并执行
+            exec_result = self._lsp_and_execute(
+                current_ql=fallback_ql,
+                target_language=target_language,
+                query_file=query_file,
+                lsp_service=lsp_service,
+            )
+
+            # 3.1) 如果执行成功，检查结果是否为空
+            if exec_result.get("success", False):
+                sarif_path = exec_result.get("sarif_path")
+                json_path = exec_result.get("json_path")
+                is_result_empty = is_empty_result(sarif_path)
+                paths_count = count_dataflow_paths(sarif_path, json_path)
+
+                logger.info(
+                    f"[SourceSinkFallback] 回退查询执行成功 (attempt={attempt}), paths={paths_count}, empty={is_result_empty}"
+                )
+
+                execution_result = CodeQLExecutionResult(
+                    success=True,
+                    output=exec_result.get("output", ""),
+                    sarif_path=sarif_path,
+                    json_path=json_path,
+                    paths_count=paths_count,
+                    result_file=exec_result.get("result_file"),
+                    preview=exec_result.get("preview"),
+                )
+
+                # 3.2) 处理空结果重试逻辑
+                if is_result_empty:
+                    # 配置为不重试（0）且非无限重试时，直接返回当前空结果
+                    if (not infinite_empty_retry) and empty_retry_max == 0:
+                        base_msg = self._format_success_result(
+                            query=fallback_ql,
+                            round_index=1,
+                            execution=execution_result,
+                        )
+                        note = (
+                            "\n\n[Source-Sink Fallback Query] Executed fallback source-sink query "
+                            "with empty results (no retries configured)."
+                        )
+                        return (base_msg + note, True)
+
+                    # 非无限重试模式下，如果已用尽所有重试次数，则停止重试
+                    if (not infinite_empty_retry) and empty_retry_count >= empty_retry_max:
+                        base_msg = self._format_success_result(
+                            query=fallback_ql,
+                            round_index=1,
+                            execution=execution_result,
+                        )
+                        note = (
+                            "\n\n[Source-Sink Fallback Query] Executed fallback source-sink query "
+                            f"with {empty_retry_count} retry attempt(s) but all results were empty."
+                        )
+                        return (base_msg + note, True)
+
+                    # 仍有重试机会，或处于无限重试模式
+                    empty_retry_count += 1
+                    logger.warning(
+                        f"[SourceSinkFallback] 回退查询结果为空，准备第 {empty_retry_count} 次重试 "
+                        f"(fallback_empty_retry_max={empty_retry_max})"
+                    )
+                    # 将本次尝试摘要追加到上下文中
+                    prev_context = (prev_context or "") + (
+                        f"\n\n[Fallback attempt {attempt}] Empty result (paths={paths_count})."
+                    )
+                    continue
+
+                # 非空结果，直接返回成功
+                base_msg = self._format_success_result(
+                    query=fallback_ql,
+                    round_index=1,
+                    execution=execution_result,
+                )
+                note = (
+                    "\n\n[Source-Sink Fallback Query] This query was generated by the "
+                    "source-sink fallback workflow (sources and sinks only, no intermediate path tracing)."
+                )
+                return (base_msg + note, True)
+
+            # 3.3) 如果执行失败（通常是语法错误），使用错误分析结果反馈给回退 Agent 重新生成
+            logger.warning(
+                "[SourceSinkFallback] 回退查询执行失败，将错误分析建议反馈给回退 Agent 重新生成"
+            )
+
+            # 如果已经达到最大错误重试次数，则直接失败返回
+            if error_retry_count >= max_error_retries:
+                error_info = exec_result.get("output", "")
+                logger.error(
+                    "[SourceSinkFallback] 达到最大错误重试次数，终止回退流程"
+                )
+                return (
+                    "Source-sink fallback query failed after error retries:\n" + error_info,
+                    False,
+                )
+
+            error_retry_count += 1
+
+            error_prompt_base = error_agent.build_prompt(
+                error_log=exec_result.get("output", ""),
+                curr_ql_content=fallback_ql,
+                round_index=1,
+                prev_original_ql=fallback_ql,
+            )
+            error_values = build_placeholder_map(
+                language=target_language,
+                requirement="Source-sink fallback query",
+                round_index=1,
+                prev_original_ql=fallback_ql,
+                prev_fix_suggestions=None,
+                ql_template=ql_template,
+                error_log=exec_result.get("output", ""),
+                curr_ql_content=fallback_ql,
+                kb_directory_index=kb_context.get("kb_directory_index"),
+                kb_suggestions=kb_context.get("kb_suggestions"),
+                kb_structured_context=kb_context.get("kb_structured_context"),
+                kb_reference_snippets=kb_context.get("kb_reference_snippets"),
+                relevant_tags=kb_context.get("relevant_tags"),
+            )
+            error_prompt = apply_placeholders(error_prompt_base, error_values)
+
+            error_analysis = await self.analyzer.run_agent(
+                error_prompt,
+                show_thinking=show_thinking,
+                event_callback=event_callback,
+            )
+
+            if not getattr(error_analysis, "success", False):
+                msg = getattr(error_analysis, "error", None) or "Unknown error analysis failure"
+                logger.error(f"[SourceSinkFallback] 错误分析失败: {msg}")
+                # 即使错误分析失败，也把原始错误信息追加到上下文中，避免死循环
+                prev_context = (prev_context or "") + (
+                    f"\n\n[Fallback attempt {attempt}] LSP execution failed and error "
+                    f"analysis also failed: {msg}\n\nOriginal output:\n{exec_result.get('output', '')}"
+                )
+            else:
+                # 将错误分析结果追加到回退 Agent 的上下文中，用于下一轮生成
+                prev_context = (prev_context or "") + (
+                    f"\n\n[Fallback attempt {attempt}] LSP execution failed. "
+                    f"Error analysis suggestions:\n{getattr(error_analysis, 'content', '')}"
+                )
+
+            # 继续 while 循环，使用更新后的 prev_context 重新调用回退 Agent 生成新的查询
+            continue
+
     def _build_error_tidy_markdown(
         self,
         project_name: str,
@@ -518,6 +805,9 @@ class CodeQLComposeTool(BaseTool):
         agent_name: str = None,
         agent_type: str = None,
         path_analysis_results: Optional[Dict[str, Any]] = None,
+        cve_analysis_report: Optional[str] = None,
+        source_analysis_report: Optional[str] = None,
+        sink_analysis_report: Optional[str] = None,
     ) -> str:
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
@@ -575,7 +865,12 @@ class CodeQLComposeTool(BaseTool):
         gen_agent = self._gen_agent_cls(self.analyzer)
         error_agent = self._error_agent_cls(self.analyzer)
         fix_inplace_agent = self._fix_inplace_agent_cls(self.analyzer)
-        breakpoint_detect_agent = self._breakpoint_detect_agent_cls(self.analyzer, source_root="projects", project_name=project_name)
+        breakpoint_detect_agent = self._breakpoint_detect_agent_cls(
+            self.analyzer, source_root="projects", project_name=project_name
+        )
+        fallback_agent = self._source_sink_fallback_agent_cls(
+            self.analyzer, language=target_language
+        )
 
         ql_template = self._load_ql_template(target_language)
         round_index = 1
@@ -613,7 +908,41 @@ class CodeQLComposeTool(BaseTool):
         
         elapsed_time = time.time() - start_time
         print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
-    
+
+        mode_now = (exec_mode or "analyze").lower()
+
+        # 专用模式：仅运行 Source-Sink 回退工作流（用于测试）
+        if mode_now == "fallback_only":
+            try:
+                previous_attempts_context = self._build_previous_attempts_context(
+                    requirement=requirement,
+                    retry_history=[],
+                    error_rounds=[],
+                )
+                final_result, is_success = await self._run_source_sink_fallback(
+                    fallback_agent=fallback_agent,
+                    target_language=target_language,
+                    cve_analysis_report=cve_analysis_report or requirement,
+                    source_analysis_report=source_analysis_report,
+                    sink_analysis_report=sink_analysis_report,
+                    previous_attempts_context=previous_attempts_context,
+                    lsp_service=lsp_service,
+                    query_file=query_file,
+                    pack_root=pack_root,
+                    task_id=task_id,
+                    exec_mode=exec_mode,
+                    show_thinking=show_thinking,
+                    event_callback=event_callback,
+                    error_agent=error_agent,
+                    fix_inplace_agent=fix_inplace_agent,
+                    kb_context=kb_context,
+                    ql_template=ql_template,
+                )
+                return final_result
+            finally:
+                print("🛑 [CodeQLComposeTool] 停止LSP服务...")
+                lsp_service.stop()
+
 
         try:
             while round_index <= max_iterations:
@@ -887,37 +1216,78 @@ class CodeQLComposeTool(BaseTool):
                     
                     # 记录路径数量到日志
                     logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")
-                    
-                    # 如果结果为空且未达到最大重试次数，触发重试
+
+                    # 如果结果为空且未达到最大重试次数，触发正常重试
                     if is_result_empty and retry_count < max_retries:
                         retry_count += 1
-                        retry_history.append({
-                            "retry": retry_count,
-                            "round": round_index,
-                            "reason": "空结果",
-                            "paths_count": paths_count
-                        })
-                        
+                        retry_history.append(
+                            {
+                                "retry": retry_count,
+                                "round": round_index,
+                                "reason": "空结果",
+                                "paths_count": paths_count,
+                            }
+                        )
+
                         # 静默记录重试信息到日志
-                        logger.info(f"[重试触发] 检测到空结果，开始第 {retry_count}/{max_retries} 次重试")
-                        
+                        logger.info(
+                            f"[重试触发] 检测到空结果，开始第 {retry_count}/{max_retries} 次重试"
+                        )
+
                         # 重置状态，准备重新生成查询
                         round_index = 1
                         is_first_round = True
                         prev_original_ql = None
                         prev_fix_suggestions = None
-                        
+
                         # 继续下一次迭代（重试）
                         continue
-                    
-                    # 如果结果为空但已达到最大重试次数
+
+                    # 如果结果为空且已达到最大重试次数，并且启用了回退机制，则触发 Source-Sink Fallback
+                    if is_result_empty and retry_count >= max_retries and self.enable_source_sink_fallback:
+                        logger.warning(
+                            f"[重试结束] 已尝试 {retry_count} 次重试仍为空，触发 Source-Sink Fallback 回退查询"
+                        )
+                        previous_attempts_context = self._build_previous_attempts_context(
+                            requirement=requirement,
+                            retry_history=retry_history,
+                            error_rounds=error_rounds,
+                        )
+                        final_result, is_success = await self._run_source_sink_fallback(
+                            fallback_agent=fallback_agent,
+                            target_language=target_language,
+                            cve_analysis_report=cve_analysis_report,
+                            source_analysis_report=source_analysis_report,
+                            sink_analysis_report=sink_analysis_report,
+                            previous_attempts_context=previous_attempts_context,
+                            lsp_service=lsp_service,
+                            query_file=query_file,
+                            pack_root=pack_root,
+                            task_id=task_id,
+                            exec_mode=exec_mode,
+                            show_thinking=show_thinking,
+                            event_callback=event_callback,
+                            error_agent=error_agent,
+                            fix_inplace_agent=fix_inplace_agent,
+                            kb_context=kb_context,
+                            ql_template=ql_template,
+                        )
+                        # 直接结束主循环
+                        return final_result
+
                     if is_result_empty and retry_count >= max_retries:
-                        logger.warning(f"[重试结束] 已尝试 {retry_count} 次重试，仍未找到有效路径")
-                        retry_summary = f"\n\n⚠️ 已尝试{retry_count}次重试，仍未找到有效路径"
+                        logger.warning(
+                            f"[重试结束] 已尝试 {retry_count} 次重试，仍未找到有效路径"
+                        )
+                        retry_summary = (
+                            f"\n\n⚠️ 已尝试{retry_count}次重试，仍未找到有效路径"
+                        )
                     else:
                         retry_summary = ""
                         if retry_count > 0:
-                            logger.info(f"[重试成功] 第 {retry_count} 次重试找到 {paths_count} 条路径")
+                            logger.info(
+                                f"[重试成功] 第 {retry_count} 次重试找到 {paths_count} 条路径"
+                            )
 
                     # 如果经历过至少一轮错误修复（round_index > 1 且有错误记录），且开启了错误整理功能，生成错误整理文档
                     if round_index > 1 and error_rounds and self.enable_error_tidy:
@@ -1019,25 +1389,64 @@ class CodeQLComposeTool(BaseTool):
                     # 如果还有重试机会，则触发重试机制
                     if retry_count < max_retries:
                         retry_count += 1
-                        logger.info(f"[重试触发] 达到最大修复轮次 ({max_iterations}) 仍未修复，开始第 {retry_count}/{max_retries} 次重试")
-                        print(f"🔄 [CodeQLComposeTool] 达到最大修复轮次，开始第 {retry_count}/{max_retries} 次重新生成")
-                        
-                        retry_history.append({
-                            "retry": retry_count,
-                            "round": round_index,
-                            "reason": "修复失败",
-                            "paths_count": 0
-                        })
-                        
+                        logger.info(
+                            f"[重试触发] 达到最大修复轮次 ({max_iterations}) 仍未修复，开始第 {retry_count}/{max_retries} 次重试"
+                        )
+                        print(
+                            f"🔄 [CodeQLComposeTool] 达到最大修复轮次，开始第 {retry_count}/{max_retries} 次重新生成"
+                        )
+
+                        retry_history.append(
+                            {
+                                "retry": retry_count,
+                                "round": round_index,
+                                "reason": "修复失败",
+                                "paths_count": 0,
+                            }
+                        )
+
                         # 重置状态，准备重新生成查询
                         round_index = 1
                         is_first_round = True
                         prev_original_ql = None
                         prev_fix_suggestions = None
-                        
+
                         continue
 
-                    error_info = self._format_error_info(exec_result.get('output', ''), round_index)
+                    # 正常重试全部用尽后，如启用了回退机制，则触发 Source-Sink Fallback
+                    if self.enable_source_sink_fallback:
+                        logger.warning(
+                            "[重试结束] 已达到最大修复轮次且所有重试均失败，触发 Source-Sink Fallback 回退查询"
+                        )
+                        previous_attempts_context = self._build_previous_attempts_context(
+                            requirement=requirement,
+                            retry_history=retry_history,
+                            error_rounds=error_rounds,
+                        )
+                        final_result, is_success = await self._run_source_sink_fallback(
+                            fallback_agent=fallback_agent,
+                            target_language=target_language,
+                            cve_analysis_report=cve_analysis_report,
+                            source_analysis_report=source_analysis_report,
+                            sink_analysis_report=sink_analysis_report,
+                            previous_attempts_context=previous_attempts_context,
+                            lsp_service=lsp_service,
+                            query_file=query_file,
+                            pack_root=pack_root,
+                            task_id=task_id,
+                            exec_mode=exec_mode,
+                            show_thinking=show_thinking,
+                            event_callback=event_callback,
+                            error_agent=error_agent,
+                            fix_inplace_agent=fix_inplace_agent,
+                            kb_context=kb_context,
+                            ql_template=ql_template,
+                        )
+                        return final_result
+
+                    error_info = self._format_error_info(
+                        exec_result.get("output", ""), round_index
+                    )
                     is_success = False
                     final_result = (
                         f"Failed to generate working CodeQL query after {max_iterations} rounds.\n\n"
