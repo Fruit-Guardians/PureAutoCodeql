@@ -194,6 +194,61 @@ class CodeQLBreakpointAgent:
         
         return '\n'.join(context_parts)
 
+    def _extract_unique_files(self, nodes: List[Dict]) -> List[str]:
+        """从节点列表中提取唯一的文件路径。"""
+        files = set()
+        for node in nodes:
+            file_path = node.get('file', '') or node.get('file_path', '')
+            if file_path:
+                files.add(file_path)
+        return list(files)
+    
+    def _read_multiple_source_files(self, file_paths: List[str], max_files: int = 5) -> str:
+        """读取多个源文件并格式化为易读的文本。
+        
+        参数:
+            file_paths: 文件路径列表
+            max_files: 最多读取的文件数量（防止过大）
+        
+        返回:
+            格式化的源码内容
+        """
+        if not file_paths:
+            return "未找到相关源文件路径"
+        
+        # 限制文件数量
+        file_paths = file_paths[:max_files]
+        
+        source_contents = []
+        for file_path in file_paths:
+            content = self._read_source_file(file_path)
+            
+            # 检查是否读取成功
+            if content and not content.startswith("错误:") and not content.startswith("读取文件"):
+                # 限制单个文件大小（最多5000行，防止超出上下文）
+                lines = content.split('\n')
+                if len(lines) > 5000:
+                    content = '\n'.join(lines[:5000]) + f"\n\n... (文件过大，已截断，总共{len(lines)}行)"
+                
+                source_contents.append(f"""
+### 文件: {file_path}
+```
+{content}
+```
+""")
+            else:
+                source_contents.append(f"""
+### 文件: {file_path}
+```
+{content}
+```
+""")
+        
+        if source_contents:
+            return "\n".join(source_contents)
+        else:
+            return "所有源文件读取失败"
+
     def build_analysis_prompt(
         self,
         codeql_results: str,
@@ -201,7 +256,7 @@ class CodeQLBreakpointAgent:
         sink_nodes: Optional[List[Dict]] = None,
         language: str = "java",
     ) -> str:
-        """构建断流点分析提示词。
+        """构建断流点分析提示词（增强版：主动读取源文件）。
         
         参数:
             codeql_results: CodeQL查询执行的结果
@@ -221,6 +276,15 @@ class CodeQLBreakpointAgent:
         else:
             source_dir_info = "projects/xxx/source_code (请根据实际情况替换xxx为项目名称)"
         
+        # 【增强】主动提取并读取源文件
+        all_nodes = (source_nodes or []) + (sink_nodes or [])
+        file_paths = self._extract_unique_files(all_nodes)
+        
+        # 读取源文件内容
+        preloaded_source_code = self._read_multiple_source_files(file_paths)
+        
+        print(f"🔍 [BreakpointAgent] 主动读取了 {len(file_paths)} 个源文件用于分析")
+        
         # 动态选择语言特定的提示词文件
         prompt_file = self._get_prompt_file("codeql_breakpoint_analysis.md", language)
         template = self._load_prompt(prompt_file)
@@ -231,6 +295,7 @@ class CodeQLBreakpointAgent:
             "SINK_NODES": json.dumps(sink_nodes, indent=2) if sink_nodes else "[]",
             "LANGUAGE": language or "java",
             "SOURCE_DIR": source_dir_info,
+            "PRELOADED_SOURCE_CODE": preloaded_source_code,  # 新增：预加载的源码
         }
         return self._fill_placeholders(template, values)
 

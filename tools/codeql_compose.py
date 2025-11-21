@@ -720,8 +720,8 @@ class CodeQLComposeTool(BaseTool):
                     is_result_empty = is_empty_result(sarif_path)
                     paths_count = count_dataflow_paths(sarif_path, json_path)
 
-                    #断流点查找
-                    if is_result_empty and target_language == "java":
+                    #断流点查找（支持Java/Python/C++）
+                    if is_result_empty and target_language in ["java", "python", "cpp"]:
                         print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，进行断流点查找，正在执行断流查找codeql语句")
                         from .extract_ql import extract_ql_predicate, Get_Breakpoint
                         

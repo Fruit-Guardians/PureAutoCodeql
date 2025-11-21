@@ -17,6 +17,16 @@
 [[LANGUAGE]] - 目标编程语言
 </LANGUAGE>
 
+## 🎁 预加载的源代码（已为你读取）
+
+系统已经主动读取了所有相关的源文件，内容如下：
+
+<PRELOADED_SOURCE_CODE>
+[[PRELOADED_SOURCE_CODE]]
+</PRELOADED_SOURCE_CODE>
+
+**重要**：你可以直接使用上面的源代码进行分析，无需再调用server-filesystem工具（除非需要读取额外的文件）。
+
 ## 分析步骤
 
 1. **解析CodeQL查询结果**：
