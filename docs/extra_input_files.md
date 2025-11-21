@@ -36,7 +36,7 @@ PureAutoCodeQL 现在支持在 `inputs/` 目录中添加额外的信息文件，
 | `exploit_` | exploit | 漏洞利用信息 | `exploit_poc.py` |
 | `poc_` | exploit | POC 代码 | `poc_demo.py` |
 | `payload_` | exploit | 攻击载荷 | `payload_example.txt` |
-| `patch_` | patch | 补丁信息 | `patch_additional.diff` |
+| `patch_` | patch | 补丁信息 | `patch_additional.patch` |
 | `fix_` | patch | 修复说明 | `fix_details.md` |
 | 其他 | other | 未分类文件 | `analysis.md` |
 
@@ -299,7 +299,7 @@ class CveAssets:
 ### 自动排除规则
 
 系统会自动排除以下文件：
-- 标准 CVE 文件：`CVE-*.json`, `CVE-*.diff`
+- 标准 CVE 文件：`CVE-*.json`, `CVE-*.patch/.diff`
 - 隐藏文件：以 `.` 开头的文件
 - 临时文件：以 `~` 结尾的文件
 - 目录：只处理文件，不处理子目录

@@ -7,8 +7,19 @@
 ### 1. 目录准备要求
 
 - 外部目录建议以 `CVE-YYYY-XXXXX` 命名，例如：`C:\Users\bxx\Desktop\qwb_targets1\targets\python\CVE-2025-54381`
-- 必须包含 `source_code/` 子目录（源代码会被复制到 `projects/<CVE>/source_code/`）
-- 同级的 `CVE-*.json`、`CVE-*.diff/.patch` 文件会被复制一份到 `db/`，一份到 `inputs/`
+- 目录结构统一为：
+
+```
+CVE-YYYY-XXXXX/
+├── CVE-YYYY-XXXXX.json        # 元数据
+├── patch/                     # 若干 .patch（或历史 .diff）文件
+└── src/ 或 source_code/       # 解压后的源码目录，或源码 zip 包
+```
+
+- `src/` 或 `source_code/` 下若直接是源码目录，会被完整复制到 `projects/<CVE>/source_code/`
+- `src/` 或 `source_code/` 下若只有 zip 包，系统会自动解压到 `source_code/`
+- 如果展开后的 `source_code/` 只剩单个发行目录（例如 `security_monkey-0.7.0/`），系统会自动把该目录作为 CodeQL `--source-root`
+- `patch/` 内的 `.patch`（兼容 `.diff`）文件会自动命名为 `CVE-YYYY-XXXXX-*.patch`，并同步到 `db/` 与 `inputs/`
 - 其余自定义资料可以保留，稍后可再手动放入 `inputs/`
 
 ---
@@ -71,6 +82,18 @@ python Analyze.py --import-project "C:\Users\bxx\Desktop\qwb_targets1\targets\cp
 - `--import-build-dir DIR`：构建命令的工作目录（默认项目根）
 
 导入成功后，终端会输出案例 ID、目标路径、复制的元数据以及 CodeQL 构建结果。
+
+---
+
+### 3.1 直接在主流程中输入目录
+
+现在可以直接将外部目录的绝对路径传给 `--case` 参数，主流程会先自动导入再启动分析：
+
+```powershell
+python Analyze.py --case "C:\Targets\CVE-2025-54381"
+```
+
+该模式会默认覆盖同名项目、自动创建 CodeQL 数据库，并在完成后继续执行全量分析。
 
 ---
 

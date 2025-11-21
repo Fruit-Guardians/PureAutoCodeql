@@ -37,12 +37,72 @@ def normalize_language(language: Optional[str]) -> str:
     return 'java'
 
 
-def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
+def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> str:
+    """
+    解析真正的CodeQL数据库根目录。
+    如果给定路径本身包含 codeql-database.yml，则返回该路径。
+    如果给定路径不包含，但其子目录（如 python/ 或 cpp/）包含，则返回子目录路径。
+    如果指定了language，则优先查找名称匹配的子目录。
+    """
+    if not path:
+        return path
+        
+    db_path = Path(path)
+    if not db_path.exists():
+        return path
+        
+    if (db_path / "codeql-database.yml").exists():
+        return str(db_path)
+        
+    # 检查子目录
+    try:
+        # 如果指定了语言，优先检查对应的子目录
+        if language:
+            lang_lower = language.lower().strip()
+            # 处理一些常见的语言名称变体
+            lang_map = {
+                'c': 'cpp', 'c++': 'cpp', 'cplusplus': 'cpp',
+                'c#': 'csharp', 'cs': 'csharp',
+                'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript'
+            }
+            target_lang = lang_map.get(lang_lower, lang_lower)
+            
+            # 尝试查找精确匹配的子目录或 db-{lang} 格式
+            candidates = [
+                db_path / target_lang,
+                db_path / f"db-{target_lang}",
+                db_path / f"db/{target_lang}"
+            ]
+            
+            for candidate in candidates:
+                if candidate.is_dir() and (candidate / "codeql-database.yml").exists():
+                    return str(candidate)
+
+        # 如果没指定语言或没找到特定语言目录，则遍历一级子目录
+        for subdir in db_path.iterdir():
+            if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
+                return str(subdir)
+                
+        # 尝试深入一层 (例如 db/python/codeql-database.yml)
+        db_subdir = db_path / "db"
+        if db_subdir.is_dir():
+            for subdir in db_subdir.iterdir():
+                 if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
+                    return str(subdir)
+                    
+    except Exception:
+        pass
+            
+    return path
+
+
+def validate_codeql_database(database_path: str, language: Optional[str] = None) -> Tuple[bool, str]:
     """
     验证CodeQL数据库是否存在且有效。
 
     Args:
         database_path: CodeQL数据库的路径
+        language: 可选的语言提示，用于辅助定位数据库子目录
 
     Returns:
         (is_valid, error_message) 元组：
@@ -52,7 +112,9 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
     if not database_path:
         return False, "数据库路径为空。请提供有效的CodeQL数据库路径。"
 
-    db_path = Path(database_path)
+    # 尝试解析真实的数据库根目录
+    real_db_path_str = resolve_codeql_database_root(database_path, language)
+    db_path = Path(real_db_path_str)
 
     # 检查路径是否存在
     if not db_path.exists():
@@ -78,10 +140,10 @@ def validate_codeql_database(database_path: str) -> Tuple[bool, str]:
     )
 
     if not (has_database_yml or has_db_subdirs):
-        # 尝试使用 codeql database info 命令验证
+        # 尝试使用 codeql resolve database 命令验证
         try:
             result = subprocess.run(
-                ['codeql', 'database', 'info', str(db_path)],
+                ['codeql', 'resolve', 'database', str(db_path)],
                 capture_output=True,
                 text=True,
                 timeout=10

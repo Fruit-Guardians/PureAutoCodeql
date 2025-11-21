@@ -36,6 +36,7 @@ from utils.codeql import (
     execute_codeql_query,
     run_query_and_decode_to_text,
     validate_codeql_database,
+    resolve_codeql_database_root,
     is_database_error,
     save_query_to_persistent_dir,
     is_empty_result,
@@ -524,9 +525,12 @@ class CodeQLComposeTool(BaseTool):
         if not self.default_database_path:
             return "Error: No database path configured. Tool needs to be initialized with a valid database_path."
 
+        # 解析并修正数据库路径
+        self.default_database_path = resolve_codeql_database_root(self.default_database_path, self.default_language)
+
         # 在执行前验证数据库
         print(f"🔍 [CodeQLComposeTool] 验证数据库: {self.default_database_path}")
-        is_valid, validation_error = validate_codeql_database(self.default_database_path)
+        is_valid, validation_error = validate_codeql_database(self.default_database_path, self.default_language)
         if not is_valid:
             error_msg = (
                 f"❌ [CodeQLComposeTool] 数据库验证失败\n\n"

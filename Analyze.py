@@ -567,6 +567,47 @@ def run_project_import(
     print_user_info("📣 现在可以使用 --case 运行分析或调用 API 继续操作")
 
 
+def _detect_case_directory_input(case_value: str) -> Optional[Path]:
+    """
+    判断 --case 参数是否提供了目录路径（而非案例ID）。
+    仅在字符串包含路径分隔符或为绝对路径且目录存在时返回 Path。
+    """
+    if not case_value:
+        return None
+
+    contains_path_sep = ("\\" in case_value) or ("/" in case_value)
+    candidate = Path(case_value).expanduser()
+    if not candidate.exists() or not candidate.is_dir():
+        return None
+    if candidate.is_absolute() or contains_path_sep:
+        return candidate.resolve()
+    return None
+
+
+def _auto_import_case_directory(case_dir: Path) -> ProjectImportResult:
+    """
+    将外部目录自动导入到 projects/ 并返回结果。
+    默认启用覆盖与 CodeQL 自动建库。
+    """
+    print_user_info(f"📦 检测到外部CVE目录: {case_dir}")
+    print_user_info("🔄 正在自动导入并创建CodeQL数据库...")
+    result = import_project(
+        source_path=str(case_dir),
+        overwrite=True,
+        create_codeql_db=True,
+    )
+    print_user_success(f"✅ 自动导入完成，案例ID: {result.case_id}")
+    if result.metadata_files:
+        print_user_info(f"   🗂️ 元数据: {', '.join(result.metadata_files)}")
+    if result.codeql_created:
+        print_user_success("   🧱 CodeQL 数据库已创建")
+    else:
+        print_user_warning("   ⚠️ 未能自动创建 CodeQL 数据库，可稍后手动重试")
+        if result.codeql_error:
+            print_user_error(f"      原因: {result.codeql_error}")
+    return result
+
+
 
 def parse_arguments() -> argparse.Namespace:
     """解析命令行参数"""
@@ -808,8 +849,23 @@ async def main() -> None:
                 build_workdir=args.import_build_workdir,
             )
         elif args.case:
+            effective_case_id = args.case
+            auto_case_dir = _detect_case_directory_input(args.case)
+            if auto_case_dir:
+                try:
+                    auto_import_result = _auto_import_case_directory(auto_case_dir)
+                    effective_case_id = auto_import_result.case_id
+                except FileNotFoundError as exc:
+                    print_user_error(f"❌ 自动导入失败: 输入目录不存在 - {exc}")
+                    logger.error("自动导入失败: %s", exc)
+                    return
+                except Exception as exc:  # pylint: disable=broad-except
+                    print_user_error(f"❌ 自动导入失败: {exc}")
+                    logger.exception("自动导入失败")
+                    return
+
             print(f"🚀 PureAutoCodeQL 启动")
-            print(f"🎯 分析案例: {args.case}")
+            print(f"🎯 分析案例: {effective_case_id}")
             print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
             print(f"🔄 刷新情报: {'是' if args.refresh_intel else '否'}")
             print(f"📄 输出文件: {args.output or 'output.md'}")
@@ -822,7 +878,7 @@ async def main() -> None:
             chat_model = args.chat_model or args.model
 
             await run_case_analysis(
-                case_id=args.case,
+                case_id=effective_case_id,
                 refresh_intel=args.refresh_intel,
                 stream=args.stream,
                 output_file=args.output,
