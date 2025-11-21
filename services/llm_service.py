@@ -804,6 +804,7 @@ class MultiAgentAnalyzer:
         self.retry_tracker = AgentRetryTracker()
         self._mcp_sessions = {}
         self._session_stack = None
+        self.language = None  # Store language for tools that need it
 
     async def initialize(
         self,
@@ -823,6 +824,9 @@ class MultiAgentAnalyzer:
         """
         logger = get_logger(__name__)
         self.llm = RetryableChatOpenAI(self.config, self.retry_tracker, event_callback)
+        
+        # Store language for tools that need it
+        self.language = language
 
         # 使用 Agent 级别 MCP 配置服务构造 mcp_servers, 保持默认行为与原实现一致
         mcp_config_service = AgentMCPConfigService()
@@ -866,7 +870,8 @@ class MultiAgentAnalyzer:
         # 只有当配置包含 ripgrep 时才添加 LSPFunctionLookupTool（因为该工具依赖 ripgrep）
         if "ripgrep" in mcp_servers:
             from tools.lsp_lookup_tool import LSPFunctionLookupTool
-            lsp_lookup_tool = LSPFunctionLookupTool()
+            # Pass language context to the tool if available
+            lsp_lookup_tool = LSPFunctionLookupTool(default_language=self.language or "java")
             self.tools.append(lsp_lookup_tool)
 
         # Wrap all tools with token limiting

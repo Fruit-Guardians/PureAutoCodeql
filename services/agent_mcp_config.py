@@ -41,6 +41,7 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "unified_source_analysis": ["tree_sitter", "language-server", "filesystem"],
     "source_analysis": ["tree_sitter", "language-server", "filesystem"],
     "codeql_gen": [],
+    "codeql_generation": ["filesystem", "ripgrep", "language-server"],
     "codeql_error": ["filesystem", "ripgrep", "language-server"],
     "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
     "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
@@ -80,7 +81,7 @@ class AgentMCPConfigService:
                 profile = ["language-server", "ripgrep", "tree_sitter"]
             elif normalized_language in {"c", "cpp", "c++"}:
                 # C/C++: 使用 tree_sitter + filesystem
-                profile = ["tree_sitter", "filesystem"]
+                profile = ["tree_sitter", "ripgrep"]
 
         # 构建完整的MCP服务器配置
         mcp_servers: Dict[str, Dict] = {}
