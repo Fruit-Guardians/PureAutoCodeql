@@ -101,13 +101,17 @@ def build_with_compilation():
             cmd_to_trace = "make -j$(nproc) || true"
 
     log(f"Tracing command: [{cmd_to_trace}]")
+    log("开始编译跟踪（这可能需要几分钟）...")
     
     # 执行 Trace（允许失败）
+    trace_start = time.time()
     trace_ret = run_cmd(
         f"codeql database trace-command {DB_DIR} --working-dir={SRC_DIR} -- {cmd_to_trace}", 
         cwd=SRC_DIR,
         check=False  # 不抛异常，返回退出码
     )
+    trace_elapsed = time.time() - trace_start
+    log(f"编译跟踪完成，耗时: {trace_elapsed:.1f} 秒")
     
     if trace_ret != 0:
         log(f"!!! Trace command failed with exit code {trace_ret}")
@@ -117,7 +121,37 @@ def build_with_compilation():
     # Step 4: Finalize
     # ========================================================================
     log(">>> Step 4: Finalize Database")
-    finalize_ret = run_cmd(f"codeql database finalize {DB_DIR}", check=False)
+    log("警告：finalize 步骤可能需要 5-15 分钟，请耐心等待...")
+    log("正在生成 src.zip 和数据库索引...")
+    
+    # 检查数据库大小和系统资源，给出预估
+    try:
+        import subprocess as sp
+        result = sp.run(["du", "-sh", DB_DIR], capture_output=True, text=True)
+        if result.returncode == 0:
+            log(f"当前数据库大小: {result.stdout.strip()}")
+        
+        # 检查内存使用情况
+        mem_result = sp.run(["free", "-h"], capture_output=True, text=True)
+        if mem_result.returncode == 0:
+            lines = mem_result.stdout.strip().split('\n')
+            if len(lines) >= 2:
+                log(f"内存状态: {lines[1]}")
+        
+        # 检查磁盘空间
+        df_result = sp.run(["df", "-h", DB_DIR], capture_output=True, text=True)
+        if df_result.returncode == 0:
+            lines = df_result.stdout.strip().split('\n')
+            if len(lines) >= 2:
+                log(f"磁盘空间: {lines[1]}")
+    except Exception as e:
+        log(f"资源检查失败: {e}")
+    
+    log("开始 finalize...")
+    start_time = time.time()
+    finalize_ret = run_cmd(f"codeql database finalize {DB_DIR} --verbose", check=False)
+    elapsed = time.time() - start_time
+    log(f"Finalize 完成，耗时: {elapsed:.1f} 秒")
     
     if finalize_ret != 0:
         log(f"!!! Finalize failed with exit code {finalize_ret}")

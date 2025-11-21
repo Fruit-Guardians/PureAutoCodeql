@@ -640,6 +640,10 @@ def _run_docker_build(
     # 2. 构造 Docker 命令
     cmd = [
         "docker", "run", "--rm",
+        # 资源限制：给予充足的内存和CPU
+        "--memory=8g",  # 8GB 内存
+        "--cpus=4",     # 4个CPU核心
+        "--shm-size=2g", # 共享内存
         # 挂载源码
         "-v", f"{abs_source}:/src",
         # 挂载数据库目录：直接挂载到 /out/db
