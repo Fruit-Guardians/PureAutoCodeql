@@ -842,8 +842,13 @@ class MultiAgentAnalyzer:
         self._mcp_sessions = {}
         self._session_stack = AsyncExitStack()
 
-        try:
-            for server_name, connection in mcp_servers.items():
+        # 定义可选的 MCP 服务器（失败时可以继续）
+        # tree_sitter 和 language-server 都可能因为项目配置问题失败，但不应该阻止整个流程
+        optional_servers = {"language-server", "tree_sitter"}
+        failed_servers = []
+        
+        for server_name, connection in mcp_servers.items():
+            try:
                 if server_name == "tree_sitter":
                     session = await self._session_stack.enter_async_context(
                         create_session(connection)
@@ -855,16 +860,27 @@ class MultiAgentAnalyzer:
                     server_tools = await load_mcp_tools(None, connection=connection)
 
                 self.tools.extend(server_tools)
-        except Exception as e:
-            logger.error(f"❌ MCP 工具加载失败: {e}")
-            logger.error(f"配置的 MCP 服务器: {list(mcp_servers.keys())}")
-            for server_name in mcp_servers.keys():
-                logger.error(f"  - {server_name}: {mcp_servers[server_name]}")
-            if self._session_stack is not None:
-                await self._session_stack.aclose()
-                self._session_stack = None
-                self._mcp_sessions = {}
-            raise
+                logger.info(f"✓ MCP 服务器 '{server_name}' 加载成功，提供 {len(server_tools)} 个工具")
+            except Exception as e:
+                # 判断是否为可选服务器
+                if server_name in optional_servers:
+                    logger.warning(f"⚠️  可选 MCP 服务器 '{server_name}' 加载失败，将继续使用其他工具: {e}")
+                    logger.warning(f"  配置: {connection}")
+                    failed_servers.append(server_name)
+                else:
+                    # 必需的服务器失败时，清理并抛出异常
+                    logger.error(f"❌ 必需的 MCP 服务器 '{server_name}' 加载失败: {e}")
+                    logger.error(f"配置的 MCP 服务器: {list(mcp_servers.keys())}")
+                    for srv_name in mcp_servers.keys():
+                        logger.error(f"  - {srv_name}: {mcp_servers[srv_name]}")
+                    if self._session_stack is not None:
+                        await self._session_stack.aclose()
+                        self._session_stack = None
+                        self._mcp_sessions = {}
+                    raise
+        
+        if failed_servers:
+            logger.info(f"ℹ️  跳过了 {len(failed_servers)} 个可选 MCP 服务器: {', '.join(failed_servers)}")
 
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
         # 只有当配置包含 ripgrep 时才添加 LSPFunctionLookupTool（因为该工具依赖 ripgrep）

@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 from agents.cve_analysis_agent import CVEAnalysisAgent
 from agents.unified_sink_path_agent import UnifiedSinkPathAgent
 from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from agents.path_analysis_agent import PathAnalysisAgent
 from tools.codeql_compose import CodeQLComposeTool
 
 
@@ -194,6 +195,80 @@ class SourceAnalysisStep(AnalysisStep):
             await analyzer.aclose()
 
 
+class PathAnalysisStep(AnalysisStep):
+    """Path分析步骤。"""
+
+    def __init__(self):
+        super().__init__("path_analysis", agent_name="Path Analysis Agent")
+
+    async def execute(self, context: AnalysisContext) -> Any:
+        """执行Path分析。"""
+        from config import LLMRole
+        
+        # 检查是否有 Source 分析结果
+        if not context.has_result("source_analysis"):
+            logger.warning("跳过 Path 分析：缺少 Source 分析结果")
+            return AgentResult(content="", success=False, error="Missing source analysis result")
+            
+        source_result = context.get_result("source_analysis")
+        if not source_result.success or not source_result.content:
+            logger.warning("跳过 Path 分析：Source 分析失败或结果为空")
+            return AgentResult(content="", success=False, error="Source analysis failed or empty")
+            
+        # 解析 Source 分析结果中的路径数据
+        try:
+            source_data = json.loads(source_result.content)
+            source_to_sink_paths = source_data.get("source_to_sink_paths", [])
+            
+            if not source_to_sink_paths:
+                logger.info("跳过 Path 分析：未发现 Source 到 Sink 的路径")
+                return AgentResult(
+                    content=json.dumps({"total_paths": 0, "flow_steps": []}), 
+                    success=True
+                )
+                
+            logger.info(f"准备分析 {len(source_to_sink_paths)} 条路径")
+        except json.JSONDecodeError:
+            logger.error("Source 分析结果 JSON 解析失败")
+            return AgentResult(content="", success=False, error="Invalid source analysis JSON")
+            
+        llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
+        analyzer = MultiAgentAnalyzer(llm_config)
+        
+        # 使用 path_analysis 的 MCP 配置
+        await analyzer.initialize(
+            event_callback=context.event_callback,
+            language=context.language,
+            workspace_path=str(context.case_paths.source_code),
+            agent_type=self.name
+        )
+
+        try:
+            path_agent = PathAnalysisAgent(analyzer, context.language)
+
+            print(f"=== {context.language.title()} Path Analysis ===")
+            
+            # 批量分析路径
+            analysis_result = await path_agent.identify_flow_steps(
+                source_to_sink_paths,
+                show_thinking=context.show_thinking,
+                event_callback=context.event_callback
+            )
+            
+            # 转换为 AgentResult
+            content = json.dumps(analysis_result, ensure_ascii=False, indent=2)
+            success = analysis_result.get("successful_paths", 0) > 0
+            
+            if not success and analysis_result.get("failed_paths", 0) > 0:
+                logger.warning("所有路径分析均失败")
+            elif not context.show_thinking:
+                print(f"Path analysis completed: {analysis_result.get('total_flow_steps', 0)} flow steps identified")
+                
+            return AgentResult(content=content, success=True)  # 只要完成了分析过程就算成功，即使没有找到流步骤
+        finally:
+            await analyzer.aclose()
+
+
 class CodeQLGenerationStep(AnalysisStep):
     """CodeQL查询生成步骤。"""
 
@@ -216,6 +291,16 @@ class CodeQLGenerationStep(AnalysisStep):
 
         请基于上述分析生成一个完整的CodeQL查询，用于检测相关的安全漏洞。
         """
+        
+        # 获取路径分析结果（如果存在）
+        path_analysis_results = None
+        if context.has_result("path_analysis"):
+            path_result = context.get_result("path_analysis")
+            if path_result.success and path_result.content:
+                try:
+                    path_analysis_results = json.loads(path_result.content)
+                except json.JSONDecodeError:
+                    logger.warning("Path 分析结果 JSON 解析失败")
 
         # 使用推理模型
         from config import LLMRole
@@ -243,7 +328,8 @@ class CodeQLGenerationStep(AnalysisStep):
                 show_thinking=context.show_thinking,
                 event_callback=context.event_callback,
                 agent_name=self.agent_name,
-                agent_type=self.name
+                agent_type=self.name,
+                path_analysis_results=path_analysis_results  # 传递路径分析结果
             )
             print(compose_output)
 
@@ -281,6 +367,7 @@ class AnalysisPipeline:
             CVEAnalysisStep(),
             SinkAnalysisStep(),
             SourceAnalysisStep(),
+            PathAnalysisStep(),  # 添加路径分析步骤
             CodeQLGenerationStep(),
         ]
         return cls(steps)
@@ -310,6 +397,8 @@ class AnalysisPipeline:
                     result.sink_result = step_result
                 elif step.name == "source_analysis":
                     result.source_result = step_result
+                elif step.name == "path_analysis":
+                    result.path_analysis_result = step_result
                 elif step.name == "codeql_generation":
                     result.codeql_result = step_result
 
@@ -366,6 +455,7 @@ class AnalysisPipeline:
                 result.sink_result,
                 result.source_result,
                 output_path=summary_path,
+                path_analysis_result=result.path_analysis_result,  # 传递路径分析结果
                 codeql_result=result.codeql_result,
                 codeql_execution_result=result.codeql_execution_result,
                 language=result.language,

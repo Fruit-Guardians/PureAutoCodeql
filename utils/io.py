@@ -46,6 +46,7 @@ def write_analysis_output(
     output_path: Path = Path("output.md"),
     *,
     intel_bundle: Optional["IntelBundle"] = None,
+    path_analysis_result: Optional["AgentResult"] = None,  # 新增
     codeql_result: Optional["AgentResult"] = None,
     codeql_execution_result: Optional["AgentResult"] = None,
     language: Optional[str] = None,
@@ -79,6 +80,15 @@ def write_analysis_output(
                 _format_result_content(source_result),
             ]
         )
+
+        # 添加Path Analysis结果
+        if path_analysis_result:
+            sections.extend(
+                [
+                    f"\n\n## {language_display} Path Analysis\n",
+                    _format_result_content(path_analysis_result),
+                ]
+            )
 
         # 添加CodeQL查询结果
         if codeql_result:
