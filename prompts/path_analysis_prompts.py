@@ -11,7 +11,8 @@ from typing import Dict, Any, List
 def build_path_analysis_prompt(
     language: str,
     path_data: Dict[str, Any],
-    language_patterns: Dict[str, List[str]]
+    language_patterns: Dict[str, List[str]],
+    source_root: str = ""
 ) -> str:
     """
     构建路径分析提示词。
@@ -20,6 +21,7 @@ def build_path_analysis_prompt(
         language: 目标语言 (java, python, cpp)
         path_data: 路径数据，包含 source_function, sink_function, call_chain, transformations
         language_patterns: 特定语言的流步骤检测模式
+        source_root: 源码根目录绝对路径
         
     Returns:
         str: 完整的提示词
@@ -47,9 +49,23 @@ def build_path_analysis_prompt(
     for step_type, patterns in language_patterns.items():
         patterns_str += f"\n  **{step_type}**: {', '.join(patterns)}"
     
+    # 注册项目的指令
+    register_instruction = ""
+    if source_root:
+        register_instruction = f"""
+在开始分析之前，请务必使用 `register_project_tool` 注册项目（如果尚未注册），配置如下：
+- `path`: "{source_root}" (必须使用此绝对路径)
+- `name`: "CURRENT_PROJECT"
+- `description`: "Current analysis target"
+
+后续使用 Tree-sitter 工具时，`project` 参数请务必使用 "CURRENT_PROJECT"。
+"""
+
     prompt = f"""# 路径分析任务
 
 你是一个专业的代码安全分析专家，负责分析从源点到汇点的数据流路径，识别关键的 **isAdditionalFlowStep** 点。这些流步骤点是污点数据在传播过程中的关键转换点，对于生成准确的 CodeQL 查询至关重要。
+{register_instruction}
+**重要提示：CodeQL 的 `TaintTracking` 库已经默认包含了基础的污点传播规则（如变量赋值、标准算术运算、函数参数传递）。请不要重复定义这些默认支持的步骤，否则会导致查询逻辑冗余甚至断流。**
 
 ## 目标语言
 {language.upper()}
@@ -76,37 +92,33 @@ def build_path_analysis_prompt(
 
 ## 分析要求
 
-请逐步追踪从源点到汇点的数据流路径，识别以下类型的 **isAdditionalFlowStep** 点：
+请逐步追踪从源点到汇点的数据流路径，仅识别 CodeQL 可能无法自动推导的 **非标准** 传播步骤：
 
-### 1. 赋值操作 (Assignment)
-- 变量赋值：污点数据从一个变量传递到另一个变量
-- 对象字段赋值：污点数据存储到对象字段
-- 数组/列表赋值：污点数据存储到数组或列表元素
-- 方法链：通过方法调用传递污点数据
+### 1. 复杂的数据结构操作 (Complex Data Operations)
+- 自定义的容器操作（如从自定义 List/Map 中取值）
+- 复杂的对象字段访问（如果 CodeQL 无法推导）
+- **不要** 报告简单的变量赋值或 getter/setter 调用
 
-### 2. 反序列化操作 (Deserialization)
-- 对象反序列化：将字节流转换为对象
-- JSON/XML 解析：将文本格式转换为结构化数据
-- 二进制解析：解析二进制协议或文件格式
-- 自定义反序列化：使用自定义解析逻辑
+### 2. 反序列化与解析 (Deserialization & Parsing)
+- 将字节流转换为对象的点
+- JSON/XML/Protocol Buffers 解析
+- 自定义协议解码逻辑
+- **这是一个重点关注区域**
 
-### 3. 算术运算 (Arithmetic)
-- 加法、减法、乘法、除法
-- 位运算：AND, OR, XOR, 移位
-- 可能导致溢出或下溢的运算
-- 涉及污点数据的数学计算
+### 3. 复杂的指针与内存操作 (Complex Pointer/Memory Ops) - C/C++ 特有
+- 复杂的指针算术运算（非简单的数组索引）
+- `memcpy`, `memmove` 等内存操作（如果 CodeQL 未覆盖）
+- 自定义的内存拷贝循环
 
-### 4. 偏移操作 (Offset)
-- 指针算术：指针加减操作
-- 数组索引：使用污点数据作为索引
-- 缓冲区偏移：计算缓冲区内的偏移量
-- 内存访问：基于污点数据的内存读写
+### 4. 隐式或特殊的类型转换 (Implicit/Special Type Conversion)
+- 涉及数据截断或符号扩展的转换
+- 字符串与字节数组之间的非标准转换
+- **不要** 报告标准的显式类型转换（cast）
 
-### 5. 类型转换 (Type Conversion)
-- 显式类型转换：cast 操作
-- 隐式类型转换：自动类型提升或降级
-- 包装/拆箱：基本类型与包装类型之间的转换
-- 字符串转换：数值与字符串之间的转换
+### 5. 算术运算 (Arithmetic)
+- **仅报告** 可能导致溢出/下溢并因此产生安全问题的运算
+- **不要** 报告标准的数据处理运算（如 `a + b`），CodeQL 会自动传播
+- **不要** 报告指针解引用 (`*p`) 和取地址 (`&p`) 操作，CodeQL 已内置指针分析和别名分析
 
 ## {language.upper()} 特定模式
 {patterns_str}
@@ -119,7 +131,7 @@ def build_path_analysis_prompt(
 {{
   "flow_steps": [
     {{
-      "type": "assignment|deserialization|arithmetic|offset|type_conversion",
+      "type": "custom_container|deserialization|complex_memory|special_conversion|overflow_arithmetic",
       "description": "流步骤的详细描述，包括具体的操作和上下文",
       "location": "文件路径:行号",
       "pattern": "用于 CodeQL 匹配的代码模式或表达式",
@@ -137,22 +149,20 @@ def build_path_analysis_prompt(
 
 ## 分析指南
 
-1. **逐步追踪调用链**：按照调用链顺序，分析每个函数调用中的数据流转
-2. **关注数据转换**：重点识别污点数据发生形式变化的位置
-3. **考虑语言特性**：根据目标语言的特性，识别特定的流步骤模式
+1. **默认支持原则**：假设 CodeQL 能够处理所有的标准赋值、函数调用和基本算术运算。只有当你确信 CodeQL 会丢失污点时才报告。
+2. **关注断点**：思考"污点在这里是否会因为复杂的逻辑而丢失？"。
+3. **提供准确 Pattern**：生成的 pattern 必须能够准确匹配代码中的 AST 结构，但不要过于具体以至于破坏泛化性。
 4. **评估置信度**：
-   - **high**: 明确的流步骤，有清晰的代码证据
-   - **medium**: 可能的流步骤，需要进一步验证
-   - **low**: 不确定的流步骤，可能是误报
-5. **提供足够上下文**：确保 pattern 字段包含足够的信息，以便生成 CodeQL 谓词
+   - **high**: 确信 CodeQL 无法自动传播，且必须手动定义。
+   - **medium**: 怀疑 CodeQL 可能无法传播。
+   - **low**: 不确定的流步骤，可能是误报。
 
 ## 注意事项
 
 - 只输出 JSON 格式的结果，不要包含其他解释性文字
 - 确保每个流步骤都有完整的字段信息
 - pattern 字段应该是可以直接用于 CodeQL 查询的模式
-- 如果没有识别到任何流步骤，返回空数组：`{{"flow_steps": []}}`
-- 优先识别高置信度的流步骤，避免过多的误报
+- 如果没有识别到任何**非标准**流步骤，返回空数组：`{{"flow_steps": []}}`
 
 开始分析！
 """
@@ -163,7 +173,8 @@ def build_path_analysis_prompt(
 def build_batch_path_analysis_prompt(
     language: str,
     paths: List[Dict[str, Any]],
-    language_patterns: Dict[str, List[str]]
+    language_patterns: Dict[str, List[str]],
+    source_root: str = ""
 ) -> str:
     """
     构建批量路径分析提示词（用于一次性分析多条路径）。
@@ -172,6 +183,7 @@ def build_batch_path_analysis_prompt(
         language: 目标语言
         paths: 路径数据列表
         language_patterns: 特定语言的流步骤检测模式
+        source_root: 源码根目录绝对路径
         
     Returns:
         str: 完整的提示词
@@ -194,9 +206,23 @@ def build_batch_path_analysis_prompt(
     for step_type, patterns in language_patterns.items():
         patterns_str += f"\n  **{step_type}**: {', '.join(patterns)}"
     
+    # 注册项目的指令
+    register_instruction = ""
+    if source_root:
+        register_instruction = f"""
+在开始分析之前，请务必使用 `register_project_tool` 注册项目（如果尚未注册），配置如下：
+- `path`: "{source_root}" (必须使用此绝对路径)
+- `name`: "CURRENT_PROJECT"
+- `description`: "Current analysis target"
+
+后续使用 Tree-sitter 工具时，`project` 参数请务必使用 "CURRENT_PROJECT"。
+"""
+
     prompt = f"""# 批量路径分析任务
 
 你是一个专业的代码安全分析专家，负责分析多条从源点到汇点的数据流路径，识别关键的 **isAdditionalFlowStep** 点。
+{register_instruction}
+**重要提示：CodeQL 的 `TaintTracking` 库已经默认包含了基础的污点传播规则（如变量赋值、标准算术运算、函数参数传递）。请不要重复定义这些默认支持的步骤，否则会导致查询逻辑冗余甚至断流。**
 
 ## 目标语言
 {language.upper()}
@@ -206,13 +232,32 @@ def build_batch_path_analysis_prompt(
 
 ## 分析要求
 
-对于每条路径，请识别以下类型的 **isAdditionalFlowStep** 点：
+对于每条路径，请识别以下类型的 **非标准 isAdditionalFlowStep** 点：
 
-1. **赋值操作** (assignment)
-2. **反序列化操作** (deserialization)
-3. **算术运算** (arithmetic)
-4. **偏移操作** (offset)
-5. **类型转换** (type_conversion)
+1. **复杂的数据结构操作** (custom_container)
+   - 自定义的容器操作
+   - 复杂的对象字段访问
+   
+2. **反序列化与解析** (deserialization)
+   - 字节流转对象
+   - 协议解析
+
+3. **复杂的指针与内存操作** (complex_memory) - C/C++ 特有
+   - 复杂的指针运算
+   - 自定义的内存拷贝
+
+4. **隐式或特殊的类型转换** (special_conversion)
+   - 截断、扩展等非标准转换
+
+5. **特定的算术运算** (overflow_arithmetic)
+   - 仅限于可能导致安全问题的特殊运算（如溢出）
+
+**不要** 报告以下内容：
+- 简单的赋值 (`a = b`)
+- 标准算术运算 (`a + b`)
+- 函数传参和返回
+- 显式类型转换 (`(int)a`)
+- 指针解引用 (`*p`) 和取地址 (`&p`)
 
 ## {language.upper()} 特定模式
 {patterns_str}
@@ -230,7 +275,7 @@ def build_batch_path_analysis_prompt(
       "sink_function": "汇点函数名",
       "flow_steps": [
         {{
-          "type": "assignment|deserialization|arithmetic|offset|type_conversion",
+          "type": "custom_container|deserialization|complex_memory|special_conversion|overflow_arithmetic",
           "description": "流步骤的详细描述",
           "location": "文件路径:行号",
           "pattern": "用于 CodeQL 匹配的代码模式",
@@ -251,7 +296,7 @@ def build_batch_path_analysis_prompt(
 
 - 只输出 JSON 格式的结果
 - 确保 path_index 与输入路径列表的索引对应
-- 如果某条路径没有识别到流步骤，返回空数组
+- 如果某条路径没有识别到**非标准**流步骤，返回空数组
 - 优先识别高置信度的流步骤
 
 开始分析！

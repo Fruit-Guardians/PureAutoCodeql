@@ -244,7 +244,11 @@ class PathAnalysisStep(AnalysisStep):
         )
 
         try:
-            path_agent = PathAnalysisAgent(analyzer, context.language)
+            path_agent = PathAnalysisAgent(
+                analyzer, 
+                context.language,
+                source_root=str(context.case_paths.source_code)
+            )
 
             print(f"=== {context.language.title()} Path Analysis ===")
             

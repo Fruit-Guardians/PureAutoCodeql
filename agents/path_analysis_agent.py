@@ -22,16 +22,18 @@ logger = logging.getLogger(__name__)
 class PathAnalysisAgent:
     """路径分析代理，用于分析源点到汇点的路径并识别 isAdditionalFlowStep 点。"""
 
-    def __init__(self, analyzer: "MultiAgentAnalyzer", language: str = "java"):
+    def __init__(self, analyzer: "MultiAgentAnalyzer", language: str = "java", source_root: str = ""):
         """
         初始化路径分析代理。
         
         Args:
             analyzer: MultiAgentAnalyzer 实例
             language: 目标语言 (java, python, cpp)
+            source_root: 源码根目录绝对路径
         """
         self.analyzer = analyzer
         self.language = language
+        self.source_root = source_root
         self.flow_step_types = [
             "assignment",
             "deserialization",
@@ -207,6 +209,21 @@ class PathAnalysisAgent:
             _agent_name = agent_name or "Path Analysis Agent"
             _agent_type = agent_type or "path_analysis"
             
+            # 检查语言是否支持
+            if self.language.lower() != "java":
+                logger.info(f"当前语言 {self.language} 不支持路径分析，跳过")
+                from dataclasses import dataclass
+                @dataclass
+                class AgentResult:
+                    content: str
+                    success: bool
+                    error: str = None
+                
+                return AgentResult(
+                    content=json.dumps({"flow_steps": []}),
+                    success=True
+                )
+            
             # 推送 AGENT_START 事件
             if event_callback:
                 from datetime import datetime
@@ -253,7 +270,8 @@ class PathAnalysisAgent:
             prompt = build_path_analysis_prompt(
                 language=self.language,
                 path_data=path_data,
-                language_patterns=language_patterns
+                language_patterns=language_patterns,
+                source_root=self.source_root
             )
             
             # 运行分析
