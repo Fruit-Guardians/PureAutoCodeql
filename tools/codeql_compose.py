@@ -56,6 +56,12 @@ class CodeQLComposeInput(BaseModel):
             "CodeQL 查询需求的自然语言描述，例如：'查找所有用户输入源'。"
         )
     )
+    enable_breakpoint_recovery: bool = Field(
+        default=False,
+        description=(
+            "是否在查询结果为空时启用断流点检测与恢复功能。默认关闭。"
+        )
+    )
 
 
 class CodeQLComposeTool(BaseTool):
@@ -72,6 +78,7 @@ class CodeQLComposeTool(BaseTool):
     default_database_path: str = ""
     default_max_rounds: int = 10
     enable_error_tidy: bool = False
+    enable_breakpoint_recovery: bool = False
 
     def __init__(
         self,
@@ -80,6 +87,7 @@ class CodeQLComposeTool(BaseTool):
         language: str = "java",
         max_rounds: int = 5,
         enable_error_tidy: bool = False,
+        enable_breakpoint_recovery: bool = False,
         *,
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
@@ -94,6 +102,7 @@ class CodeQLComposeTool(BaseTool):
         self.default_language = language
         self.default_max_rounds = max_rounds
         self.enable_error_tidy = enable_error_tidy
+        self.enable_breakpoint_recovery = enable_breakpoint_recovery
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
@@ -512,6 +521,7 @@ class CodeQLComposeTool(BaseTool):
     async def _arun(
         self,
         requirement: str,
+        enable_breakpoint_recovery: bool = False,
         exec_mode: str = "analyze",
         show_thinking: bool = False,
         event_callback = None,
@@ -721,9 +731,12 @@ class CodeQLComposeTool(BaseTool):
                     paths_count = count_dataflow_paths(sarif_path, json_path)
 
                     #断流点查找（支持Java/Python/C++）
-                    if is_result_empty and target_language in ["java", "python", "cpp"]:
-                        print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，进行断流点查找，正在执行断流查找codeql语句")
-                        from .extract_ql import extract_ql_predicate, Get_Breakpoint
+                    # 仅在启用参数为True时执行
+                    should_recover_breakpoint = enable_breakpoint_recovery or self.enable_breakpoint_recovery
+                    
+                    if should_recover_breakpoint and is_result_empty and target_language in ["java", "python", "cpp"]:
+                        print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，且已开启断流点恢复，进行断流点查找...")
+                        from .extract_ql import extract_ql_predicate, Get_Breakpoint, extract_predicate_body_and_params
                         
                         # 初始化断流点添加计数器
                         breakpoint_add_count = 0
@@ -736,7 +749,7 @@ class CodeQLComposeTool(BaseTool):
                             
                             #组装断流点查询语句
                             ql_predicates = extract_ql_predicate(current_ql)
-                            breakpoint_current_ql = Get_Breakpoint(ql_predicates)
+                            breakpoint_current_ql = Get_Breakpoint(ql_predicates, language=target_language)
                             print("断流点查询语句为: "+breakpoint_current_ql)
 
                             #执行断流点查询
@@ -804,11 +817,45 @@ class CodeQLComposeTool(BaseTool):
                                     
                                     # 提取生成的isAdditionalFlowStep条件
                                     import re
-                                    flowstep_pattern = r"```ql\s*\n(?:predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{)?(.*?)(?:\}\s*)?```"
-                                    flowstep_match = re.search(flowstep_pattern, flowstep_result.content, re.DOTALL)
+                                    new_flowstep_condition = None
                                     
-                                    if flowstep_match:
-                                        new_flowstep_condition = flowstep_match.group(1).strip()
+                                    # 1. 尝试从响应中提取代码块
+                                    generated_code = self._extract_codeql_from_response(flowstep_result.content)
+                                    if not generated_code:
+                                        generated_code = flowstep_result.content
+                                        
+                                    # 2. 尝试解析完整的谓词定义
+                                    step_body, step_params = extract_predicate_body_and_params(generated_code, "isAdditionalFlowStep")
+                                    
+                                    if step_body:
+                                        # 成功解析完整谓词，规范化参数
+                                        if len(step_params) >= 2:
+                                            p1 = step_params[0]
+                                            p2 = step_params[1]
+                                            if p1 != "src":
+                                                step_body = re.sub(r'\b' + re.escape(p1) + r'\b', 'src', step_body)
+                                            if p2 != "dst":
+                                                step_body = re.sub(r'\b' + re.escape(p2) + r'\b', 'dst', step_body)
+                                        new_flowstep_condition = step_body
+                                    else:
+                                        # 3. 无法解析完整谓词，尝试作为纯条件体处理
+                                        # 简单的启发式参数替换 (node1 -> src, node2 -> dst)
+                                        condition = generated_code.strip()
+                                        
+                                        # 如果包含 predicate 定义头但解析失败（可能是格式问题），尝试去除头尾
+                                        clean_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{(.*)\}"
+                                        clean_match = re.search(clean_pattern, condition, re.DOTALL)
+                                        if clean_match:
+                                            condition = clean_match.group(1).strip()
+                                        
+                                        if "node1" in condition and "src" not in condition:
+                                             condition = re.sub(r'\bnode1\b', 'src', condition)
+                                        if "node2" in condition and "dst" not in condition:
+                                             condition = re.sub(r'\bnode2\b', 'dst', condition)
+                                             
+                                        new_flowstep_condition = condition
+                                    
+                                    if new_flowstep_condition:
                                         print(f"🔧 [CodeQLComposeTool] 提取的条件: {new_flowstep_condition}")
                                         
                                         # 更新当前查询的isAdditionalFlowStep条件
