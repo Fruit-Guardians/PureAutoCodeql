@@ -422,7 +422,19 @@ class CodeQLComposeTool(BaseTool):
                 return base_content + "".join(extra_content)
 
             if target in {"c", "cpp"} and c_path.exists():
-                return c_path.read_text(encoding="utf-8")
+                # C/CPP 特殊处理：拼接主模板 + 模式库 + 案例库
+                base_content = c_path.read_text(encoding="utf-8")
+                
+                patterns_path = prompts_dir / "c_patterns.md"
+                cases_path = prompts_dir / "c_cases.md"
+                
+                extra_content = []
+                if patterns_path.exists():
+                    extra_content.append("\n\n" + patterns_path.read_text(encoding="utf-8"))
+                if cases_path.exists():
+                    extra_content.append("\n\n" + cases_path.read_text(encoding="utf-8"))
+                
+                return base_content + "".join(extra_content)
             return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
         except Exception:
             try:
