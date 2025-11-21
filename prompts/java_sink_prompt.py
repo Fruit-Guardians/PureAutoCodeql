@@ -37,6 +37,8 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
             - 漏洞危害是"读取任意文件"或"访问受限目录"，而不是写入
         * **Sink定位:** diff文件中**添加路径验证**的位置就是Sink点
 - **sink点定义原则（重要）**：
+  - **需要精确的找到真正进行了危险操作的调用点，而不是将这个危险操作封装的函数作为Sink点,比如myexec(xx)下调用了Runtime.exec(xx)，你的sink点就不应该是myexec(xx)而是Runtime.exec(xx)**
+  - **Sink点必须是某个函数的调用处，而非某个函数的声明处**
   - **必须优先定义Sink点分析报告中的sink点**
   - **对于Java反射命令执行**：
     - 首先定义报告中标识的具体函数（使用方法名、文件名等组合条件精确定位）
@@ -165,6 +167,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 * **文件路径**: `[定位到的具体文件路径]`
 * **类名**: `[包含Sink点的类名]`
 * **方法名**: `[包含Sink点的方法名]`
+* **真正进行危险操作的函数名**: `[例如：Runtime.exec(), ProcessBuilder.start(), FileOutputStream.write()等]`
 * **行号**: `[Sink点关键代码的行号 (例如：.write() 或 .copy() 调用的行号)]`
 
 #### 2. Sink代码片段
