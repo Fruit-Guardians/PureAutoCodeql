@@ -327,8 +327,33 @@ def build_source_analysis_with_sink_prompt(
 - `source_to_sink_paths` 专门用于后续的路径分析，不影响现有的源点选择逻辑"""
         path_analysis_rules_2 = "- **路径数据必须包含完整的函数调用链、所有赋值操作和关键转换点**"
         empty_result_instruction = '- 若没有发现候选函数，请输出：{"candidates": [], "source_to_sink_paths": []}'
+    elif language.lower() in ["c", "cpp", "python"]:
+        path_analysis_goal = "2. 识别可能需要 CodeQL 生成 isAdditionalFlowStep 的关键步骤（如溢出、偏移、类型转换等）"
+        path_analysis_action = """3. **识别 Additional Flow Steps**：
+   - 在查找 Source 点的过程中，顺便识别需要 ql 生成 isAdditionalFlowStep 的步骤
+   - 关注以下操作：
+     * 加减法乘法运算导致的溢出
+     * 指针/数组偏移操作
+     * 复杂的类型转换
+     * 其他导致数据流中断或变形的操作
+   - 给出对应的 isAdditionalFlowStep 点描述和 CodeQL 规则建议"""
+        path_analysis_json_desc = "- JSON 结构包含两个独立部分：`candidates`（源点候选项）和 `is_additional_flow_steps`（额外流步骤）"
+        candidates_end = ","
+        path_analysis_json_structure = """
+  "is_additional_flow_steps": [
+    {{
+      "type": "传播类型",
+      "description": "传播描述（例如：加减法运算导致的溢出）",
+      "example": "示例代码片段",
+      "codeql_rule": "对应的CodeQL规则"
+    }}
+  ]"""
+        path_analysis_rules_1 = """- **`candidates` 和 `is_additional_flow_steps` 是两个独立的数据结构**
+- `is_additional_flow_steps` 用于辅助 CodeQL 建模，记录数据流中的特殊转换点"""
+        path_analysis_rules_2 = "- **确保 is_additional_flow_steps 中的 example 包含相关代码片段**"
+        empty_result_instruction = '- 若没有发现候选函数，请输出：{"candidates": [], "is_additional_flow_steps": []}'
     else:
-        # 非 Java 语言，candidates 列表结束后没有逗号
+        # 其他语言，candidates 列表结束后没有逗号
         candidates_end = ""
         empty_result_instruction = '- 若没有发现候选函数，请输出：{"candidates": []}'
 
