@@ -9,6 +9,14 @@ from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+try:
+    import tomli as tomllib  # Python < 3.11
+except ImportError:
+    try:
+        import tomllib  # Python >= 3.11
+    except ImportError:
+        import tomli as tomllib  # fallback
+
 
 class APIConfig(BaseSettings):
     """API服务器配置"""
@@ -67,8 +75,42 @@ class APIConfig(BaseSettings):
         case_sensitive = False
 
 
+def _load_keys_toml_settings() -> dict:
+    """从 keys.toml 加载 [settings] 配置"""
+    keys_toml_path = Path(__file__).parent.parent / "config" / "keys.toml"
+    
+    if not keys_toml_path.exists():
+        return {}
+    
+    try:
+        with open(keys_toml_path, 'rb') as f:
+            data = tomllib.load(f)
+            return data.get('settings', {})
+    except Exception:
+        return {}
+
+
+def _create_config() -> APIConfig:
+    """创建配置实例，优先从 keys.toml 读取"""
+    # 1. 从 keys.toml 读取 settings
+    toml_settings = _load_keys_toml_settings()
+    
+    # 2. 构建配置字典（keys.toml 优先，环境变量次之）
+    config_dict = {}
+    
+    # Docker 构建配置
+    if 'use_docker_for_cpp' in toml_settings:
+        config_dict['use_docker_for_cpp'] = toml_settings['use_docker_for_cpp']
+    
+    if 'docker_builder_image' in toml_settings:
+        config_dict['docker_builder_image'] = toml_settings['docker_builder_image']
+    
+    # 3. 创建配置实例（Pydantic 会自动处理环境变量覆盖）
+    return APIConfig(**config_dict)
+
+
 # 全局配置实例
-config = APIConfig()
+config = _create_config()
 
 
 def get_config() -> APIConfig:

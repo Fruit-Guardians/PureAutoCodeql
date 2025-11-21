@@ -1,62 +1,114 @@
 import re
 
+def extract_predicate_with_name(code: str, name: str) -> str:
+    """提取指定名称的谓词体"""
+    pattern = r"predicate\s+" + name + r"\s*\([^)]*\)\s*\{"
+    match = re.search(pattern, code)
+    if not match:
+        return ""
+    
+    start = match.end()
+    count = 1
+    i = start
+    while i < len(code) and count > 0:
+        if code[i] == '{':
+            count += 1
+        elif code[i] == '}':
+            count -= 1
+        i += 1
+    
+    if count == 0:
+        return code[start:i-1].strip()
+    return ""
+
 def extract_ql_predicate(code: str) -> dict:
-    """从CodeQL代码中提取指定的谓词定义。"""
-    sink_pattern = r"(?s)predicate\s+isSink\s*\([^)]*\)\s*\{(.*?)\}"
-    source_pattern = r"(?s)predicate\s+isSource\s*\([^)]*\)\s*\{(.*?)\}"
-    isadd_flow_step_pattern = r"(?s)predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{(.*?)\}"
-
-    sink_result = re.search(sink_pattern, code)
-    source_result = re.search(source_pattern, code)
-    isadd_flow_step_result = re.search(isadd_flow_step_pattern, code)
-
+    """从CodeQL代码中提取关键谓词"""
     res = {}
-    if sink_result:
-        # 使用更精确的正则表达式，只替换作为独立变量使用的sink
-        sink_body = sink_result.group(1)
-        # 匹配以下模式并替换：
-        # 1. sink.asExpr()
-        # 2. sink.asParameter()
-        # 3. sink.asVariable()
-        # 4. sink.asExpr() = ...
-        # 5. ... = sink.asExpr()
-        # 6. sink instanceof ...
-        # 7. 其他独立的sink变量使用
-        sink_body = re.sub(r'\bsink\b(?=\s*\.|\s*=|\s+instanceof|\s*\))', 'this', sink_body)
-        res["isSink"] = sink_body
-    if source_result:
-        # 使用更精确的正则表达式，只替换作为独立变量使用的source和src
-        source_body = source_result.group(1)
-        # 替换source变量
-        source_body = re.sub(r'\bsource\b(?=\s*\.|\s*=|\s+instanceof|\s*\))', 'this', source_body)
-        # 替换src变量
-        source_body = re.sub(r'\bsrc\b(?=\s*\.|\s*=|\s+instanceof|\s*\))', 'this', source_body)
+    
+    # 提取isSource
+    source_body = extract_predicate_with_name(code, "isSource")
+    if source_body:
+        # 替换参数名，统一使用this
+        # 通常参数名为 source 或 src
+        source_body = re.sub(r'\bsource\b', 'this', source_body)
+        source_body = re.sub(r'\bsrc\b', 'this', source_body)
         res["isSource"] = source_body
-    if isadd_flow_step_result:
-        res["isAdditionalFlowStep"] = isadd_flow_step_result.group(1)
+        
+    # 提取isSink
+    sink_body = extract_predicate_with_name(code, "isSink")
+    if sink_body:
+        # 替换参数名，统一使用this
+        # 通常参数名为 sink
+        sink_body = re.sub(r'\bsink\b', 'this', sink_body)
+        res["isSink"] = sink_body
+        
+    # 提取isAdditionalFlowStep
+    step_body = extract_predicate_with_name(code, "isAdditionalFlowStep")
+    if step_body:
+        res["isAdditionalFlowStep"] = step_body
+    else:
+        res["isAdditionalFlowStep"] = "none()"
+
 
     return res
 
-def Get_Breakpoint(predicate: dict) -> str:
+def Get_Breakpoint(predicate: dict, language: str = "java") -> str:
     """组装断点查询语句"""
-    template = '''import java
+    lang = language.lower()
+    
+    if lang == "python":
+        imports = """import python
+import semmle.python.dataflow.new.DataFlow
+import semmle.python.dataflow.new.TaintTracking
+import semmle.python.dataflow.new.RemoteFlowSources
+"""
+    elif lang == "cpp":
+        imports = """import cpp
+import semmle.code.cpp.dataflow.DataFlow
+import semmle.code.cpp.dataflow.TaintTracking
+"""
+    elif lang == "go":
+        imports = """import go
+import semmle.go.dataflow.DataFlow
+import semmle.go.dataflow.TaintTracking
+"""
+    elif lang == "javascript" or lang == "js" or lang == "typescript" or lang == "ts":
+        imports = """import javascript
+import semmle.javascript.dataflow.DataFlow
+import semmle.javascript.dataflow.TaintTracking
+"""
+    elif lang == "csharp" or lang == "cs":
+        imports = """import csharp
+import semmle.code.csharp.dataflow.DataFlow
+import semmle.code.csharp.dataflow.TaintTracking
+"""
+    elif lang == "ruby" or lang == "rb":
+        imports = """import ruby
+import codeql.ruby.DataFlow
+import codeql.ruby.TaintTracking
+"""
+    else: # java or default
+        imports = """import java
 import semmle.code.java.dataflow.DataFlow
 import semmle.code.java.dataflow.TaintTracking
+"""
+
+    template = imports + """
 
 /** ====== 与原查询相同的 Source/Sink 定义 ====== */
 class FixedSourceNode extends DataFlow::Node {
-  FixedSourceNode() {'''+predicate["isSource"]+'''}
+  FixedSourceNode() {"""+predicate["isSource"]+"""}
 }
 
 class FixedSinkNode extends DataFlow::Node {
-  FixedSinkNode() {'''+predicate["isSink"]+'''}
+  FixedSinkNode() {"""+predicate["isSink"]+"""}
 }
 
 /** 前向：fixed source -> ANY（如需补边在这里加） */
 module ForwardCfg implements DataFlow::ConfigSig {
   predicate isSource(DataFlow::Node src) { src instanceof FixedSourceNode }
   predicate isSink(DataFlow::Node sink)  { any() }
-  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) { '''+predicate["isAdditionalFlowStep"]+''' }
+  predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) { """+predicate["isAdditionalFlowStep"]+""" }
 }
 module F = TaintTracking::Global<ForwardCfg>;
 
@@ -98,5 +150,5 @@ predicate isLastCut(DataFlow::Node n) {
 from DataFlow::Node n
 where isLastCut(n)
 select n.getLocation(), "最后节点（路径在此处中断）"
-'''
+"""
     return template

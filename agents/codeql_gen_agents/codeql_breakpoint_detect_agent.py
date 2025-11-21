@@ -24,18 +24,39 @@ class CodeQLBreakpointAgent:
         self.analyzer = analyzer
         self.source_root = source_root
         self.project_name = project_name
-        # 使用断点分析提示词
-        self.analysis_prompt_file = (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_analysis.md"
-        )
-        # 使用断点流步骤提示词
-        self.flowstep_prompt_file = (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_flowstep.md"
-        )
+        self.prompts_dir = Path(__file__).resolve().parent.parent.parent / "prompts"
+        
+        # 默认使用通用提示词
+        self.analysis_prompt_file = self.prompts_dir / "codeql_breakpoint_analysis.md"
+        self.flowstep_prompt_file = self.prompts_dir / "codeql_breakpoint_flowstep.md"
+        
         # 保留原始提示词作为备用
-        self.prompt_file = prompt_file or (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_breakpoint_detect.md"
-        )
+        self.prompt_file = prompt_file or (self.prompts_dir / "codeql_breakpoint_detect.md")
+
+    def _get_prompt_file(self, base_name: str, language: str = "java") -> Path:
+        """
+        根据语言获取对应的提示词文件。
+        例如：codeql_breakpoint_analysis.md -> codeql_breakpoint_analysis_python.md
+        如果特定语言的文件不存在，则回退到通用文件。
+        """
+        lang = (language or "java").lower()
+        
+        # 处理别名
+        if lang in ["py"]: lang = "python"
+        if lang in ["js"]: lang = "javascript"
+        if lang in ["ts"]: lang = "typescript"
+        
+        # 尝试查找特定语言的提示词文件
+        # 格式：base_name_language.md (例如 codeql_breakpoint_analysis_python.md)
+        file_stem = Path(base_name).stem
+        lang_specific_name = f"{file_stem}_{lang}.md"
+        lang_specific_path = self.prompts_dir / lang_specific_name
+        
+        if lang_specific_path.exists():
+            return lang_specific_path
+            
+        # 如果不存在，尝试查找旧的通用文件
+        return self.prompts_dir / base_name
 
     def _load_prompt(self, prompt_file: Optional[Path] = None) -> str:
         """从markdown文件加载提示词模板内容。"""
@@ -200,7 +221,10 @@ class CodeQLBreakpointAgent:
         else:
             source_dir_info = "projects/xxx/source_code (请根据实际情况替换xxx为项目名称)"
         
-        template = self._load_prompt(self.analysis_prompt_file)
+        # 动态选择语言特定的提示词文件
+        prompt_file = self._get_prompt_file("codeql_breakpoint_analysis.md", language)
+        template = self._load_prompt(prompt_file)
+        
         values = {
             "CODEQL_RESULTS": codeql_results or "",
             "SOURCE_NODES": json.dumps(source_nodes, indent=2) if source_nodes else "[]",
@@ -221,7 +245,10 @@ class CodeQLBreakpointAgent:
             breakpoint_analysis: 断流点分析结果（JSON格式）
             language: 目标编程语言
         """
-        template = self._load_prompt(self.flowstep_prompt_file)
+        # 动态选择语言特定的提示词文件
+        prompt_file = self._get_prompt_file("codeql_breakpoint_flowstep.md", language)
+        template = self._load_prompt(prompt_file)
+        
         values = {
             "BREAKPOINT_ANALYSIS": breakpoint_analysis or "",
             "LANGUAGE": language or "java",
