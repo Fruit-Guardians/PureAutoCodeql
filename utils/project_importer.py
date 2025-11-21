@@ -159,7 +159,11 @@ def import_project(
                 source_root = source_code_dir
                 if detected_language == "python":
                     source_root = _resolve_python_source_root(source_code_dir)
-                if detected_language == "cpp":
+                elif detected_language == "java":
+                    # Java 不需要构建计划，使用 --build-mode=none
+                    logger.info("Java项目检测到，将使用 --build-mode=none 创建数据库")
+                    source_root = _resolve_java_source_root(source_code_dir)
+                elif detected_language == "cpp":
                     resolved_build = _resolve_cpp_build_plan(
                         target_dir=target_dir,
                         source_dir=target_dir / "source_code",
@@ -301,6 +305,42 @@ def _resolve_python_source_root(source_code_dir: Path) -> Path:
 
     if current != source_code_dir:
         logger.info("CodeQL Python 源码根目录调整为: %s", current)
+    return current
+
+
+def _resolve_java_source_root(source_code_dir: Path) -> Path:
+    """
+    解析Java项目的源码根目录。
+    如果只有单一子目录且没有.java文件，则深入到该子目录。
+    """
+    current = source_code_dir
+    while True:
+        entries = [child for child in current.iterdir()]
+        # 检查是否有直接的.java文件
+        direct_java = any(child.is_file() and child.suffix.lower() == ".java" for child in entries)
+        if direct_java:
+            break
+
+        dir_entries = [child for child in entries if child.is_dir()]
+        file_entries = [child for child in entries if child.is_file()]
+
+        # 过滤可忽略的文件
+        non_ignorable_files = [
+            child
+            for child in file_entries
+            if child.suffix.lower() not in IGNORABLE_TOP_LEVEL_SUFFIXES
+            and child.name.lower() not in IGNORABLE_TOP_LEVEL_FILES
+        ]
+
+        # 如果只有一个子目录且没有其他重要文件，则继续深入
+        if len(dir_entries) != 1 or non_ignorable_files:
+            break
+
+        logger.info("Java项目仅包含单一子目录，继续深入: %s", dir_entries[0].name)
+        current = dir_entries[0]
+
+    if current != source_code_dir:
+        logger.info("CodeQL Java 源码根目录调整为: %s", current)
     return current
 
 
@@ -458,7 +498,13 @@ def _create_codeql_database(
             cmd.extend(["--command", build_plan.command])
             if build_plan.working_dir:
                 cmd.extend(["--working-dir", str(build_plan.working_dir)])
+    elif language == "java":
+        # Java 不需要编译追踪，使用 --build-mode=none
+        logger.info("Java项目使用 --build-mode=none (无需编译)")
+        cmd.extend(["--source-root", str(source_root)])
+        cmd.append("--build-mode=none")
     else:
+        # Python 等其他语言
         cmd.extend(["--source-root", str(source_root)])
 
     log_path = db_path.parent / "codeql.log"
@@ -521,25 +567,51 @@ def _resolve_cpp_build_plan(
 
 
 def _run_process(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path]) -> None:
+    """运行进程并实时输出到控制台和日志文件"""
     display = " ".join(cmd)
     logger.info("Running command: %s (cwd=%s)", display, cwd or os.getcwd())
-    result = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    
+    # 打开日志文件
+    log_file_handle = None
     if log_path:
-        with open(log_path, "a", encoding="utf-8") as log_file:
-            log_file.write(f"$ {display}\n")
-            if result.stdout:
-                log_file.write(result.stdout + "\n")
-            if result.stderr:
-                log_file.write(result.stderr + "\n")
-    if result.returncode != 0:
-        stderr = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"Command failed ({display}): {stderr}")
+        log_file_handle = open(log_path, "a", encoding="utf-8")
+        log_file_handle.write(f"$ {display}\n")
+        log_file_handle.flush()
+    
+    try:
+        # 使用 Popen 实时输出
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # 合并 stderr 到 stdout
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,  # 行缓冲
+        )
+        
+        # 实时读取并输出
+        if process.stdout:
+            for line in process.stdout:
+                # 打印到控制台
+                print(line, end="", flush=True)
+                # 写入日志文件
+                if log_file_handle:
+                    log_file_handle.write(line)
+                    log_file_handle.flush()
+        
+        # 等待进程完成
+        return_code = process.wait()
+        
+        if return_code != 0:
+            error_msg = f"Command failed with exit code {return_code}: {display}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+            
+    finally:
+        if log_file_handle:
+            log_file_handle.close()
 
 
 def _run_docker_build(

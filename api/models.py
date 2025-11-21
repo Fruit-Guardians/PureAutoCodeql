@@ -55,11 +55,11 @@ class ProjectImportRequest(BaseModel):
     source_path: str = Field(..., description="待导入目录的绝对路径")
     case_id: Optional[str] = Field(None, description="覆盖默认的CVE ID")
     overwrite: bool = Field(False, description="若项目已存在是否覆盖")
-    language: Optional[str] = Field(None, description="指定CodeQL数据库语言（可选）")
+    language: Optional[str] = Field(None, description="指定CodeQL数据库语言：python/java/cpp（默认自动检测）")
     skip_codeql: bool = Field(False, description="是否跳过CodeQL数据库创建")
-    build_command: Optional[str] = Field(None, description="C/C++ 构建命令，等价于 codeql --command")
-    build_script: Optional[str] = Field(None, description="构建脚本相对路径或绝对路径")
-    build_workdir: Optional[str] = Field(None, description="执行构建命令的工作目录")
+    build_command: Optional[str] = Field(None, description="C/C++ 构建命令（Java/Python项目不需要），等价于 codeql --command")
+    build_script: Optional[str] = Field(None, description="C/C++ 构建脚本路径（Java/Python项目不需要）")
+    build_workdir: Optional[str] = Field(None, description="C/C++ 构建命令的工作目录（Java/Python项目不需要）")
 
 
 class ProjectImportResponse(BaseModel):

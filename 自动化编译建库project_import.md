@@ -2,6 +2,25 @@
 
 本文档介绍如何把外部的 CVE 目录自动整理到 `projects/` 中，并在需要时创建 CodeQL 数据库。当前支持 **REST API** 与 **命令行 CLI** 两种入口。
 
+### 🚀 快速开始（推荐）
+
+**Java 和 Python 项目最简单使用方式**：
+
+```bash
+# Java 项目 - 一条命令完成导入、建库、分析！
+python Analyze.py --case "C:\Targets\java\CVE-2023-51444"
+
+# Python 项目 - 同样简单
+python Analyze.py --case "C:\Targets\python\CVE-2022-26129"
+```
+
+✨ **无需额外参数！** 系统会自动：
+- 📦 导入项目到 `projects/`
+- 🏗️ 创建 CodeQL 数据库（Java 使用 `--build-mode=none`）
+- 🚀 启动 AI 漏洞分析
+
+💡 **C/C++ 项目**：如果没有标准构建文件（CMake/Makefile），需要先用 `--import-project` 指定构建命令。
+
 ---
 
 ### 1. 目录准备要求
@@ -28,7 +47,20 @@ CVE-YYYY-XXXXX/
 
 接口：`POST /api/projects/import`
 
-示例请求体：
+#### 示例 1：Java 项目导入（最简单）
+
+```json
+{
+  "source_path": "C:\\Users\\bxx\\Desktop\\qwb_targets1\\targets\\java\\CVE-2023-51444",
+  "case_id": "CVE-2023-51444",
+  "overwrite": true,
+  "language": "java",
+  "skip_codeql": false
+}
+```
+
+#### 示例 2：C/C++ 项目导入（需要构建命令）
+
 ```json
 {
   "source_path": "C:\\Users\\bxx\\Desktop\\qwb_targets1\\targets\\cpp\\CVE-2025-50000",
@@ -45,11 +77,12 @@ CVE-YYYY-XXXXX/
 - `source_path` **(必填)**：外部目录的绝对路径
 - `case_id`：手动指定项目 ID；不填则根据目录名或 `CVE-*.json` 自动推断
 - `overwrite`：目标目录已存在时是否覆盖
-- `language`：强制指定 CodeQL 语言（默认自动检测，仅 Python/Java/CPP）
+- `language`：强制指定 CodeQL 语言（默认自动检测，支持 `python`/`java`/`cpp`）
 - `skip_codeql`：设为 `true` 时跳过 `codeql database create`
-- `build_command`：**C/C++ 必填**（除非命中自动策略），等价于 `codeql database create --command`
-- `build_script`：构建脚本路径（相对于导入后项目根或绝对路径）
-- `build_workdir`：执行构建命令的工作目录，默认为项目根
+- `build_command`：**仅 C/C++ 需要**（除非命中自动策略），等价于 `codeql database create --command`
+  - **Java 和 Python 项目会忽略此参数**
+- `build_script`：构建脚本路径（仅 C/C++ 使用，相对于导入后项目根或绝对路径）
+- `build_workdir`：执行构建命令的工作目录（仅 C/C++ 使用，默认为项目根）
 
 响应中会返回：
 - `case_id` / `target_path` / `language`
@@ -61,7 +94,17 @@ CVE-YYYY-XXXXX/
 
 ### 3. 通过 CLI (`Analyze.py`)
 
-命令示例（Windows）：
+#### Java 项目命令示例（Windows）：
+
+```powershell
+python Analyze.py --import-project "C:\Users\bxx\Desktop\qwb_targets1\targets\java\CVE-2023-51444" `
+    --import-case-id CVE-2023-51444 `
+    --import-overwrite `
+    --import-language java
+```
+
+#### C/C++ 项目命令示例（Windows）：
+
 ```powershell
 python Analyze.py --import-project "C:\Users\bxx\Desktop\qwb_targets1\targets\cpp\CVE-2025-50000" `
     --import-case-id CVE-2025-50000 `
@@ -85,19 +128,59 @@ python Analyze.py --import-project "C:\Users\bxx\Desktop\qwb_targets1\targets\cp
 
 ---
 
-### 3.1 直接在主流程中输入目录
+### 3.1 直接在主流程中输入目录（推荐方式）
 
-现在可以直接将外部目录的绝对路径传给 `--case` 参数，主流程会先自动导入再启动分析：
+**最简单的使用方式**：直接将外部目录的绝对路径传给 `--case` 参数，系统会自动导入、建库并启动分析：
+
+#### Java 项目示例（最简单）：
 
 ```powershell
-python Analyze.py --case "C:\Targets\CVE-2025-54381"
+# 一条命令完成：导入 -> 建库 -> 分析
+python Analyze.py --case "C:\Targets\java\CVE-2023-51444"
 ```
 
-该模式会默认覆盖同名项目、自动创建 CodeQL 数据库，并在完成后继续执行全量分析。
+**执行流程**：
+1. 🔍 检测到外部目录（包含路径分隔符）
+2. 📦 自动导入到 `projects/CVE-2023-51444/`
+3. 🏗️ 使用 `--build-mode=none` 创建Java数据库（无需编译）
+4. 🚀 启动完整的AI漏洞分析流程
+
+#### C/C++ 项目示例：
+
+```powershell
+python Analyze.py --case "C:\Targets\cpp\CVE-2025-50000"
+```
+
+⚠️ **注意**：C/C++ 项目如果没有 `CMakeLists.txt` 或 `Makefile`，建库可能会失败。建议先用 `--import-project` 手动指定构建命令。
+
+#### Python 项目示例：
+
+```powershell
+python Analyze.py --case "C:\Targets\python\CVE-2025-54381"
+```
+
+**特点**：
+- ✅ 该模式会默认覆盖同名项目
+- ✅ 自动创建 CodeQL 数据库
+- ✅ 建库完成后立即执行全量分析
+- ✅ **Java 和 Python 无需任何额外参数，一条命令搞定！**
 
 ---
 
-### 4. C/C++ 自动建库说明
+### 4. 语言特定的自动建库说明
+
+#### 4.1 Java 自动建库
+
+- Java 项目**不需要编译追踪**，自动使用 `--build-mode=none`
+- 无需提供构建命令（`build_command`、`build_script` 参数会被忽略）
+- 自动检测并深入单一子目录（如解压后的发行版目录）
+- 建库命令示例：
+  ```bash
+  codeql database create db/java --language=java --source-root=source_code --build-mode=none
+  ```
+- CodeQL 输出：`projects/<CVE>/db/codeql.log`
+
+#### 4.2 C/C++ 自动建库
 
 - **优先级**：`build_command` > `build_script` > 自动检测
 - **自动检测**：
@@ -106,6 +189,12 @@ python Analyze.py --case "C:\Targets\CVE-2025-54381"
 - 构建日志：`projects/<CVE>/db/build.log`
 - CodeQL 输出：`projects/<CVE>/db/codeql.log`
 - 如自动检测失败，请显式提供 `--import-build-command` 或 `--import-build-script`
+
+#### 4.3 Python 自动建库
+
+- Python 项目**不需要编译**，直接分析源代码
+- 自动检测并深入单一子目录
+- 无需提供构建命令
 
 ---
 
@@ -133,10 +222,11 @@ projects/
 | --- | --- |
 | `source_code` 不存在 | 确保外部目录已解压出 `source_code/`；暂不支持从根目录推断 |
 | CodeQL CLI 未安装 | 使用 `--import-skip-codeql` 或在 API 请求中设 `skip_codeql=true` |
+| Java 项目建库失败 | 检查 `db/codeql.log`，确认是否有 `.java` 文件；Java 使用 `--build-mode=none`，无需编译 |
 | 未提供 C/C++ 构建命令 | 追加 `build_command` 或 `build_script`；若使用 CMake/Make，请确保相应文件存在 |
 | 构建失败 | 查看 `db/build.log` 与 `db/codeql.log`，修复依赖后重试导入或仅重建数据库 |
 | 目录已存在但不想覆盖 | 不要加 `--import-overwrite` / `overwrite: true`，系统会报错提醒 |
-| 语言检测错误 | 手动通过 `language`/`--import-language` 指定 |
+| 语言检测错误 | 手动通过 `language`/`--import-language` 指定 (`python`/`java`/`cpp`) |
 
 如需批量导入，可在脚本中循环调用 API 或 CLI。欢迎根据实际流程继续扩展。
 

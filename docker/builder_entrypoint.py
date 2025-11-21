@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CodeQL C/C++ Containerized Builder Entrypoint
-Implements the "Init -> Pre-build -> Trace -> Finalize -> Validate" workflow.
+实现自动 fallback 机制：编译失败时自动切换到 --build-mode=none
 """
 
 import os
@@ -21,7 +21,6 @@ def run_cmd(cmd, cwd=None, env=None, check=True):
     """运行系统命令并实时打印输出"""
     log(f"Running: {cmd}")
     try:
-        # 使用 shell=True 允许使用 &&, || 等 shell 特性
         result = subprocess.run(
             cmd, 
             shell=True, 
@@ -34,141 +33,195 @@ def run_cmd(cmd, cwd=None, env=None, check=True):
         return result.returncode
     except subprocess.CalledProcessError as e:
         log(f"Command failed with exit code {e.returncode}")
-        raise
+        if check:
+            raise
+        return e.returncode
 
-def main():
-    # 1. 获取环境变量配置
+def build_with_compilation():
+    """尝试正常编译建库（策略1）"""
+    log("=" * 70)
+    log("策略 1: 尝试编译建库 (autobuild/cmake/make)")
+    log("=" * 70)
+    
+    # 获取环境变量配置
     language = os.environ.get("CODEQL_LANG", "cpp")
-    # 用户显式指定的构建命令 (如果有)
     user_build_cmd = os.environ.get("BUILD_COMMAND", "").strip()
     
-    log(f"Starting build for language: {language}")
-    
     # ========================================================================
-    # Step 1: 初始化数据库 (Init)
+    # Step 1: 初始化数据库
     # ========================================================================
     log(">>> Step 1: Init Database")
-    
-    # 检查 /out 目录是否有写权限
-    if not os.path.exists("/out"):
-        log("Error: /out directory not mounted!")
-        sys.exit(1)
-
-    # 强制初始化：这会清空 DB_DIR 如果它已存在
-    # 注意：在 Docker 挂载中，如果宿主机 DB_DIR 已存在且非空，CodeQL 可能会报错，
-    # 但加上 --overwrite 应该可以覆盖。
     run_cmd(f"codeql database init --language={language} --source-root={SRC_DIR} --overwrite {DB_DIR}")
 
     # ========================================================================
-    # Step 2: 依赖冲突/定制处理 (Pre-build Hook)
+    # Step 2: Pre-build Hook
     # ========================================================================
-    # 这是一个杀手锏：如果项目根目录下有 pre-build.sh，我们执行它。
-    # 用户可以在这里写 apt-get install xxx 或者编译特定版本的库。
     pre_build_script = os.path.join(SRC_DIR, "pre-build.sh")
-    
     if os.path.exists(pre_build_script):
-        log(">>> Step 2: Found 'pre-build.sh', executing custom environment setup...")
-        # 赋予执行权限
+        log(">>> Step 2: Found 'pre-build.sh', executing custom setup...")
         run_cmd(f"chmod +x {pre_build_script}", cwd=SRC_DIR)
-        # 执行脚本
         run_cmd(f"./pre-build.sh", cwd=SRC_DIR)
     else:
-        log(">>> Step 2: No 'pre-build.sh' found, skipping custom setup.")
+        log(">>> Step 2: No 'pre-build.sh' found, skipping.")
 
     # ========================================================================
-    # Step 3: 构建探测与注入 (Trace)
+    # Step 3: 构建探测与 Trace
     # ========================================================================
     log(">>> Step 3: Trace Command")
     
     cmd_to_trace = None
     working_dir = SRC_DIR
 
-    # --- 策略 A: 用户指定 (最高优先级) ---
+    # 策略 A: 用户指定
     if user_build_cmd:
         log(f"Using user-provided build command: {user_build_cmd}")
         cmd_to_trace = user_build_cmd
         
-    # --- 策略 B: 启发式探测 (Heuristics) ---
+    # 策略 B: CMake
     elif os.path.exists(os.path.join(SRC_DIR, "CMakeLists.txt")):
         log("Detected CMake project")
-        # 为了防止污染源码目录，创建一个构建目录
         build_dir_name = "build_codeql_container"
         build_dir = os.path.join(SRC_DIR, build_dir_name)
-        
-        # 确保构建目录存在
         os.makedirs(build_dir, exist_ok=True)
-        
-        # 构造 CMake 命令：
-        # 1. cd 到构建目录
-        # 2. cmake 配置 (指定 Release 模式，跳过测试以加速构建)
-        # 3. make 编译 (使用所有核心)
-        # 注意：使用 sh -c 将多个命令组合成一个 trace 目标
         cmd_to_trace = f"cd {build_dir_name} && cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && make -j$(nproc)"
         
+    # 策略 C: Makefile
     elif os.path.exists(os.path.join(SRC_DIR, "Makefile")):
         log("Detected Makefile project")
-        # 尝试 clean 以确保全量编译，然后并行编译
         cmd_to_trace = "make clean; make -j$(nproc)"
         
-    # --- 策略 C: Autobuild 兜底 (Last Resort) ---
+    # 策略 D: Autobuild
     else:
-        log("No standard build system (CMake/Make) detected and no user command.")
-        log("Falling back to CodeQL autobuild...")
-        # CodeQL autobuild 需要通过特殊方式调用
-        # 对于 C/C++，直接用 cpp/tools/autobuild.sh
+        log("No standard build system detected, falling back to CodeQL autobuild...")
         autobuild_script = "/opt/codeql/cpp/tools/autobuild.sh"
         if os.path.exists(autobuild_script):
             cmd_to_trace = f"bash {autobuild_script}"
         else:
-            # 如果 autobuild.sh 不存在，尝试直接运行 make（通用兜底）
-            log("Warning: autobuild.sh not found, trying generic 'make' as last resort")
-            cmd_to_trace = "make -j$(nproc) || true"  # 允许失败
+            log("Warning: autobuild.sh not found, trying generic 'make'")
+            cmd_to_trace = "make -j$(nproc) || true"
 
     log(f"Tracing command: [{cmd_to_trace}]")
     
-    # 执行 Trace
-    # index-files 可以包含生成的源码
-    run_cmd(
+    # 执行 Trace（允许失败）
+    trace_ret = run_cmd(
         f"codeql database trace-command {DB_DIR} --working-dir={SRC_DIR} -- {cmd_to_trace}", 
-        cwd=SRC_DIR
+        cwd=SRC_DIR,
+        check=False  # 不抛异常，返回退出码
     )
+    
+    if trace_ret != 0:
+        log(f"!!! Trace command failed with exit code {trace_ret}")
+        return False
 
     # ========================================================================
-    # Step 4: 封包 (Finalize)
+    # Step 4: Finalize
     # ========================================================================
     log(">>> Step 4: Finalize Database")
-    run_cmd(f"codeql database finalize {DB_DIR}")
+    finalize_ret = run_cmd(f"codeql database finalize {DB_DIR}", check=False)
+    
+    if finalize_ret != 0:
+        log(f"!!! Finalize failed with exit code {finalize_ret}")
+        return False
 
     # ========================================================================
-    # Step 5: 质量校验 (Validate)
+    # Step 5: 验证
     # ========================================================================
     log(">>> Step 5: Validate Results")
-    
     src_zip = os.path.join(DB_DIR, "src.zip")
     
-    # 校验 1: src.zip 是否存在
     if not os.path.exists(src_zip):
-        log("!!! Critical Error: src.zip was not created.")
-        log("This means CodeQL failed to finalize the database.")
-        sys.exit(1)
+        log("!!! src.zip not created")
+        return False
         
-    # 校验 2: src.zip 大小 (防止空包)
     size = os.path.getsize(src_zip)
     kb_size = size / 1024
     log(f"src.zip size: {kb_size:.2f} KB")
     
-    if size < 1024: # 小于 1KB 通常意味着根本没打包进任何代码
-        log("!!! Critical Error: src.zip is too small (< 1KB).")
-        log("This implies the build command ran but didn't compile/touch any source files.")
-        log("Possible causes: Project already built? Wrong build command? Missing dependencies?")
-        sys.exit(1)
+    if size < 1024:
+        log("!!! src.zip too small (< 1KB)")
+        return False
 
-    log(">>> Build Success! Database is ready at /out/db")
+    log("✅ 编译建库成功！")
+    return True
+
+def build_with_none_mode():
+    """使用 --build-mode=none 建库（策略2：不编译，只提取源码）"""
+    log("=" * 70)
+    log("策略 2: 使用 --build-mode=none (不编译，仅提取源码)")
+    log("=" * 70)
+    
+    language = os.environ.get("CODEQL_LANG", "cpp")
+    
+    # 清理之前失败的数据库
+    if os.path.exists(DB_DIR):
+        log(f"Cleaning up previous failed database at {DB_DIR}")
+        shutil.rmtree(DB_DIR, ignore_errors=True)
+    
+    # 使用 none 模式创建数据库
+    log(">>> Creating database with --build-mode=none")
+    create_ret = run_cmd(
+        f"codeql database create {DB_DIR} --language={language} --source-root={SRC_DIR} --build-mode=none",
+        check=False
+    )
+    
+    if create_ret != 0:
+        log(f"!!! --build-mode=none failed with exit code {create_ret}")
+        return False
+    
+    # 验证
+    src_zip = os.path.join(DB_DIR, "src.zip")
+    if not os.path.exists(src_zip):
+        log("!!! src.zip not created even with --build-mode=none")
+        return False
+        
+    size = os.path.getsize(src_zip)
+    kb_size = size / 1024
+    log(f"src.zip size: {kb_size:.2f} KB")
+    
+    if size < 1024:
+        log("!!! src.zip too small (< 1KB)")
+        return False
+    
+    log("✅ none 模式建库成功！")
+    return True
+
+def main():
+    log(f"Starting CodeQL database creation for language: {os.environ.get('CODEQL_LANG', 'cpp')}")
+    
+    # 检查挂载点
+    if not os.path.exists("/out"):
+        log("Error: /out directory not mounted!")
+        sys.exit(1)
+    
+    # 策略 1: 尝试编译建库
+    try:
+        if build_with_compilation():
+            log("=" * 70)
+            log("🎉 数据库创建成功！(使用编译模式)")
+            log("=" * 70)
+            sys.exit(0)
+    except Exception as e:
+        log(f"编译建库过程出现异常: {e}")
+    
+    # 策略 2: Fallback 到 none 模式
+    log("")
+    log("⚠️  编译建库失败，自动切换到 --build-mode=none")
+    log("")
+    
+    try:
+        if build_with_none_mode():
+            log("=" * 70)
+            log("🎉 数据库创建成功！(使用 none 模式)")
+            log("=" * 70)
+            sys.exit(0)
+    except Exception as e:
+        log(f"none 模式建库也失败: {e}")
+    
+    # 两种策略都失败
+    log("=" * 70)
+    log("❌ 所有建库策略均失败")
+    log("=" * 70)
+    sys.exit(1)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        log(f"!!! Build Process Failed: {e}")
-        sys.exit(1)
-
+    main()

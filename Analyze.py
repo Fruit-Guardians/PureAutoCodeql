@@ -618,8 +618,10 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
-  %(prog)s --case CVE-2021-21985                    # 分析单个案例
+  %(prog)s --case CVE-2021-21985                    # 分析已导入的案例
+  %(prog)s --case "C:\\Targets\\java\\CVE-2023-51444"  # Java项目：自动导入+建库+分析
   %(prog)s --case CVE-2021-21985 --stream          # 显示AI思考过程
+  %(prog)s --import-project "C:\\Targets\\CVE-2023-51444" --import-language java  # 仅导入Java项目
   %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
   %(prog)s --md-file vulnerability.md --src-path /path/to/source  # 从MD文件生成source点分析报告
   %(prog)s --md-file vulnerability.md --provider deepseek  # 指定模型提供商
@@ -770,7 +772,7 @@ def parse_arguments() -> argparse.Namespace:
         "--import-language",
         type=str,
         dest="import_language",
-        help="搭配 --import-project 使用，指定语言（默认自动检测）"
+        help="搭配 --import-project 使用，指定语言：python/java/cpp（默认自动检测）"
     )
     parser.add_argument(
         "--import-skip-codeql",
@@ -782,19 +784,19 @@ def parse_arguments() -> argparse.Namespace:
         "--import-build-command",
         type=str,
         dest="import_build_command",
-        help="搭配 --import-project 使用，指定 C/C++ 构建命令"
+        help="搭配 --import-project 使用，指定 C/C++ 构建命令（Java/Python项目不需要）"
     )
     parser.add_argument(
         "--import-build-script",
         type=str,
         dest="import_build_script",
-        help="搭配 --import-project 使用，指定构建脚本路径（相对于项目根或绝对路径）"
+        help="搭配 --import-project 使用，指定 C/C++ 构建脚本路径（Java/Python项目不需要）"
     )
     parser.add_argument(
         "--import-build-dir",
         type=str,
         dest="import_build_workdir",
-        help="搭配 --import-project 使用，设置构建命令工作目录"
+        help="搭配 --import-project 使用，设置 C/C++ 构建命令工作目录（Java/Python项目不需要）"
     )
 
     parser.set_defaults(stream=True)
