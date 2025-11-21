@@ -580,6 +580,53 @@ class AnalysisPipeline:
             logger.info("   📄 报告: %s", report_path.relative_to(run_dir))
             logger.info("   📊 详细数据: %s", detail_path.relative_to(run_dir))
             logger.info("   ✅ 最终结果: %s", dataflow_path.relative_to(run_dir))
+
+            # ---------------------------------------------------------
+            # 额外输出到根目录 results/CVE-XXXX-XXXX/
+            # ---------------------------------------------------------
+            try:
+                cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
+                target_id = cve_id or context.case_id or "UNKNOWN"
+                
+                if target_id and target_id != "UNKNOWN":
+                    # 确保目录名合法
+                    target_id_clean = self._sanitize_tag(target_id)
+                    root_results_dir = Path("results") / target_id_clean
+                    root_results_dir.mkdir(parents=True, exist_ok=True)
+
+                    # 1. 输出 CodeQL 查询文件 (.ql)
+                    ql_content = ""
+                    codeql_res = context.get_result("codeql_generation")
+                    if codeql_res and hasattr(codeql_res, "content"):
+                        raw_content = codeql_res.content
+                        # 尝试提取 QL 代码块
+                        match = re.search(r"```ql\s*(.*?)```", raw_content, re.DOTALL)
+                        if match:
+                            ql_content = match.group(1).strip()
+                        else:
+                            # 尝试其他格式或直接使用内容（如果看起来像代码）
+                            match_generic = re.search(r"```\s*(.*?)```", raw_content, re.DOTALL)
+                            if match_generic:
+                                ql_content = match_generic.group(1).strip()
+                            else:
+                                # 如果没有代码块，且内容不包含过多文本，可能就是纯代码
+                                # 或者保留原样
+                                ql_content = raw_content
+
+                    if ql_content:
+                        ql_path = root_results_dir / f"{target_id_clean}_query.ql"
+                        ql_path.write_text(ql_content, encoding=config.output_encoding)
+                        logger.info("   ✅ [Root Export] QL Query: %s", ql_path)
+
+                    # 2. 输出路径选择 JSON (.json)
+                    path_json_path = root_results_dir / f"{target_id_clean}_path.json"
+                    with open(path_json_path, "w", encoding=config.output_encoding) as handler:
+                        json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
+                    logger.info("   ✅ [Root Export] Path JSON: %s", path_json_path)
+            
+            except Exception as e:
+                logger.warning(f"根目录 results 额外输出失败: {e}")
+
             return selection
         except Exception as exc:
             logger.exception("路径选择执行失败: %s", exc)

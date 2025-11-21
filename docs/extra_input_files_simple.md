@@ -70,7 +70,7 @@ if cve_assets.has_extra_files():
 
 系统会自动排除以下文件，不作为额外文件处理：
 - `CVE-*.json` - CVE 信息文件
-- `CVE-*.diff` - 补丁文件
+- `CVE-*.patch/.diff` - 补丁文件
 - `.` 开头的隐藏文件
 - `~` 结尾的临时文件
 

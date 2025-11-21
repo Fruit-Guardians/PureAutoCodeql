@@ -5,12 +5,12 @@
 # 内置服务商 API Keys
 # ============================================================================
 [builtin_keys]
-deepseek = "sk-db40a5fe5d494abaa2516893821c65a1"
+deepseek = "sk-81a44275f299459d81418c1e24a55361"
 siliconflow = "sk-olcgfjcykujmbkdzxrqdfmsncygabvoxpxmmcpxwifwxneld"
 zhipu = "42e801a9a6994a5cb002ed8568ac1379.xLirJ33dyqMIPDiy"
 kimi = "sk-8nbJZ4bYJCTjO7qZaGvSbxflPeTscsX1JaS0hJBfpCOVnHny"
 gemini = "AIzaSyDS-Moyzuf1sUdAUsw9bkr1z_cZMVdyvpc"
-java_home = "E:\\1devEnv\\JDK\\21"
+java_home = "C:\\Program Files\\Java\\jdk-21"
 
 
 # ============================================================================
@@ -25,15 +25,6 @@ think_model = "deepseek-r1:latest"
 chat_model = "qwen2.5:latest"
 description = "这是一个示例自定义提供商，演示如何配置本地 Ollama 模型"
 
-# 你的自定义 API 服务
-[[custom_providers]]
-name = "qwen2"
-display_name = "我的自定义 API"
-api_key = "sk-f823393a56e34c868cdf91555fc5a3ba"
-base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-think_model = "qwen3-max"
-chat_model = "qwen3-max"
-description = "自定义 API 服务"
 
 # 你的自定义 API 服务
 [[custom_providers]]
@@ -50,13 +41,10 @@ description = "自定义 API 服务"
 # 全局设置（可选）
 # ============================================================================
 [settings]
-default_provider = "qwen2"
+default_provider = "deepseek"
+use_docker_for_cpp = true
+docker_builder_image = "pure-codeql-cpp:latest"
 
-# 覆盖默认推理模型（不设置则使用服务商默认）
-default_think_model = "deepseek-ai/DeepSeek-R1"
-
-# 覆盖默认对话模型（不设置则使用服务商默认）
-default_chat_model = "deepseek-ai/DeepSeek-V3.1-Terminus"
 
 # CodeQL 安装路径配置
 # 如果不配置，系统会自动尝试查找常见位置
@@ -72,7 +60,7 @@ default_chat_model = "deepseek-ai/DeepSeek-V3.1-Terminus"
 # Windows 示例：
 # lsp_executable = "C:\\Projects\\Pure\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
 # Linux/macOS 示例：
-lsp_executable = "E:\\1devEnv\\CODE\\project\\PureAutoCodeql\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
+lsp_executable = "C:\\Users\\bxx\\Desktop\\PureAutoCodeql\\utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
 
 # 参数模板（占位符: {workspace}, {lsp}, {java_executable}）
 # "--" 之前是 MCP 参数, "--" 之后是传给 LSP 的参数

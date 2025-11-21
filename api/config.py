@@ -56,6 +56,10 @@ class APIConfig(BaseSettings):
     max_concurrent_tasks: int = Field(default=5, description="最大并发任务数")
     task_timeout: int = Field(default=3600, description="任务超时时间(秒)")
 
+    # CodeQL 构建配置
+    use_docker_for_cpp: bool = Field(default=False, description="C/C++ 项目是否使用 Docker 进行构建")
+    docker_builder_image: str = Field(default="pure-codeql-cpp:latest", description="Docker 构建镜像名称")
+
     class Config:
         env_prefix = "API_"
         env_file = ".env"
