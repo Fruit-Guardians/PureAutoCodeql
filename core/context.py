@@ -138,3 +138,5 @@ class AnalysisConfig:
 
     # 实验性功能
     enable_error_tidy: bool = False
+    enable_source_sink_fallback: bool = False
+    fallback_empty_retry_max: int = 5

@@ -234,41 +234,44 @@ class PathAnalysisStep(AnalysisStep):
             
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
-        
+
         # 使用 path_analysis 的 MCP 配置
         await analyzer.initialize(
             event_callback=context.event_callback,
             language=context.language,
             workspace_path=str(context.case_paths.source_code),
-            agent_type=self.name
+            agent_type=self.name,
         )
 
         try:
             path_agent = PathAnalysisAgent(
-                analyzer, 
+                analyzer,
                 context.language,
-                source_root=str(context.case_paths.source_code)
+                source_root=str(context.case_paths.source_code),
             )
 
             print(f"=== {context.language.title()} Path Analysis ===")
-            
+
             # 批量分析路径
             analysis_result = await path_agent.identify_flow_steps(
                 source_to_sink_paths,
                 show_thinking=context.show_thinking,
-                event_callback=context.event_callback
+                event_callback=context.event_callback,
             )
-            
+
             # 转换为 AgentResult
             content = json.dumps(analysis_result, ensure_ascii=False, indent=2)
             success = analysis_result.get("successful_paths", 0) > 0
-            
+
             if not success and analysis_result.get("failed_paths", 0) > 0:
                 logger.warning("所有路径分析均失败")
             elif not context.show_thinking:
-                print(f"Path analysis completed: {analysis_result.get('total_flow_steps', 0)} flow steps identified")
-                
-            return AgentResult(content=content, success=True)  # 只要完成了分析过程就算成功，即使没有找到流步骤
+                print(
+                    "Path analysis completed: "
+                    f"{analysis_result.get('total_flow_steps', 0)} flow steps identified"
+                )
+
+            return AgentResult(content=content, success=success)
         finally:
             await analyzer.aclose()
 
@@ -281,21 +284,38 @@ class CodeQLGenerationStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CodeQL查询生成。"""
-        # 构建CodeQL生成需求
+        # 准备各分析步骤的报告内容
+        cve_report = (
+            context.get_result("cve_analysis").content
+            if context.has_result("cve_analysis")
+            else "CVE分析失败"
+        )
+        sink_report = (
+            context.get_result("sink_analysis").content
+            if context.has_result("sink_analysis")
+            else "Sink分析失败"
+        )
+        source_report = (
+            context.get_result("source_analysis").content
+            if context.has_result("source_analysis")
+            else "Source分析失败"
+        )
+
+        # 构建CodeQL生成需求（保持向后兼容的自然语言描述）
         codeql_requirement = f"""
         基于以下分析结果生成CodeQL查询：
         CVE路径分析结果：
-        {context.get_result("cve_analysis").content if context.has_result("cve_analysis") else "CVE分析失败"}
+        {cve_report}
 
         Sink路径分析结果：
-        {context.get_result("sink_analysis").content if context.has_result("sink_analysis") else "Sink分析失败"}
+        {sink_report}
 
         Source分析结果：
-        {context.get_result("source_analysis").content if context.has_result("source_analysis") else "Source分析失败"}
+        {source_report}
 
         请基于上述分析生成一个完整的CodeQL查询，用于检测相关的安全漏洞。
         """
-        
+
         # 获取路径分析结果（如果存在）
         path_analysis_results = None
         if context.has_result("path_analysis"):
@@ -322,7 +342,13 @@ class CodeQLGenerationStep(AnalysisStep):
                 analyzer=codeql_analyzer,
                 database_path=str(context.case_paths.db),
                 language=context.language,
-                enable_error_tidy=getattr(context._config, "enable_error_tidy", False)
+                enable_error_tidy=getattr(context._config, "enable_error_tidy", False),
+                enable_source_sink_fallback=getattr(
+                    context._config, "enable_source_sink_fallback", False
+                ),
+                fallback_empty_retry_max=getattr(
+                    context._config, "fallback_empty_retry_max", 5
+                ),
             )
 
             print("=== CodeQL Query Generation ===")
@@ -333,7 +359,10 @@ class CodeQLGenerationStep(AnalysisStep):
                 event_callback=context.event_callback,
                 agent_name=self.agent_name,
                 agent_type=self.name,
-                path_analysis_results=path_analysis_results  # 传递路径分析结果
+                path_analysis_results=path_analysis_results,  # 传递路径分析结果
+                cve_analysis_report=cve_report,
+                sink_analysis_report=sink_report,
+                source_analysis_report=source_report,
             )
             print(compose_output)
 
