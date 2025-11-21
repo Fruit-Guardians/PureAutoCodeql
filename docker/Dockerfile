@@ -36,6 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ant \
     # 现代构建系统
     ninja-build \
+    # 常用 C/C++ 依赖库 & 工具
+    libssl-dev \
+    zlib1g-dev \
+    libboost-all-dev \
+    libreadline-dev \
+    libjson-c-dev \
+    libelf-dev \
+    bison \
+    flex \
+    gawk \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================

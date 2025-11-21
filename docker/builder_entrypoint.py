@@ -100,10 +100,10 @@ def main():
         
         # 构造 CMake 命令：
         # 1. cd 到构建目录
-        # 2. cmake 配置 (指定 Release 模式)
+        # 2. cmake 配置 (指定 Release 模式，跳过测试以加速构建)
         # 3. make 编译 (使用所有核心)
         # 注意：使用 sh -c 将多个命令组合成一个 trace 目标
-        cmd_to_trace = f"cd {build_dir_name} && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)"
+        cmd_to_trace = f"cd {build_dir_name} && cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && make -j$(nproc)"
         
     elif os.path.exists(os.path.join(SRC_DIR, "Makefile")):
         log("Detected Makefile project")
@@ -114,7 +114,15 @@ def main():
     else:
         log("No standard build system (CMake/Make) detected and no user command.")
         log("Falling back to CodeQL autobuild...")
-        cmd_to_trace = "codeql-autobuild"
+        # CodeQL autobuild 需要通过特殊方式调用
+        # 对于 C/C++，直接用 cpp/tools/autobuild.sh
+        autobuild_script = "/opt/codeql/cpp/tools/autobuild.sh"
+        if os.path.exists(autobuild_script):
+            cmd_to_trace = f"bash {autobuild_script}"
+        else:
+            # 如果 autobuild.sh 不存在，尝试直接运行 make（通用兜底）
+            log("Warning: autobuild.sh not found, trying generic 'make' as last resort")
+            cmd_to_trace = "make -j$(nproc) || true"  # 允许失败
 
     log(f"Tracing command: [{cmd_to_trace}]")
     

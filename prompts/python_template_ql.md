@@ -14,6 +14,7 @@
 - **导入规范**
   - 必须：`import python`
   - 必须：`import semmle.python.dataflow.new.DataFlow`, `import semmle.python.dataflow.new.TaintTracking`
+  - 推荐：`import semmle.python.ApiGraphs` (用于处理第三方库调用)
   - 需要远程源时：`import semmle.python.dataflow.new.RemoteFlowSources`
   - `import Flow::PathGraph` 放在 `module` 定义之后
 - **配置与模块**
@@ -32,6 +33,28 @@
   - 不要使用 `MethodCall`、裸 `ParameterNode`、旧的 `semmle.python.security.*`
   - 不要直接对 AST 做 instance 判断，应先 `asCfgNode().getNode()`
   - 不要使用 `getEnclosingCallable()` 替代 `getScope()`
+  - 不要混用 `DataFlow::Node` 和 `API::Node`（API Graph 节点需调用 `.asSource()` 或 `.asSink()` 转换为数据流节点）。
+
+## 框架与场景特化提示
+
+### Flask / FastAPI / Web API
+- **强烈推荐**使用 `API::moduleImport` 定义 Source，例如：
+  ```ql
+  source = API::moduleImport("flask").getMember("request").getMember("get_json").getReturn().asSource()
+  ```
+- 若需求强调某个 JSON/dict 字段（如 `pdf_path`），可在 `isSource` 或 `isAdditionalFlowStep` 中套用 `python_patterns.md` 的“字典 get() 模式”以确保命中。
+
+### 文件与路径操作
+- 典型 Sink：`os.path.exists`, `os.path.join`, `open`, `pathlib.Path(...).read_text()`。
+- **强烈推荐**使用 `API::moduleImport` 定义 Sink，例如：
+  ```ql
+  exists(DataFlow::CallCfgNode call |
+    call = API::moduleImport("os").getMember("path").getMember("exists").getACall() and
+    sink = call.getArg(0)
+  )
+  ```
+- 若 Sink 是接收者（如 `.write()`、`.review()` 需要对象），务必在 `isAdditionalFlowStep` 中把路径参数传递到该对象。
+- 路径遍历场景通常没有 Sanitizer，若无净化逻辑 `isSanitizer` 直接返回 `none()`.
 
 ## 1. 输出结构
 

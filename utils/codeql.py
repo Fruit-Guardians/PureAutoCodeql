@@ -361,10 +361,10 @@ dependencies:
     (pack_dir / 'qlpack.yml').write_text(qlpack_content, encoding='utf-8')
 
 
-    try:
-        open(pack_dir / 'codeql-pack.lock.yml','w').write(gen_codeql_lock_yml(lang))
-    except Exception as e:
-        print(f"Warning: Failed to write codeql-pack.lock.yml: {str(e)}")
+    # try:
+    #     open(pack_dir / 'codeql-pack.lock.yml','w').write(gen_codeql_lock_yml(lang))
+    # except Exception as e:
+    #     print(f"Warning: Failed to write codeql-pack.lock.yml: {str(e)}")
 
     sanitized = query_content
 

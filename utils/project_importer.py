@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import zipfile
+import sys
 from dataclasses import dataclass, field
 import shlex
 from pathlib import Path
@@ -19,6 +20,59 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_LANGUAGES = {"python", "java", "cpp"}
 CPP_AUTOGEN_BUILD_DIR = "build"
+
+
+def _safe_rmtree(path: Path) -> None:
+    """
+    Windows 兼容的目录删除函数，处理 CodeQL 创建的符号链接。
+    
+    Args:
+        path: 要删除的目录路径
+    """
+    if not path.exists():
+        return
+    
+    # Windows 上需要特殊处理符号链接
+    if sys.platform == "win32":
+        try:
+            # 先尝试删除所有符号链接
+            for root, dirs, files in os.walk(path, topdown=False):
+                root_path = Path(root)
+                
+                # 处理文件和目录中的符号链接
+                for name in dirs + files:
+                    item_path = root_path / name
+                    if item_path.is_symlink():
+                        try:
+                            item_path.unlink()
+                            logger.debug(f"删除符号链接: {item_path}")
+                        except Exception as e:
+                            logger.warning(f"无法删除符号链接 {item_path}: {e}")
+                            # 尝试使用 Windows 命令
+                            if item_path.is_dir():
+                                subprocess.run(["cmd", "/c", "rmdir", str(item_path)], 
+                                             check=False, capture_output=True)
+                            else:
+                                subprocess.run(["cmd", "/c", "del", "/f", str(item_path)], 
+                                             check=False, capture_output=True)
+        except Exception as e:
+            logger.warning(f"清理符号链接时出错: {e}")
+    
+    # 使用标准方法删除目录
+    try:
+        shutil.rmtree(path)
+    except Exception as e:
+        logger.error(f"删除目录失败 {path}: {e}")
+        # Windows 最后的杀手锏：使用 cmd 强制删除
+        if sys.platform == "win32":
+            try:
+                subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", str(path)], 
+                             check=True, capture_output=True)
+                logger.info(f"使用 Windows cmd 成功删除目录: {path}")
+            except subprocess.CalledProcessError as cmd_error:
+                raise OSError(f"无法删除目录 {path}: {e}") from cmd_error
+        else:
+            raise
 
 
 @dataclass
@@ -77,7 +131,7 @@ def import_project(
                 f"Project {inferred_case_id} already exists. Set overwrite=True to replace it."
             )
         logger.info("Overwriting existing project %s", inferred_case_id)
-        shutil.rmtree(target_dir)
+        _safe_rmtree(target_dir)
 
     _create_base_structure(target_dir)
     source_code_dir = target_dir / "source_code"
@@ -502,6 +556,11 @@ def _run_docker_build(
     
     abs_source = source_root.resolve()
     abs_db_path = db_path.resolve()
+    
+    # 清理旧的数据库目录（避免 Docker 内 CodeQL 检测到残留文件）
+    if abs_db_path.exists():
+        logger.info("清理旧数据库目录: %s", abs_db_path)
+        _safe_rmtree(abs_db_path)
     
     # 确保数据库目录的父目录存在
     abs_db_path.parent.mkdir(parents=True, exist_ok=True)

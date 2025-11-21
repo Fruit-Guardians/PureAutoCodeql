@@ -24,7 +24,7 @@ class AnalysisOrchestrator:
         self.config = config or AnalysisConfig()
         self.language_detector = LanguageDetector()
 
-    async def analyze_case(self, case_id: str) -> AnalysisResult:
+    async def analyze_case(self, case_id: str, language: Optional[str] = None) -> AnalysisResult:
         """执行完整的案例分析。"""
         try:
             # 解析案例结构
@@ -58,9 +58,12 @@ class AnalysisOrchestrator:
             else:
                 logger.info("已获取最新情报数据")
 
-            # 检测语言
-            language = self.language_detector.detect_language(case_paths)
-            logger.info(f"检测到语言: {language}")
+            # 检测语言 (如果未指定)
+            if not language:
+                language = self.language_detector.detect_language(case_paths)
+                logger.info(f"检测到语言: {language}")
+            else:
+                logger.info(f"使用指定语言: {language}")
 
             # 创建分析上下文
             context = AnalysisContext(

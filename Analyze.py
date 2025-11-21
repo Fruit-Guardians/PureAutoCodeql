@@ -29,7 +29,8 @@ async def run_case_analysis(
     chat_model: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
-    enable_error_tidy: bool = False
+    enable_error_tidy: bool = False,
+    language: Optional[str] = None
 ) -> None:
     """
     运行完整的案例分析
@@ -45,6 +46,7 @@ async def run_case_analysis(
         api_key: API Key（覆盖环境变量）
         base_url: Base URL（覆盖环境变量）
         enable_error_tidy: 是否启用错误整理功能
+        language: 强制指定编程语言（跳过自动检测）
     """
     # 创建配置
     config = AnalysisConfig(
@@ -91,7 +93,7 @@ async def run_case_analysis(
 
     # 创建并运行编排器
     orchestrator = AnalysisOrchestrator(config)
-    result = await orchestrator.analyze_case(case_id)
+    result = await orchestrator.analyze_case(case_id, language=language)
 
     # 显示结果摘要
     if result.success:
@@ -737,8 +739,8 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         metavar="LANG",
         dest="language",
-        default="java",
-        help="指定编程语言（用于--md-file模式，默认: java）"
+        default=None,
+        help="指定编程语言（默认: java 或自动检测）"
     )
     parser.add_argument(
         "--src-path",
@@ -887,7 +889,8 @@ async def main() -> None:
                 chat_model=chat_model,
                 api_key=args.api_key,
                 base_url=args.base_url,
-                enable_error_tidy=args.enable_error_tidy
+                enable_error_tidy=args.enable_error_tidy,
+                language=args.language
             )
         elif args.md_file:
             print(f"🚀 PureAutoCodeQL 启动")
@@ -945,7 +948,7 @@ async def main() -> None:
                     api_key=args.api_key,
                     base_url=args.base_url,
                     database_path=args.database_path,
-                    language=args.language,
+                    language=args.language or "java",
                     enable_error_tidy=args.enable_error_tidy
                 )
 

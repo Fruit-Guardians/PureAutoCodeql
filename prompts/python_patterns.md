@@ -100,6 +100,20 @@ predicate isSource(DataFlow::Node source) {
 }
 ```
 
+### 模式G：API Graph Source (推荐：第三方库/框架)
+适用于：Flask, Django, FastAPI 等框架的输入，或特定库的返回值。比 RemoteFlowSource 更精准。
+```ql
+predicate isSource(DataFlow::Node source) {
+  // Flask request.get_json() / request.json
+  source = API::moduleImport("flask").getMember("request").getMember("get_json").getReturn().asSource()
+  or
+  source = API::moduleImport("flask").getMember("request").getMember("json").asSource()
+  or
+  // request.args.get()
+  source = API::moduleImport("flask").getMember("request").getMember("args").getMember("get").getReturn().asSource()
+}
+```
+
 ---
 
 ## 3. Sink 定义模式
@@ -167,6 +181,19 @@ predicate isSink(DataFlow::Node sink) {
     call.getFunction().(DataFlow::AttrRead).getAttributeName() = "write" and
     sink = call.getFunction().(DataFlow::AttrRead).getObject() and // receiver is sink
     inTargetFile(sink)
+  )
+}
+```
+
+### 模式F：API Graph Sink (推荐：标准库/第三方库)
+适用于：标准库(os, subprocess)或第三方库的调用。比 calleeIsGlobalName 更稳健。
+```ql
+predicate isSink(DataFlow::Node sink) {
+  exists(DataFlow::CallCfgNode call |
+    // os.path.exists(sink)
+    call = API::moduleImport("os").getMember("path").getMember("exists").getACall()
+    and
+    sink = call.getArg(0)
   )
 }
 ```
