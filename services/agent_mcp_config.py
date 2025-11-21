@@ -37,15 +37,15 @@ AGENT_TYPES: Dict[str, str] = {
 AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "cve_analysis": [],
     "unified_sink_path": ["filesystem", "ripgrep", "language-server"],
-    # "unified_source_analysis": ["language-server"]
-    "unified_source_analysis": ["tree_sitter", "language-server"],
-    "source_analysis": ["tree_sitter", "language-server"],
+    # "unified_source_analysis": ["language-server"],
+    "unified_source_analysis": ["tree_sitter", "language-server", "filesystem"],
+    "source_analysis": ["tree_sitter", "language-server", "filesystem"],
     "codeql_gen": [],
-    "codeql_error": ["ripgrep"],
-    "codeql_fix_inplace": ["filesystem", "ripgrep"],
+    "codeql_error": ["filesystem", "ripgrep", "language-server"],
+    "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
     "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
     "template_refinement": ["filesystem"],
-    "default": ["filesystem", "ripgrep", "language-server"],
+    "default": [],
 }
 
 
@@ -73,14 +73,14 @@ class AgentMCPConfigService:
         normalized_language = (language or "").lower()
         if agent_type in {"unified_source_analysis", "source_analysis"} and normalized_language:
             if normalized_language == "java":
-                # Java: 使用 ripgrep + language-server,不启用 tree_sitter
+                # Java: 使用 ripgrep + language-server + filesystem
                 profile = ["ripgrep", "language-server"]
             elif normalized_language == "python":
-                # Python: 使用 tree_sitter + language-server
-                profile = ["tree_sitter", "language-server"]
+                # Python: 使用 tree_sitter + language-server + filesystem
+                profile = ["language-server", "ripgrep", "tree_sitter"]
             elif normalized_language in {"c", "cpp", "c++"}:
-                # C/C++: 仅使用 tree_sitter,不启用 language-server
-                profile = ["tree_sitter"]
+                # C/C++: 使用 tree_sitter + filesystem
+                profile = ["tree_sitter", "filesystem"]
 
         # 构建完整的MCP服务器配置
         mcp_servers: Dict[str, Dict] = {}
