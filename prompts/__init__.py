@@ -18,6 +18,11 @@ from .sink_prompt_manager import (
     get_supported_languages,
 )
 
+from .path_analysis_prompts import (
+    build_path_analysis_prompt,
+    build_batch_path_analysis_prompt,
+)
+
 __all__ = [
     "build_source_analysis_prompt",
     "build_source_analysis_with_codeql_prompt",
@@ -28,4 +33,6 @@ __all__ = [
     "prompt_manager",
     "build_sink_prompt",
     "get_supported_languages",
+    "build_path_analysis_prompt",
+    "build_batch_path_analysis_prompt",
 ]

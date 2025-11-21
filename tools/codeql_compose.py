@@ -398,6 +398,68 @@ class CodeQLComposeTool(BaseTool):
 
         return "\n".join(lines)
 
+    def _format_path_analysis_context(self, path_analysis_results: Optional[Dict[str, Any]]) -> str:
+        """格式化路径分析结果为 CodeQL 生成上下文。
+        
+        Args:
+            path_analysis_results: 路径分析结果，包含 flow_steps 列表
+            
+        Returns:
+            格式化的上下文字符串，用于注入到 CodeQL 生成提示词中
+        """
+        if not path_analysis_results:
+            return ""
+        
+        flow_steps = path_analysis_results.get("flow_steps", [])
+        if not flow_steps:
+            return ""
+        
+        lines = []
+        lines.append("\n## 路径分析结果 - isAdditionalFlowStep 上下文\n")
+        lines.append("以下是通过路径分析识别的关键流步骤点，这些点应该在 CodeQL 查询的 `isAdditionalFlowStep` 谓词中体现：\n")
+        
+        # 按类型分组流步骤
+        steps_by_type = {}
+        for step in flow_steps:
+            step_type = step.get("type", "unknown")
+            if step_type not in steps_by_type:
+                steps_by_type[step_type] = []
+            steps_by_type[step_type].append(step)
+        
+        # 输出每种类型的流步骤
+        for step_type, steps in steps_by_type.items():
+            type_names = {
+                "assignment": "赋值操作",
+                "deserialization": "反序列化操作",
+                "arithmetic": "算术运算",
+                "offset": "偏移操作",
+                "type_conversion": "类型转换"
+            }
+            type_name = type_names.get(step_type, step_type)
+            lines.append(f"\n### {type_name} ({step_type})\n")
+            
+            for i, step in enumerate(steps, 1):
+                confidence = step.get("confidence", "unknown")
+                location = step.get("location", "unknown")
+                description = step.get("description", "N/A")
+                pattern = step.get("pattern", "N/A")
+                
+                lines.append(f"{i}. **位置**: {location} (置信度: {confidence})")
+                lines.append(f"   - **描述**: {description}")
+                lines.append(f"   - **模式**: `{pattern}`")
+                lines.append("")
+        
+        # 添加使用指南
+        lines.append("\n### 使用指南\n")
+        lines.append("在生成 CodeQL 查询时，请考虑以下几点：")
+        lines.append("1. 在 `isAdditionalFlowStep` 谓词中实现上述流步骤的匹配逻辑")
+        lines.append("2. 优先使用高置信度（high）的流步骤")
+        lines.append("3. 根据语言特性调整匹配模式")
+        lines.append("4. 确保流步骤的源节点和目标节点正确对应")
+        lines.append("5. 使用 `or` 连接多个流步骤条件\n")
+        
+        return "\n".join(lines)
+
     def _load_ql_template(self, lang: str) -> str:
         try:
             target = (lang or "").lower()
@@ -455,6 +517,7 @@ class CodeQLComposeTool(BaseTool):
         event_callback = None,
         agent_name: str = None,
         agent_type: str = None,
+        path_analysis_results: Optional[Dict[str, Any]] = None,
     ) -> str:
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
@@ -574,6 +637,12 @@ class CodeQLComposeTool(BaseTool):
                     
                     # 将策略后缀添加到prompt中
                     gen_prompt_base = gen_prompt_base + "\n\n" + strategy_suffix
+                    
+                    # 添加路径分析上下文（如果有）
+                    path_analysis_context = self._format_path_analysis_context(path_analysis_results)
+                    if path_analysis_context:
+                        gen_prompt_base = gen_prompt_base + "\n\n" + path_analysis_context
+                        logger.info(f"[CodeQLComposeTool] 已添加路径分析上下文，包含 {len(path_analysis_results.get('flow_steps', []))} 个流步骤")
                     
                     gen_values = build_placeholder_map(
                         language=target_language,

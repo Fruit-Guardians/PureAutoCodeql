@@ -59,6 +59,7 @@ class AnalysisResult:
     cve_result: Optional[AgentResult] = None
     sink_result: Optional[AgentResult] = None
     source_result: Optional[AgentResult] = None
+    path_analysis_result: Optional[AgentResult] = None
     codeql_result: Optional[AgentResult] = None
     codeql_execution_result: Optional[Any] = None
     path_selection_result: Optional[PathSelectionResult] = None

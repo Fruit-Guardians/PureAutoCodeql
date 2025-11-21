@@ -198,6 +198,108 @@ class UnifiedSourceAnalysisAgent:
             logger.error("Failed to generate %s source CodeQL query: %s", language, exc)
             return f"Error generating CodeQL query: {str(exc)}", ""
 
+    def _validate_path_data(self, path_data: dict) -> bool:
+        """验证路径数据格式是否正确。"""
+        required_fields = ["source_function", "sink_function", "call_chain", "transformations"]
+        
+        for field in required_fields:
+            if field not in path_data:
+                logger.warning(f"路径数据缺少必需字段: {field}")
+                return False
+        
+        # 验证 source_function 和 sink_function 结构
+        for func_field in ["source_function", "sink_function"]:
+            func = path_data[func_field]
+            if not isinstance(func, dict):
+                logger.warning(f"{func_field} 必须是字典类型")
+                return False
+            if "name" not in func or "file_path" not in func:
+                logger.warning(f"{func_field} 缺少必需字段: name 或 file_path")
+                return False
+        
+        # 验证 call_chain 是列表
+        if not isinstance(path_data["call_chain"], list):
+            logger.warning("call_chain 必须是列表类型")
+            return False
+        
+        # 验证 transformations 是列表
+        if not isinstance(path_data["transformations"], list):
+            logger.warning("transformations 必须是列表类型")
+            return False
+        
+        return True
+
+    def _parse_analysis_result(self, result_content: str) -> tuple:
+        """解析分析结果，分离源点候选项和路径数据。
+        
+        Returns:
+            tuple: (candidates, source_to_sink_paths, raw_data)
+        """
+        import re
+        
+        content = result_content.strip()
+        data = None
+        
+        # 策略1: 直接解析
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+            
+        # 策略2: 提取 Markdown 代码块
+        if data is None:
+            match = re.search(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(1).strip())
+                except json.JSONDecodeError:
+                    pass
+        
+        # 策略3: 提取最外层 JSON 对象
+        if data is None:
+            match = re.search(r"(\{.*\})", content, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(1).strip())
+                except json.JSONDecodeError:
+                    pass
+
+        if data is None:
+            logger.error("无法从结果中提取有效的 JSON")
+            logger.debug(f"原始内容: {result_content[:500]}...")
+            return [], [], {}
+
+        try:
+            # 提取 candidates（源点候选项）
+            candidates = data.get("candidates", [])
+            logger.info(f"提取到 {len(candidates)} 个源点候选项")
+            
+            # 提取 source_to_sink_paths（路径数据）
+            source_to_sink_paths = data.get("source_to_sink_paths", [])
+            logger.info(f"提取到 {len(source_to_sink_paths)} 条源点到汇点路径")
+            
+            # 验证每条路径数据
+            valid_paths = []
+            for i, path in enumerate(source_to_sink_paths):
+                if self._validate_path_data(path):
+                    valid_paths.append(path)
+                    logger.debug(f"路径 {i+1} 验证通过: {path.get('source_function', {}).get('name')} -> {path.get('sink_function', {}).get('name')}")
+                else:
+                    logger.warning(f"路径 {i+1} 验证失败，已跳过")
+            
+            if len(valid_paths) < len(source_to_sink_paths):
+                logger.warning(f"共 {len(source_to_sink_paths)} 条路径，{len(valid_paths)} 条通过验证")
+            
+            return candidates, valid_paths, data
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {e}")
+            logger.debug(f"原始内容: {result_content[:500]}...")
+            return [], [], {}
+        except Exception as e:
+            logger.error(f"解析分析结果时出错: {e}")
+            return [], [], {}
+
     async def analyze_sources(self, language: str, sink_analysis: str, show_thinking: bool = True, event_callback=None, agent_name: str = None, agent_type: str = None) -> "AgentResult":
         """统一的多语言source分析方法，基于sink分析结果查找source点。"""
         try:
@@ -236,7 +338,7 @@ class UnifiedSourceAnalysisAgent:
                     success: bool
                     error: str = None
 
-                result = AgentResult(content=json.dumps({"candidates": []}), success=True)
+                result = AgentResult(content=json.dumps({"candidates": [], "source_to_sink_paths": []}), success=True)
                 
                 # 推送完成事件
                 if event_callback:
@@ -265,6 +367,35 @@ class UnifiedSourceAnalysisAgent:
             )
             
             result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
+            
+            # 解析结果，分离源点候选项和路径数据
+            if result.success and result.content:
+                candidates, source_to_sink_paths, raw_data = self._parse_analysis_result(result.content)
+                
+                # 记录路径数据提取情况
+                logger.info(f"Source分析完成: {len(candidates)} 个候选项, {len(source_to_sink_paths)} 条路径")
+                
+                # 重新构建结果，确保两部分数据独立
+                structured_result = {
+                    "cve": raw_data.get("cve", ""),
+                    "sink_info": raw_data.get("sink_info", ""),
+                    "candidates": candidates,
+                    "source_to_sink_paths": source_to_sink_paths
+                }
+                
+                # 更新 result.content 为结构化的 JSON
+                from dataclasses import dataclass
+
+                @dataclass
+                class AgentResult:
+                    content: str
+                    success: bool
+                    error: str = None
+
+                result = AgentResult(
+                    content=json.dumps(structured_result, ensure_ascii=False, indent=2),
+                    success=True
+                )
             
             if event_callback:
                 from datetime import datetime

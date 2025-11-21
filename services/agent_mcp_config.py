@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
     from agents.unified_sink_path_agent import UnifiedSinkPathAgent as _UnifiedSinkPathAgent
     from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent as _UnifiedSourceAnalysisAgent
+    from agents.path_analysis_agent import PathAnalysisAgent as _PathAnalysisAgent
     from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent as _CodeQLGenAgent
     from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent as _CodeQLErrorAgent
     from agents.codeql_gen_agents.codeql_fix_inplace_agent import (
@@ -27,6 +28,7 @@ AGENT_TYPES: Dict[str, str] = {
     "cve_analysis": "agents.cve_analysis_agent.CVEAnalysisAgent",
     "unified_sink_path": "agents.unified_sink_path_agent.UnifiedSinkPathAgent",
     "unified_source_analysis": "agents.unified_source_analysis_agent.UnifiedSourceAnalysisAgent",
+    "path_analysis": "agents.path_analysis_agent.PathAnalysisAgent",
     "codeql_gen": "agents.codeql_gen_agents.codeql_gen_agent.CodeQLGenAgent",
     "codeql_error": "agents.codeql_gen_agents.codeql_error_agent.CodeQLErrorAgent",
     "codeql_fix_inplace": "agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
@@ -40,6 +42,7 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     # "unified_source_analysis": ["language-server"],
     "unified_source_analysis": ["tree_sitter", "language-server", "filesystem"],
     "source_analysis": ["tree_sitter", "language-server", "filesystem"],
+    "path_analysis": ["tree_sitter", "ripgrep"],
     "codeql_gen": [],
     "codeql_generation": ["filesystem", "ripgrep", "language-server"],
     "codeql_error": ["filesystem", "ripgrep", "language-server"],

@@ -125,6 +125,46 @@
   }
   ```
 
+#### 6. 使用路径分析结果（如果提供）
+
+如果在提示词中提供了"路径分析结果 - isAdditionalFlowStep 上下文"部分，请遵循以下指南：
+
+**重要性：**
+- 路径分析结果包含了从源点到汇点的关键流步骤点
+- 这些流步骤点是通过专门的路径分析代理识别的，具有较高的准确性
+- 在 `isAdditionalFlowStep` 谓词中实现这些流步骤可以显著提高查询的准确性
+
+**使用方法：**
+1. **优先级排序**：优先使用高置信度（high）的流步骤
+2. **模式匹配**：根据提供的代码模式（pattern）字段，在 `isAdditionalFlowStep` 中实现相应的匹配逻辑
+3. **类型分类**：根据流步骤类型（assignment, deserialization, arithmetic, offset, type_conversion）选择合适的 CodeQL API
+4. **条件组合**：使用 `or` 连接多个流步骤条件，确保覆盖所有识别的关键点
+5. **语言适配**：根据目标语言的特性调整匹配逻辑
+
+**示例（Java）：**
+```ql
+predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
+  // 赋值操作：变量赋值传播污点
+  exists(Assignment assign |
+    src.asExpr() = assign.getSource() and
+    dst.asExpr() = assign.getDest()
+  )
+  or
+  // 算术运算：整数运算传播污点
+  exists(AddExpr add |
+    src.asExpr() = add.getAnOperand() and
+    dst.asExpr() = add
+  )
+  or
+  // 根据路径分析结果添加更多流步骤...
+}
+```
+
+**注意事项：**
+- 如果没有提供路径分析结果，`isAdditionalFlowStep` 可以使用 `none()` 或实现通用的流步骤逻辑
+- 路径分析结果是辅助信息，不应完全依赖，仍需根据漏洞特征进行适当调整
+- 确保流步骤的源节点（src）和目标节点（dst）正确对应
+
 ### 固定骨架
 
 将所有的 MethodAccess 替换为 MethodCall！！！
