@@ -94,12 +94,18 @@ import semmle.python.dataflow.new.RemoteFlowSources  // 如果需要远程源（
 module VulnConfig implements DataFlow::ConfigSig {
   /** Sources: 定义污染源 */
   predicate isSource(DataFlow::Node source) {
+    // ✅ 已验证的 Source 点参考查询（如果有）：
+    // [[SOURCE_VERIFICATION_QUERY]]
+    // 
     // 从 python_patterns.md 中选择合适的 Source 模式
     <SOURCE_DEFINITION>
   }
 
   /** Sinks: 定义汇聚点 */
   predicate isSink(DataFlow::Node sink) {
+    // ✅ 已验证的 Sink 点参考查询（如果有）：
+    // [[SINK_VERIFICATION_QUERY]]
+    // 
     // 从 python_patterns.md 中选择合适的 Sink 模式
     <SINK_DEFINITION>
   }

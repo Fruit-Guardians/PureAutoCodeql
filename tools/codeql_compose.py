@@ -828,6 +828,8 @@ class CodeQLComposeTool(BaseTool):
         cve_analysis_report: Optional[str] = None,
         source_analysis_report: Optional[str] = None,
         sink_analysis_report: Optional[str] = None,
+        sink_verification_query: Optional[str] = None,
+        source_verification_query: Optional[str] = None,
         prev_ql: Optional[str] = None,
     ) -> str:
         if not self.analyzer:
@@ -1016,6 +1018,8 @@ class CodeQLComposeTool(BaseTool):
                         kb_structured_context=kb_context.get("kb_structured_context"),
                         kb_reference_snippets=kb_context.get("kb_reference_snippets"),
                         relevant_tags=kb_context.get("relevant_tags"),
+                        sink_verification_query=sink_verification_query,
+                        source_verification_query=source_verification_query,
                     )
                     
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)

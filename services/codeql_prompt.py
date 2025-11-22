@@ -20,6 +20,8 @@ def build_placeholder_map(
     kb_structured_context: Optional[str] = None,
     kb_reference_snippets: Optional[str] = None,
     relevant_tags: Optional[str] = None,
+    sink_verification_query: Optional[str] = None,
+    source_verification_query: Optional[str] = None,
 ) -> Dict[str, str]:
     """Return a ready-to-use placeholder dictionary for prompt templates."""
     return {
@@ -36,6 +38,8 @@ def build_placeholder_map(
         "KB_STRUCTURED_CONTEXT": (kb_structured_context or ""),
         "KB_REFERENCE_SNIPPETS": (kb_reference_snippets or ""),
         "RELEVANT_TAGS": (relevant_tags or ""),
+        "SINK_VERIFICATION_QUERY": (sink_verification_query or ""),
+        "SOURCE_VERIFICATION_QUERY": (source_verification_query or ""),
     }
 
 

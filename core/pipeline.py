@@ -429,6 +429,16 @@ class CodeQLGenerationStep(AnalysisStep):
                 ),
             )
 
+            # 获取验证查询（如果有）
+            sink_verification_query = context.data.get("sink_verification_query")
+            source_verification_query = context.data.get("source_verification_query")
+            
+            # 记录验证查询的使用情况
+            if sink_verification_query:
+                logger.info("✅ 使用 Sink 验证查询作为参考")
+            if source_verification_query:
+                logger.info("✅ 使用 Source 验证查询作为参考")
+            
             print("=== CodeQL Query Generation ===")
             print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
             compose_output = await codeql_tool._arun(
@@ -441,6 +451,8 @@ class CodeQLGenerationStep(AnalysisStep):
                 cve_analysis_report=cve_report,
                 sink_analysis_report=sink_report,
                 source_analysis_report=source_report,
+                sink_verification_query=sink_verification_query,  # 传递 Sink 验证查询
+                source_verification_query=source_verification_query,  # 传递 Source 验证查询
             )
             print(compose_output)
 

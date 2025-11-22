@@ -172,6 +172,9 @@ class GateWaySource extends RemoteFlowSource{
 
 module VulnConfig implements DataFlow::ConfigSig {
   predicate isSource(DataFlow::Node src) {
+    // ✅ 已验证的 Source 点参考查询（如果有）：
+    // [[SOURCE_VERIFICATION_QUERY]]
+    // 
     // TODO: 定义Java数据源，例如:
     // exists(RemoteFlowSource rfs | rfs.getSource() = src)exists(Method m, Parameter p |
       m.getDeclaringType().hasQualifiedName("com.example.xxx", "xxx") and
@@ -192,6 +195,9 @@ module VulnConfig implements DataFlow::ConfigSig {
     or
   }
   predicate isSink(DataFlow::Node sink) {
+    // ✅ 已验证的 Sink 点参考查询（如果有）：
+    // [[SINK_VERIFICATION_QUERY]]
+    // 
     // TODO: 定义Java sinks
     // 使用三种方法精确定位sink点（根据报告中的具体调用位置）：
     // 1. mc/cc.getEnclosingCallable().hasName("xxx") - 被调用的方法名
