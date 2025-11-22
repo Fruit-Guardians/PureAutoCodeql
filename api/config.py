@@ -67,6 +67,8 @@ class APIConfig(BaseSettings):
     # CodeQL 构建配置
     use_docker_for_cpp: bool = Field(default=False, description="C/C++ 项目是否使用 Docker 进行构建")
     docker_builder_image: str = Field(default="pure-codeql-cpp:latest", description="Docker 构建镜像名称")
+    prefer_local_cpp_build: bool = Field(default=True, description="C/C++ 项目优先尝试本地两步走构建，失败后再用Docker")
+    local_build_prepare_timeout: int = Field(default=300, description="本地准备阶段（configure/cmake）超时时间(秒)")
 
     class Config:
         env_prefix = "API_"

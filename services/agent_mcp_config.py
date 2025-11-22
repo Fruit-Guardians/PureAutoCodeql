@@ -49,6 +49,7 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "codeql_fix_inplace": ["filesystem", "ripgrep", "language-server"],
     "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
     "template_refinement": ["filesystem"],
+    "source_sink_fallback": ["ripgrep"],  # 需要 ripgrep 以支持 lsplookup 工具
     "default": [],
 }
 
