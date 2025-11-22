@@ -456,23 +456,138 @@ def _create_codeql_database(
 ) -> None:
     config = get_config()
     
-    # 检查是否启用 Docker 构建 (仅限 C/C++)
-    use_docker = language == "cpp" and config.use_docker_for_cpp
-    
-    if use_docker:
-        logger.info("Switching to Dockerized build for C/C++ project (Image: %s)...", config.docker_builder_image)
-        try:
-            _run_docker_build(
-                source_root=source_root,
-                db_path=db_path,
-                image_name=config.docker_builder_image,
-                build_plan=build_plan
-            )
+    # C/C++ 项目的智能构建策略
+    if language == "cpp":
+        # 策略1：优先本地两步走构建（如果启用）
+        if config.prefer_local_cpp_build and not config.use_docker_for_cpp:
+            logger.info("=" * 60)
+            logger.info("策略1：尝试本地两步走构建")
+            logger.info("=" * 60)
+            
+            try:
+                # 清理旧数据库
+                if db_path.exists():
+                    logger.info("清理旧数据库: %s", db_path)
+                    _safe_rmtree(db_path)
+                
+                # 执行本地构建
+                cmd = [
+                    "codeql",
+                    "database",
+                    "create",
+                    str(db_path),
+                    "--language",
+                    language,
+                    "--overwrite",
+                ]
+                
+                if not build_plan:
+                    raise ValueError("C/C++ 项目必须提供构建命令")
+                
+                if build_plan.mode == "autobuild":
+                    cmd.append("--build-mode=autobuild")
+                    cmd.extend(["--source-root", str(source_root)])
+                else:
+                    if not build_plan.command:
+                        raise ValueError("Manual build mode requires a command.")
+                    cmd.extend(["--command", build_plan.command])
+                    if build_plan.working_dir:
+                        cmd.extend(["--working-dir", str(build_plan.working_dir)])
+                
+                log_path = db_path.parent / "codeql.log"
+                _run_process(cmd, cwd=None, log_path=log_path)
+                
+                # 验证数据库
+                src_zip = db_path / "src.zip"
+                if src_zip.exists() and src_zip.stat().st_size > 1024:
+                    logger.info("=" * 60)
+                    logger.info("✅ 本地两步走构建成功！")
+                    logger.info("=" * 60)
+                    return
+                else:
+                    logger.warning("本地构建完成，但 src.zip 太小或不存在")
+                    raise RuntimeError("Local build produced invalid database")
+                    
+            except Exception as e:
+                logger.warning("=" * 60)
+                logger.warning("⚠️  本地构建失败: %s", e)
+                logger.warning("=" * 60)
+                
+                # 如果配置了 Docker，回退到 Docker autobuild
+                if config.docker_builder_image:
+                    logger.info("=" * 60)
+                    logger.info("策略2：回退到 Docker autobuild")
+                    logger.info("=" * 60)
+                    
+                    try:
+                        # 清理失败的数据库
+                        if db_path.exists():
+                            _safe_rmtree(db_path)
+                        
+                        _run_docker_build(
+                            source_root=source_root,
+                            db_path=db_path,
+                            image_name=config.docker_builder_image,
+                            build_plan=None  # Docker 内部会自动探测
+                        )
+                        logger.info("=" * 60)
+                        logger.info("✅ Docker autobuild 构建成功！")
+                        logger.info("=" * 60)
+                        return
+                    except Exception as docker_error:
+                        logger.error("Docker autobuild 也失败了: %s", docker_error)
+                        raise RuntimeError(f"Both local and Docker builds failed. Local: {e}, Docker: {docker_error}")
+                else:
+                    # 没有 Docker 配置，直接失败
+                    raise RuntimeError(f"Local build failed and no Docker fallback configured: {e}")
+        
+        # 策略2：直接使用 Docker 构建（如果强制启用）
+        elif config.use_docker_for_cpp:
+            logger.info("Switching to Dockerized build for C/C++ project (Image: %s)...", config.docker_builder_image)
+            try:
+                _run_docker_build(
+                    source_root=source_root,
+                    db_path=db_path,
+                    image_name=config.docker_builder_image,
+                    build_plan=build_plan
+                )
+                return
+            except Exception as e:
+                logger.error("Docker build failed: %s", e)
+                raise RuntimeError(f"Docker build failed: {e}")
+        
+        # 策略3：纯本地构建（无 Docker 回退）
+        else:
+            logger.info("Using local build without Docker fallback")
+            cmd = [
+                "codeql",
+                "database",
+                "create",
+                str(db_path),
+                "--language",
+                language,
+                "--overwrite",
+            ]
+            
+            if not build_plan:
+                raise ValueError("C/C++ 项目必须提供构建命令")
+            
+            if build_plan.mode == "autobuild":
+                cmd.append("--build-mode=autobuild")
+                cmd.extend(["--source-root", str(source_root)])
+            else:
+                if not build_plan.command:
+                    raise ValueError("Manual build mode requires a command.")
+                cmd.extend(["--command", build_plan.command])
+                if build_plan.working_dir:
+                    cmd.extend(["--working-dir", str(build_plan.working_dir)])
+            
+            log_path = db_path.parent / "codeql.log"
+            _run_process(cmd, cwd=None, log_path=log_path)
+            logger.info("CodeQL database created at %s", db_path)
             return
-        except Exception as e:
-            logger.error("Docker build failed: %s", e)
-            raise RuntimeError(f"Docker build failed: {e}")
-
+    
+    # 非 C/C++ 项目的常规处理
     cmd = [
         "codeql",
         "database",
@@ -483,22 +598,7 @@ def _create_codeql_database(
         "--overwrite",
     ]
 
-    if language == "cpp":
-        if not build_plan:
-            raise ValueError(
-                "C/C++ 项目必须提供构建命令。请设置 build_command/build_script，或确保存在 CMake/Makefile。"
-            )
-
-        if build_plan.mode == "autobuild":
-            cmd.append("--build-mode=autobuild")
-            cmd.extend(["--source-root", str(source_root)])
-        else:
-            if not build_plan.command:
-                raise ValueError("Manual build mode requires a command.")
-            cmd.extend(["--command", build_plan.command])
-            if build_plan.working_dir:
-                cmd.extend(["--working-dir", str(build_plan.working_dir)])
-    elif language == "java":
+    if language == "java":
         # Java 不需要编译追踪，使用 --build-mode=none
         logger.info("Java项目使用 --build-mode=none (无需编译)")
         cmd.extend(["--source-root", str(source_root)])
@@ -510,6 +610,146 @@ def _create_codeql_database(
     log_path = db_path.parent / "codeql.log"
     _run_process(cmd, cwd=None, log_path=log_path)
     logger.info("CodeQL database created at %s", db_path)
+
+
+def _try_prepare_cpp_build(source_dir: Path, log_path: Path) -> bool:
+    """
+    尝试在CodeQL之外执行预备步骤（第一步：生成Makefile）
+    
+    检测顺序：
+    1. buildconf -> ./buildconf
+    2. configure -> ./configure
+    3. autogen.sh -> ./autogen.sh
+    4. CMakeLists.txt -> cmake (在 _resolve_cpp_build_plan 中处理)
+    
+    Returns:
+        bool: 如果成功执行了预备步骤并生成了Makefile，返回True
+    """
+    config = get_config()
+    timeout = config.local_build_prepare_timeout
+    
+    # 检查 buildconf
+    buildconf = source_dir / "buildconf"
+    if buildconf.exists():
+        logger.info("检测到 buildconf，执行预备构建步骤...")
+        try:
+            _run_process_with_timeout(
+                ["bash", "./buildconf"] if os.name != "nt" else ["sh", "./buildconf"],
+                cwd=source_dir,
+                log_path=log_path,
+                timeout=timeout
+            )
+            # 检查是否生成了 configure
+            if (source_dir / "configure").exists():
+                logger.info("buildconf 成功，继续执行 configure...")
+                _run_process_with_timeout(
+                    ["bash", "./configure"] if os.name != "nt" else ["sh", "./configure"],
+                    cwd=source_dir,
+                    log_path=log_path,
+                    timeout=timeout
+                )
+                return (source_dir / "Makefile").exists()
+            return False
+        except Exception as e:
+            logger.warning("buildconf 执行失败: %s", e)
+            return False
+    
+    # 检查 configure
+    configure = source_dir / "configure"
+    if configure.exists():
+        logger.info("检测到 configure，执行预备构建步骤...")
+        try:
+            _run_process_with_timeout(
+                ["bash", "./configure"] if os.name != "nt" else ["sh", "./configure"],
+                cwd=source_dir,
+                log_path=log_path,
+                timeout=timeout
+            )
+            return (source_dir / "Makefile").exists()
+        except Exception as e:
+            logger.warning("configure 执行失败: %s", e)
+            return False
+    
+    # 检查 autogen.sh
+    autogen = source_dir / "autogen.sh"
+    if autogen.exists():
+        logger.info("检测到 autogen.sh，执行预备构建步骤...")
+        try:
+            _run_process_with_timeout(
+                ["bash", "./autogen.sh"] if os.name != "nt" else ["sh", "./autogen.sh"],
+                cwd=source_dir,
+                log_path=log_path,
+                timeout=timeout
+            )
+            # autogen.sh 可能生成 configure
+            configure = source_dir / "configure"
+            if configure.exists():
+                logger.info("autogen.sh 成功，继续执行 configure...")
+                _run_process_with_timeout(
+                    ["bash", "./configure"] if os.name != "nt" else ["sh", "./configure"],
+                    cwd=source_dir,
+                    log_path=log_path,
+                    timeout=timeout
+                )
+            return (source_dir / "Makefile").exists()
+        except Exception as e:
+            logger.warning("autogen.sh 执行失败: %s", e)
+            return False
+    
+    return False
+
+
+def _run_process_with_timeout(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path], timeout: int) -> None:
+    """运行进程并实时输出到控制台和日志文件（带超时）"""
+    display = " ".join(cmd)
+    logger.info("Running command with timeout=%ds: %s (cwd=%s)", timeout, display, cwd or os.getcwd())
+    
+    # 打开日志文件
+    log_file_handle = None
+    if log_path:
+        log_file_handle = open(log_path, "a", encoding="utf-8")
+        log_file_handle.write(f"$ {display}\n")
+        log_file_handle.flush()
+    
+    try:
+        # 使用 Popen 实时输出
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # 合并 stderr 到 stdout
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,  # 行缓冲
+        )
+        
+        # 实时读取并输出
+        if process.stdout:
+            for line in process.stdout:
+                # 打印到控制台
+                print(line, end="", flush=True)
+                # 写入日志文件
+                if log_file_handle:
+                    log_file_handle.write(line)
+                    log_file_handle.flush()
+        
+        # 等待进程完成（带超时）
+        try:
+            return_code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            raise RuntimeError(f"Command timed out after {timeout} seconds: {display}")
+        
+        if return_code != 0:
+            error_msg = f"Command failed with exit code {return_code}: {display}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+            
+    finally:
+        if log_file_handle:
+            log_file_handle.close()
 
 
 def _resolve_cpp_build_plan(
@@ -547,19 +787,42 @@ def _resolve_cpp_build_plan(
         logger.info("Using build script: %s", script_path)
         return BuildPlan(command=command, working_dir=script_path.parent, description="script")
 
+    # 新增：两步走策略 - 先尝试预备步骤
+    config = get_config()
+    if config.prefer_local_cpp_build:
+        logger.info("优先使用本地两步走构建策略...")
+        
+        # 第一步：尝试预备步骤（configure/buildconf等）
+        prepare_success = _try_prepare_cpp_build(source_dir, log_path)
+        
+        if prepare_success:
+            logger.info("✅ 预备步骤成功，Makefile已生成")
+            # 第二步：返回 make 命令让 CodeQL 包裹
+            command = _format_command(["make", "-j4"])
+            logger.info("将使用 CodeQL 包裹 make 命令进行构建")
+            return BuildPlan(command=command, working_dir=source_dir, description="configure+make")
+
+    # CMake 项目处理
     cmake_lists = source_dir / "CMakeLists.txt"
     if cmake_lists.exists():
         build_dir = target_dir / CPP_AUTOGEN_BUILD_DIR
+        # 第一步：在 CodeQL 之外运行 cmake 配置
+        logger.info("检测到 CMake 项目，执行配置步骤...")
         configure_cmd = ["cmake", "-S", str(source_dir), "-B", str(build_dir)]
-        _run_process(configure_cmd, cwd=target_dir, log_path=log_path)
-        command = _format_command(["cmake", "--build", str(build_dir)])
-        logger.info("Auto-detected CMake project, build dir: %s", build_dir)
-        return BuildPlan(command=command, working_dir=target_dir, description="cmake")
+        try:
+            _run_process_with_timeout(configure_cmd, cwd=target_dir, log_path=log_path, timeout=config.local_build_prepare_timeout)
+            # 第二步：返回 cmake --build 命令让 CodeQL 包裹
+            command = _format_command(["cmake", "--build", str(build_dir), "-j", "4"])
+            logger.info("✅ CMake 配置成功，将使用 CodeQL 包裹编译命令")
+            return BuildPlan(command=command, working_dir=target_dir, description="cmake")
+        except Exception as e:
+            logger.warning("CMake 配置失败: %s，将尝试其他构建方式", e)
 
+    # 已存在 Makefile
     make_file = source_dir / "Makefile"
     if make_file.exists():
-        command = _format_command(["make", "-j"])
-        logger.info("Auto-detected Makefile project.")
+        command = _format_command(["make", "-j4"])
+        logger.info("检测到现有 Makefile，将使用 CodeQL 包裹 make 命令")
         return BuildPlan(command=command, working_dir=source_dir, description="make")
 
     logger.info("未发现明确构建指令或标准构建文件，启用 CodeQL autobuild 模式")
