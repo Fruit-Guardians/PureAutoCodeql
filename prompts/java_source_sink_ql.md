@@ -1,47 +1,33 @@
 # Java Source-Sink Fallback CodeQL 模板
 
-> 作用：当所有常规 CodeQL 生成与修复尝试都失败后，作为 **回退方案** 使用，仅识别 source 和 sink。
+> 作用：当所有常规 CodeQL 生成与修复尝试都失败后，作为 **回退方案** 使用，仅识别 source 和 sink，并尝试利用之前失败查询中的部分路径逻辑来构建“合成路径”。
 > 
 > 输入由外层 Agent 注入（通过占位符）：
 > - [[CVE_ANALYSIS_REPORT]]：CVE 分析报告（包含漏洞描述、补丁 diff 摘要等）
 > - [[SOURCE_ANALYSIS_REPORT]]：Source 分析报告（列出候选 source 定义与位置）
 > - [[SINK_ANALYSIS_REPORT]]：Sink 分析报告（列出候选 sink 定义与位置）
-> - [[PREVIOUS_ATTEMPTS_CONTEXT]]：之前生成/执行/修复尝试的错误日志与上下文（可为空）
+> - [[PREVIOUS_ATTEMPTS_CONTEXT]]：之前生成/执行/修复尝试的错误日志与上下文（包含之前的 QL 代码片段，特别是 `isAdditionalFlowStep` 部分）
 >
 > 目标：
-> - 直接根据上述报告 **精确建模 isSource / isSink**，不要发明通用 "any input" 模式。
-> - **不实现复杂的 isAdditionalFlowStep 逻辑**，保持 `none()`，避免额外路径追踪开销。
-> - **直接使用上次一次生成的 isSource / isSink**，不要发明新的。
-> - 生成的查询使用标准 **7 参数 select**，输出格式与正常 path-problem 查询一致，但仅用于枚举 source-sink 对。
+> - 直接根据上述报告 **精确建模 isSource / isSink**。
+> - **利用之前的 isAdditionalFlowStep 逻辑**（如果有），将其放入 `ExtraSteps` 模块中，作为中间路径片段。
+> - 构建 **合成路径**：强制连接 `Source -> ExtraSteps Start` 和 `ExtraSteps End -> Sink`，以及 `Source -> Sink` (如果没有 ExtraSteps)。
+> - 生成的查询使用标准 **7 参数 select**，输出格式与正常 path-problem 查询一致。
 >
+
 ---
 
 ## 使用说明
 
 - 只需要输出 **一个** ```ql 代码块，且不能包含任何解释文字或额外 Markdown**。
-- 必须使用下面的查询骨架，并用 CVE / Source / Sink 报告中的真实符号和位置替换占位：
-  - `<HELPER_PREDICATES>`：用于定位特定文件/类/方法的辅助谓词（可为空）。
-  - `<SOURCE_DEFINITION>`：基于 [[SOURCE_ANALYSIS_REPORT]] 和 [[CVE_ANALYSIS_REPORT]]，精确定义污染源。
-  - `<SINK_DEFINITION>`：基于 [[SINK_ANALYSIS_REPORT]] 和 [[CVE_ANALYSIS_REPORT]]，精确定义汇聚点。
-- **准确性要求（生成代码前必须执行）**：
-  - **第一步：必须使用 `lsplookup` 工具验证所有 CodeQL 类型和谓词**：
-    - 例如：查询 `MethodAccess`、`Method`、`Parameter`、`Call` 等
-    - 例如：查询如何正确获取方法调用的参数、返回值等
-    - **禁止捏造不存在的类名或方法名**
-  - **第二步：基于 `lsplookup` 返回的正确 API 编写代码**
-  - 必须确保 QL 中使用的类、谓词在标准库中真实存在。
-  - **`isAdditionalFlowStep` 必须逐字复制下方骨架中的实现**：
-    ```ql
-    predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-      //即使Source不通Sink，也认为是额外流步骤，可以得到头尾节点路径图
-      isSource(src) and isSink(dst)
-    }
-    ```
-    **绝对禁止改为 `none()`**，必须保持 `isSource(src) and isSink(dst)` 的逻辑。
-- **禁止**：
-  - 不要在 `isAdditionalFlowStep` 中实现复杂的自定义流步骤逻辑（除了骨架中的 `isSource(src) and isSink(dst)`）。
-  - 不要添加 `flowPath` 以外的额外路径追踪逻辑（本模板完全不调用 `flowPath`）。
-  - 不要引入与报告无关的泛化模式（如任意 `Runtime.exec`）。
+- 必须使用下面的查询骨架，并用报告中的真实符号和位置替换占位：
+  - `<HELPER_PREDICATES>`：用于定位特定文件/类/方法的辅助谓词。
+  - `<EXTRA_STEP_LOGIC>`：**关键**。提取上一次生成的 QL 中 `isAdditionalFlowStep` 的逻辑（如果有），填入 `ExtraSteps.extraStep` 谓词中。如果上一次没有或很简略，可以为空。
+  - `<SOURCE_DEFINITION>`：基于 [[SOURCE_ANALYSIS_REPORT]]，精确定义污染源。
+  - `<SINK_DEFINITION>`：基于 [[SINK_ANALYSIS_REPORT]]，精确定义汇聚点。
+- **合成路径逻辑**：
+  - 模板中已经内置了将 Source 连接到 ExtraSteps 起点，以及将 ExtraSteps 终点连接到 Sink 的逻辑。
+  - 这样即使完整路径不通，只要 Source/Sink 定义正确，且中间有一部分 AdditionalStep 匹配，也能展示出“断续”的路径图。
 
 ---
 
@@ -51,7 +37,7 @@
 /**
  * @kind path-problem
  * @name <简明英文名称 - Source-Sink Fallback>
- * @description <详细描述> (Source-Sink Only Fallback - No Custom Path Tracing)
+ * @description <详细描述> (Source-Sink Only Fallback - Synthetic Path Tracing)
  * @id java/<project>-<identifier>-source-sink
  * @tags security, taint, source-sink-only
  * @problem.severity <error|warning|recommendation>
@@ -69,6 +55,27 @@ import semmle.code.java.dataflow.TaintTracking
 // - inTargetMethod()
 <HELPER_PREDICATES>
 
+module ExtraSteps {
+  /**
+   * 原来另外一个查询里的 isAdditionalFlowStep 逻辑，
+   * 这里改名为 extraStep，方便复用。
+   */
+  predicate extraStep(DataFlow::Node node1, DataFlow::Node node2) {
+    // 填入上一次尝试中 isAdditionalFlowStep 的逻辑
+    // 例如: Flow through specific getters/setters or partial flows
+    <EXTRA_STEP_LOGIC>
+  }
+
+  /** 方便确定“中间图”的起点 / 终点 */
+  predicate extraStart(DataFlow::Node n) {
+    exists(DataFlow::Node m | extraStep(n, m))
+  }
+
+  predicate extraEnd(DataFlow::Node n) {
+    exists(DataFlow::Node m | extraStep(m, n))
+  }
+}
+
 /** ---------- Config ---------- */
 module SourceSinkConfig implements DataFlow::ConfigSig {
   /** Sources: 定义污染源（必须用报告中的具体符号） */
@@ -83,28 +90,29 @@ module SourceSinkConfig implements DataFlow::ConfigSig {
     <SINK_DEFINITION>
   }
 
-  /** Additional flow steps: 回退查询中不建模额外流步骤 */
+  /** 关键修改：人为连一条边，把任意 source 直接连到任意 sink，或者连接到中间步骤 */
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    //即使Source不通Sink，也认为是额外流步骤，可以得到头尾节点路径图
-    isSource(src) and isSink(dst)
+    // ① 原本那张“中间图”的边
+    ExtraSteps::extraStep(src, dst)
+    or
+    // ② 把所有 source 接到“中间图”的起点节点上
+    (isSource(src) and ExtraSteps::extraStart(dst))
+    or
+    // ③ 把“中间图”的终点节点接到所有 sink
+    (ExtraSteps::extraEnd(src) and isSink(dst))
   }
 
-  /** Sanitizers: 回退查询中不使用净化器 */
-  predicate isSanitizer(DataFlow::Node node) {
-    none()
-  }
+  predicate isSanitizer(DataFlow::Node node) { none() }
 }
 
-// 回退查询仍使用标准 TaintTracking PathGraph，以保持 path-problem 兼容性。
 module SourceSinkFlow = TaintTracking::Global<SourceSinkConfig>;
 import SourceSinkFlow::PathGraph
 
-// 注意：此处 **不调用 flowPath**，而是直接枚举所有满足 isSource / isSink 的点对。
 from SourceSinkFlow::PathNode source, SourceSinkFlow::PathNode sink
 where
   SourceSinkConfig::isSource(source.getNode()) and
   SourceSinkConfig::isSink(sink.getNode())
 select sink.getNode(), source, sink,
-  "Potential source-sink pair (fallback query - path not traced)",
+  "Potential source-sink pair (fallback query - synthetic path)",
   source.getNode(), "source", sink.getNode(), "sink"
 ```
