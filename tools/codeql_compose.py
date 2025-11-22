@@ -47,6 +47,7 @@ from prompts.codeql_prompts import (
     get_codeql_generation_prompt_suffix,
     get_retry_strategy_description,
 )
+from utils.sarif_utils import sarif_to_all_paths
 
 
 class CodeQLComposeInput(BaseModel):
@@ -495,6 +496,27 @@ class CodeQLComposeTool(BaseTool):
                 sarif_path = exec_result.get("sarif_path")
                 json_path = exec_result.get("json_path")
                 is_result_empty = is_empty_result(sarif_path)
+                
+                # 如果结果不为空且没有JSON路径，尝试转换SARIF为JSON
+                if not is_result_empty and not json_path and sarif_path and Path(sarif_path).exists():
+                    try:
+                        logger.info(f"[SourceSinkFallback] 转换 SARIF 到 JSON: {sarif_path}")
+                        with open(sarif_path, 'r', encoding='utf-8') as f:
+                            sarif_data = json.load(f)
+                        
+                        # 使用现有的逻辑转换
+                        json_data = sarif_to_all_paths(sarif_data)
+                        
+                        # 生成JSON文件路径 (result_timestamp.json)
+                        json_file = Path(sarif_path).with_suffix('.json')
+                        with open(json_file, 'w', encoding='utf-8') as f:
+                            json.dump(json_data, f, ensure_ascii=False, indent=2)
+                            
+                        json_path = str(json_file)
+                        logger.info(f"[SourceSinkFallback] JSON 文件已生成: {json_path}")
+                    except Exception as e:
+                        logger.warning(f"[SourceSinkFallback] SARIF 转 JSON 失败: {e}")
+
                 paths_count = count_dataflow_paths(sarif_path, json_path)
 
                 logger.info(
