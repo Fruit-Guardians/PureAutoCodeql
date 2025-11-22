@@ -23,8 +23,23 @@
   - `<HELPER_PREDICATES>`：用于定位特定文件/类/方法的辅助谓词（可为空）。
   - `<SOURCE_DEFINITION>`：基于 [[SOURCE_ANALYSIS_REPORT]] 和 [[CVE_ANALYSIS_REPORT]]，精确定义污染源。
   - `<SINK_DEFINITION>`：基于 [[SINK_ANALYSIS_REPORT]] 和 [[CVE_ANALYSIS_REPORT]]，精确定义汇聚点。
+- **准确性要求（生成代码前必须执行）**：
+  - **第一步：必须使用 `lsplookup` 工具验证所有 CodeQL 类型和谓词**：
+    - 例如：查询 `MethodAccess`、`Method`、`Parameter`、`Call` 等
+    - 例如：查询如何正确获取方法调用的参数、返回值等
+    - **禁止捏造不存在的类名或方法名**
+  - **第二步：基于 `lsplookup` 返回的正确 API 编写代码**
+  - 必须确保 QL 中使用的类、谓词在标准库中真实存在。
+  - **`isAdditionalFlowStep` 必须逐字复制下方骨架中的实现**：
+    ```ql
+    predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
+      //即使Source不通Sink，也认为是额外流步骤，可以得到头尾节点路径图
+      isSource(src) and isSink(dst)
+    }
+    ```
+    **绝对禁止改为 `none()`**，必须保持 `isSource(src) and isSink(dst)` 的逻辑。
 - **禁止**：
-  - 不要实现复杂的 `isAdditionalFlowStep`，保持 `none()`。
+  - 不要在 `isAdditionalFlowStep` 中实现复杂的自定义流步骤逻辑（除了骨架中的 `isSource(src) and isSink(dst)`）。
   - 不要添加 `flowPath` 以外的额外路径追踪逻辑（本模板完全不调用 `flowPath`）。
   - 不要引入与报告无关的泛化模式（如任意 `Runtime.exec`）。
 

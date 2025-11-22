@@ -414,6 +414,16 @@ class CodeQLComposeTool(BaseTool):
                 False,
             )
 
+        # 确保 analyzer 已初始化工具（包括 lsplookup）
+        # 使用 source_sink_fallback agent_type 来获取正确的 MCP 配置
+        if not self.analyzer.llm or not self.analyzer.tools:
+            logger.info("[SourceSinkFallback] 初始化 analyzer 工具（包括 lsplookup）...")
+            await self.analyzer.initialize(
+                event_callback=event_callback,
+                language=target_language,
+                agent_type="source_sink_fallback",
+            )
+
         # 处理空的分析报告，保证占位符安全替换
         cve_report = (cve_analysis_report or "").strip()
         source_report = (source_analysis_report or "").strip()
