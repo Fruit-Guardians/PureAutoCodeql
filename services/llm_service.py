@@ -22,6 +22,7 @@ from langchain_openai import ChatOpenAI
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 from utils.logger import get_logger
 from services.agent_mcp_config import AgentMCPConfigService
+from utils.mcp_schema_fixer import fix_mcp_tools_schemas
 
 
 class APIErrorClassifier:
@@ -824,7 +825,7 @@ class MultiAgentAnalyzer:
         """
         logger = get_logger(__name__)
         self.llm = RetryableChatOpenAI(self.config, self.retry_tracker, event_callback)
-        
+
         # Store language for tools that need it
         self.language = language
 
@@ -846,7 +847,7 @@ class MultiAgentAnalyzer:
         # tree_sitter 和 language-server 都可能因为项目配置问题失败，但不应该阻止整个流程
         optional_servers = {"language-server", "tree_sitter"}
         failed_servers = []
-        
+
         for server_name, connection in mcp_servers.items():
             try:
                 if server_name == "tree_sitter":
@@ -878,7 +879,7 @@ class MultiAgentAnalyzer:
                         self._session_stack = None
                         self._mcp_sessions = {}
                     raise
-        
+
         if failed_servers:
             logger.info(f"ℹ️  跳过了 {len(failed_servers)} 个可选 MCP 服务器: {', '.join(failed_servers)}")
 
@@ -889,6 +890,12 @@ class MultiAgentAnalyzer:
             # Pass language context to the tool if available
             lsp_lookup_tool = LSPFunctionLookupTool(default_language=self.language or "java")
             self.tools.append(lsp_lookup_tool)
+
+        # Fix MCP tools schemas for Ubuntu compatibility
+        # 修复Ubuntu环境下MCP工具schema不完整的问题
+        # 在某些环境下，langchain-mcp-adapters返回的schema只有$schema字段，
+        # 缺少type和properties，导致DeepSeek等API拒绝
+        fix_mcp_tools_schemas(self.tools)
 
         # Wrap all tools with token limiting
         logger = get_logger(__name__)

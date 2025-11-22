@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from api.config import get_config
 from utils.case import extract_cve_id
+from utils.dependency_installer import DependencyInstaller
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +208,12 @@ def _infer_case_id(input_dir: Path) -> Optional[str]:
             candidates.append(match)
 
     if not candidates:
-        return None
+        # 如果无法提取CVE ID，则使用目录名作为Case ID
+        # 替换非法字符以确保路径安全
+        import re
+        safe_name = re.sub(r'[^a-zA-Z0-9\-_]', '_', input_dir.name)
+        logger.info("未检测到CVE ID，使用目录名作为Case ID: %s", safe_name)
+        return safe_name
 
     candidates.sort()
     return candidates[0]
@@ -461,10 +467,18 @@ def _create_codeql_database(
         # 策略1：优先本地两步走构建（如果启用）
         if config.prefer_local_cpp_build and not config.use_docker_for_cpp:
             logger.info("=" * 60)
-            logger.info("策略1：尝试本地两步走构建")
+            logger.info("策略1：尝试本地两步走构建（支持自动依赖安装）")
             logger.info("=" * 60)
             
-            try:
+            # 创建依赖安装器（使用配置中的设置）
+            dep_installer = DependencyInstaller(
+                auto_install=config.auto_install_dependencies,
+                max_retries=config.auto_install_max_retries
+            )
+            log_path = db_path.parent / "codeql.log"
+            
+            def build_func():
+                """构建函数，供依赖安装器调用"""
                 # 清理旧数据库
                 if db_path.exists():
                     logger.info("清理旧数据库: %s", db_path)
@@ -494,52 +508,101 @@ def _create_codeql_database(
                     if build_plan.working_dir:
                         cmd.extend(["--working-dir", str(build_plan.working_dir)])
                 
-                log_path = db_path.parent / "codeql.log"
                 _run_process(cmd, cwd=None, log_path=log_path)
                 
                 # 验证数据库
                 src_zip = db_path / "src.zip"
                 if src_zip.exists() and src_zip.stat().st_size > 1024:
-                    logger.info("=" * 60)
-                    logger.info("✅ 本地两步走构建成功！")
-                    logger.info("=" * 60)
-                    return
+                    return True
                 else:
                     logger.warning("本地构建完成，但 src.zip 太小或不存在")
                     raise RuntimeError("Local build produced invalid database")
+            
+            try:
+                # 使用自动依赖安装功能进行构建
+                success, error = dep_installer.try_build_with_auto_deps(
+                    build_func=build_func,
+                    log_path=log_path,
+                )
+                
+                if success:
+                    logger.info("=" * 60)
+                    logger.info("✅ 本地两步走构建成功！")
+                    if dep_installer.installed_packages:
+                        logger.info("📦 自动安装的依赖: %s", ", ".join(dep_installer.installed_packages))
+                    logger.info("=" * 60)
+                    return
+                else:
+                    raise RuntimeError(f"Local build failed after auto-installing dependencies: {error}")
                     
             except Exception as e:
                 logger.warning("=" * 60)
                 logger.warning("⚠️  本地构建失败: %s", e)
                 logger.warning("=" * 60)
                 
-                # 如果配置了 Docker，回退到 Docker autobuild
-                if config.docker_builder_image:
-                    logger.info("=" * 60)
-                    logger.info("策略2：回退到 Docker autobuild")
-                    logger.info("=" * 60)
+                # 策略2：尝试 --build-mode=none（不编译，仅分析源码）
+                logger.info("=" * 60)
+                logger.info("策略2：尝试 --build-mode=none（仅分析源码，不编译）")
+                logger.info("=" * 60)
+                
+                try:
+                    # 清理失败的数据库
+                    if db_path.exists():
+                        _safe_rmtree(db_path)
                     
-                    try:
-                        # 清理失败的数据库
-                        if db_path.exists():
-                            _safe_rmtree(db_path)
+                    # 使用 --build-mode=none 创建数据库
+                    cmd = [
+                        "codeql",
+                        "database",
+                        "create",
+                        str(db_path),
+                        "--language",
+                        language,
+                        "--overwrite",
+                        "--build-mode=none",
+                        "--source-root",
+                        str(source_root),
+                    ]
+                    
+                    none_log_path = db_path.parent / "codeql_none_mode.log"
+                    _run_process(cmd, cwd=None, log_path=none_log_path)
+                    
+                    logger.info("=" * 60)
+                    logger.info("✅ --build-mode=none 创建数据库成功！")
+                    logger.info("⚠️  注意：未编译项目，分析结果可能不完整")
+                    logger.info("=" * 60)
+                    return
+                    
+                except Exception as none_error:
+                    logger.warning("--build-mode=none 也失败了: %s", none_error)
+                    
+                    # 策略3：如果配置了 Docker，回退到 Docker autobuild
+                    if config.docker_builder_image:
+                        logger.info("=" * 60)
+                        logger.info("策略3：最后回退到 Docker autobuild")
+                        logger.info("=" * 60)
                         
-                        _run_docker_build(
-                            source_root=source_root,
-                            db_path=db_path,
-                            image_name=config.docker_builder_image,
-                            build_plan=None  # Docker 内部会自动探测
-                        )
-                        logger.info("=" * 60)
-                        logger.info("✅ Docker autobuild 构建成功！")
-                        logger.info("=" * 60)
-                        return
-                    except Exception as docker_error:
-                        logger.error("Docker autobuild 也失败了: %s", docker_error)
-                        raise RuntimeError(f"Both local and Docker builds failed. Local: {e}, Docker: {docker_error}")
-                else:
-                    # 没有 Docker 配置，直接失败
-                    raise RuntimeError(f"Local build failed and no Docker fallback configured: {e}")
+                        try:
+                            # 清理失败的数据库
+                            if db_path.exists():
+                                _safe_rmtree(db_path)
+                            
+                            _run_docker_build(
+                                source_root=source_root,
+                                db_path=db_path,
+                                image_name=config.docker_builder_image,
+                                build_plan=None  # Docker 内部会自动探测
+                            )
+                            logger.info("=" * 60)
+                            logger.info("✅ Docker autobuild 构建成功！")
+                            logger.info("=" * 60)
+                            return
+                        except Exception as docker_error:
+                            logger.error("Docker autobuild 也失败了: %s", docker_error)
+                            raise RuntimeError(f"All build strategies failed. Local: {e}, None mode: {none_error}, Docker: {docker_error}")
+                    else:
+                        # 没有 Docker 配置
+                        raise RuntimeError(f"Build failed. Local: {e}, None mode: {none_error}")
         
         # 策略2：直接使用 Docker 构建（如果强制启用）
         elif config.use_docker_for_cpp:

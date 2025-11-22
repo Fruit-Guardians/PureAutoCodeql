@@ -69,6 +69,10 @@ class APIConfig(BaseSettings):
     docker_builder_image: str = Field(default="pure-codeql-cpp:latest", description="Docker 构建镜像名称")
     prefer_local_cpp_build: bool = Field(default=True, description="C/C++ 项目优先尝试本地两步走构建，失败后再用Docker")
     local_build_prepare_timeout: int = Field(default=300, description="本地准备阶段（configure/cmake）超时时间(秒)")
+    
+    # 自动依赖安装配置
+    auto_install_dependencies: bool = Field(default=True, description="自动检测并安装缺失的C/C++构建依赖")
+    auto_install_max_retries: int = Field(default=5, description="自动安装依赖后的最大重试次数")
 
     class Config:
         env_prefix = "API_"
