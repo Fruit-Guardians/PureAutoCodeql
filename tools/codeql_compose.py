@@ -818,6 +818,7 @@ class CodeQLComposeTool(BaseTool):
         cve_analysis_report: Optional[str] = None,
         source_analysis_report: Optional[str] = None,
         sink_analysis_report: Optional[str] = None,
+        prev_ql: Optional[str] = None,
     ) -> str:
         if not self.analyzer:
             return "Error: No analyzer configured. Tool needs to be initialized with a MultiAgentAnalyzer instance."
@@ -924,9 +925,19 @@ class CodeQLComposeTool(BaseTool):
         # 专用模式：仅运行 Source-Sink 回退工作流（用于测试）
         if mode_now == "fallback_only":
             try:
+                initial_retry_history = []
+                if prev_ql:
+                    initial_retry_history.append({
+                        "retry": 0,
+                        "round": 0,
+                        "reason": "Manual injection from --prev-ql",
+                        "paths_count": 0,
+                        "codeql": prev_ql
+                    })
+
                 previous_attempts_context = self._build_previous_attempts_context(
                     requirement=requirement,
-                    retry_history=[],
+                    retry_history=initial_retry_history,
                     error_rounds=[],
                 )
                 final_result, is_success = await self._run_source_sink_fallback(
@@ -1273,6 +1284,7 @@ class CodeQLComposeTool(BaseTool):
                                 "round": round_index,
                                 "reason": "空结果",
                                 "paths_count": paths_count,
+                                "codeql": current_ql,
                             }
                         )
 
@@ -1295,6 +1307,18 @@ class CodeQLComposeTool(BaseTool):
                         logger.warning(
                             f"[重试结束] 已尝试 {retry_count} 次重试仍为空，触发 Source-Sink Fallback 回退查询"
                         )
+                        
+                        # 将最后一次失败的尝试也加入历史，以便回退 Agent 可以参考上次的 QL 代码
+                        retry_history.append(
+                            {
+                                "retry": retry_count + 1,
+                                "round": round_index,
+                                "reason": "Final empty result before fallback",
+                                "paths_count": paths_count,
+                                "codeql": current_ql,
+                            }
+                        )
+
                         previous_attempts_context = self._build_previous_attempts_context(
                             requirement=requirement,
                             retry_history=retry_history,

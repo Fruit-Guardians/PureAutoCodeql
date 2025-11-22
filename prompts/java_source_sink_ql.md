@@ -11,6 +11,7 @@
 > 目标：
 > - 直接根据上述报告 **精确建模 isSource / isSink**，不要发明通用 "any input" 模式。
 > - **不实现复杂的 isAdditionalFlowStep 逻辑**，保持 `none()`，避免额外路径追踪开销。
+> - **直接使用上次一次生成的 isSource / isSink**，不要发明新的。
 > - 生成的查询使用标准 **7 参数 select**，输出格式与正常 path-problem 查询一致，但仅用于枚举 source-sink 对。
 >
 ---
@@ -69,7 +70,8 @@ module SourceSinkConfig implements DataFlow::ConfigSig {
 
   /** Additional flow steps: 回退查询中不建模额外流步骤 */
   predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {
-    none()
+    //即使Source不通Sink，也认为是额外流步骤，可以得到头尾节点路径图
+    isSource(src) and isSink(dst)
   }
 
   /** Sanitizers: 回退查询中不使用净化器 */

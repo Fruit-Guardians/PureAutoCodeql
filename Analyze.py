@@ -133,6 +133,7 @@ async def run_md_direct_codeql(
     enable_source_sink_fallback: bool = False,
     fallback_empty_retry_max: int = 5,
     exec_mode: str = "analyze",
+    prev_ql_file: Optional[str] = None,
 ) -> None:
     """
     从MD文件直接生成CodeQL查询
@@ -148,6 +149,7 @@ async def run_md_direct_codeql(
         database_path: CodeQL数据库路径
         language: 编程语言
         enable_error_tidy: 是否启用错误整理功能
+        prev_ql_file: 上一次的QL语句文件路径（仅用于fallback_only模式测试）
     """
     # 验证MD文件存在性
     md_path = Path(md_file_path)
@@ -170,6 +172,19 @@ async def run_md_direct_codeql(
         print_user_error(f"❌ 读取MD文件失败: {e}")
         logger.error(f"读取MD文件失败: {e}", exc_info=True)
         return
+
+    prev_ql = None
+    if prev_ql_file:
+        prev_ql_path = Path(prev_ql_file)
+        if not prev_ql_path.exists():
+            print_user_error(f"❌ 指定的QL文件不存在: {prev_ql_file}")
+            return
+        try:
+            prev_ql = prev_ql_path.read_text(encoding='utf-8')
+            print_user_info(f"📄 成功读取上一次QL文件: {prev_ql_file}")
+        except Exception as e:
+            print_user_error(f"❌ 读取上一次QL文件失败: {e}")
+            return
 
     # 如果没有指定数据库路径，尝试从当前目录查找
     if not database_path:
@@ -253,6 +268,7 @@ async def run_md_direct_codeql(
             cve_analysis_report=requirement if exec_mode == "fallback_only" else None,
             source_analysis_report=None,
             sink_analysis_report=None,
+            prev_ql=prev_ql,
         )
 
         # 输出结果
@@ -819,6 +835,14 @@ def parse_arguments() -> argparse.Namespace:
         help="搭配 --import-project 使用，设置 C/C++ 构建命令工作目录（Java/Python项目不需要）"
     )
 
+    parser.add_argument(
+        "--prev-ql-file",
+        type=str,
+        metavar="FILE",
+        dest="prev_ql_file",
+        help="指定上一次生成的 CodeQL 查询文件（用于测试 Source-Sink Fallback）"
+    )
+
     parser.set_defaults(stream=True)
 
     return parser.parse_args()
@@ -982,6 +1006,7 @@ async def main() -> None:
                         args.enable_source_sink_fallback or args.source_sink_only
                     ),
                     exec_mode=exec_mode,
+                    prev_ql_file=args.prev_ql_file,
                 )
 
     except KeyboardInterrupt:
