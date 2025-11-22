@@ -30,7 +30,8 @@ async def run_case_analysis(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     enable_error_tidy: bool = False,
-    language: Optional[str] = None
+    language: Optional[str] = None,
+    enable_source_sink_fallback: bool = False,
 ) -> None:
     """
     运行完整的案例分析
@@ -58,7 +59,8 @@ async def run_case_analysis(
         chat_model=chat_model,
         api_key=api_key,
         base_url=base_url,
-        enable_error_tidy=enable_error_tidy
+        enable_error_tidy=enable_error_tidy,
+        enable_source_sink_fallback=enable_source_sink_fallback,
     )
 
     # 显示模型提供商信息
@@ -127,7 +129,10 @@ async def run_md_direct_codeql(
     base_url: Optional[str] = None,
     database_path: Optional[str] = None,
     language: str = "java",
-    enable_error_tidy: bool = False
+    enable_error_tidy: bool = False,
+    enable_source_sink_fallback: bool = False,
+    fallback_empty_retry_max: int = 5,
+    exec_mode: str = "analyze",
 ) -> None:
     """
     从MD文件直接生成CodeQL查询
@@ -222,7 +227,9 @@ async def run_md_direct_codeql(
             database_path=database_path,
             language=language,
             max_rounds=5,
-            enable_error_tidy=enable_error_tidy
+            enable_error_tidy=enable_error_tidy,
+            enable_source_sink_fallback=enable_source_sink_fallback,
+            fallback_empty_retry_max=fallback_empty_retry_max,
         )
         print_user_info(f"🛠️  成功创建CodeQL生成工具")
         print_user_info(f"   📁 数据库路径: {database_path}")
@@ -241,8 +248,11 @@ async def run_md_direct_codeql(
 
         result = await codeql_tool._arun(
             requirement=requirement,
-            exec_mode="analyze",
-            show_thinking=stream
+            exec_mode=exec_mode,
+            show_thinking=stream,
+            cve_analysis_report=requirement if exec_mode == "fallback_only" else None,
+            source_analysis_report=None,
+            sink_analysis_report=None,
         )
 
         # 输出结果
@@ -757,6 +767,16 @@ def parse_arguments() -> argparse.Namespace:
         help="启用错误整理功能（实验性）"
     )
     parser.add_argument(
+        "--enable-source-sink-fallback",
+        action="store_true",
+        help="启用 Source-Sink 回退查询（所有常规 CodeQL 重试失败后）",
+    )
+    parser.add_argument(
+        "--source-sink-only",
+        action="store_true",
+        help="仅使用 Source-Sink 回退代理生成不含中间路径的查询（测试模式，仅用于 --md-file）",
+    )
+    parser.add_argument(
         "--import-case-id",
         type=str,
         dest="import_case_id",
@@ -892,7 +912,8 @@ async def main() -> None:
                 api_key=args.api_key,
                 base_url=args.base_url,
                 enable_error_tidy=args.enable_error_tidy,
-                language=args.language
+                language=args.language,
+                enable_source_sink_fallback=args.enable_source_sink_fallback,
             )
         elif args.md_file:
             print(f"🚀 PureAutoCodeQL 启动")
@@ -928,8 +949,11 @@ async def main() -> None:
                     output_file=args.output
                 )
             else:
-                # 原有的CodeQL生成模式
-                print(f"🔍 运行模式: CodeQL查询生成")
+                # CodeQL 生成 / Source-Sink 回退测试模式
+                if args.source_sink_only:
+                    print(f"🔍 运行模式: Source-Sink 回退查询（测试模式）")
+                else:
+                    print(f"🔍 运行模式: CodeQL查询生成")
                 print(f"💻 编程语言: {args.language}")
                 if args.database_path:
                     print(f"📁 数据库路径: {args.database_path}")
@@ -941,6 +965,8 @@ async def main() -> None:
                 think_model = args.think_model or args.model
                 chat_model = args.chat_model or args.model
 
+                exec_mode = "fallback_only" if args.source_sink_only else "analyze"
+
                 await run_md_direct_codeql(
                     md_file_path=args.md_file,
                     stream=args.stream,
@@ -951,7 +977,11 @@ async def main() -> None:
                     base_url=args.base_url,
                     database_path=args.database_path,
                     language=args.language or "java",
-                    enable_error_tidy=args.enable_error_tidy
+                    enable_error_tidy=args.enable_error_tidy,
+                    enable_source_sink_fallback=(
+                        args.enable_source_sink_fallback or args.source_sink_only
+                    ),
+                    exec_mode=exec_mode,
                 )
 
     except KeyboardInterrupt:
