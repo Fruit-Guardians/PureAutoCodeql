@@ -43,6 +43,12 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
     如果给定路径本身包含 codeql-database.yml，则返回该路径。
     如果给定路径不包含，但其子目录（如 python/ 或 cpp/）包含，则返回子目录路径。
     如果指定了language，则优先查找名称匹配的子目录。
+    
+    支持的格式：
+    - {path}/codeql-database.yml (直接路径)
+    - {path}/{language}/codeql-database.yml (例如: db/cpp, db/python, db/java)
+    - {path}/db-{language}/codeql-database.yml (例如: db-java, db-cpp)
+    - {path}/db/{language}/codeql-database.yml (例如: projects/CVE-xxx/db/cpp)
     """
     if not path:
         return path
@@ -51,6 +57,7 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
     if not db_path.exists():
         return path
         
+    # 如果路径本身就是数据库根目录
     if (db_path / "codeql-database.yml").exists():
         return str(db_path)
         
@@ -68,27 +75,41 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
             target_lang = lang_map.get(lang_lower, lang_lower)
             
             # 尝试查找精确匹配的子目录或 db-{lang} 格式
+            # 优先级：直接子目录 > db-{lang} > db/{lang}
             candidates = [
-                db_path / target_lang,
-                db_path / f"db-{target_lang}",
-                db_path / f"db/{target_lang}"
+                db_path / target_lang,  # 例如: db_path/cpp
+                db_path / f"db-{target_lang}",  # 例如: db_path/db-cpp
+                db_path / "db" / target_lang,  # 例如: db_path/db/cpp
             ]
             
             for candidate in candidates:
                 if candidate.is_dir() and (candidate / "codeql-database.yml").exists():
                     return str(candidate)
+            
+            # 如果没找到，尝试在 db/{lang}/db-{lang} 这样的嵌套结构中查找
+            nested_candidate = db_path / "db" / target_lang / f"db-{target_lang}"
+            if nested_candidate.is_dir() and (nested_candidate / "codeql-database.yml").exists():
+                return str(nested_candidate)
 
         # 如果没指定语言或没找到特定语言目录，则遍历一级子目录
         for subdir in db_path.iterdir():
             if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
                 return str(subdir)
-                
-        # 尝试深入一层 (例如 db/python/codeql-database.yml)
+        
+        # 尝试深入一层 (例如 db/python/codeql-database.yml 或 db/cpp/codeql-database.yml)
         db_subdir = db_path / "db"
         if db_subdir.is_dir():
+            # 先检查 db 下的直接子目录
             for subdir in db_subdir.iterdir():
-                 if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
+                if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
                     return str(subdir)
+            
+            # 再检查 db/{lang}/db-{lang} 这样的嵌套结构
+            for lang_subdir in db_subdir.iterdir():
+                if lang_subdir.is_dir():
+                    nested_db = lang_subdir / f"db-{lang_subdir.name}"
+                    if nested_db.is_dir() and (nested_db / "codeql-database.yml").exists():
+                        return str(nested_db)
                     
     except Exception:
         pass
@@ -396,8 +417,9 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
         - results (List): 如果成功则包含解析结果，否则为空列表
         - result_file (str): 结果文件的路径
     """
-    # 在执行前验证数据库
-    is_valid, validation_error = validate_codeql_database(database_path)
+    # 在执行前验证数据库并解析真正的数据库路径
+    resolved_database_path = resolve_codeql_database_root(database_path, language)
+    is_valid, validation_error = validate_codeql_database(resolved_database_path, language)
     if not is_valid:
         return {
             'success': False,
@@ -432,6 +454,8 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*80}\n")
             f.write(f"[{log_timestamp}] 执行 codeql query run (简单查询)\n")
+            f.write(f"原始数据库路径: {database_path}\n")
+            f.write(f"解析后数据库路径: {resolved_database_path}\n")
             f.write(f"{'='*80}\n")
 
         start_time = time.time()
@@ -442,7 +466,7 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
             [
                 'codeql', 'query', 'run',
                 str(query_file),
-                '--database', database_path,
+                '--database', resolved_database_path,
                 f'--output={str(bqrs_path)}',
             ],
             stdout=subprocess.PIPE,
@@ -662,8 +686,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         - results (List): 如果成功则包含解析结果，否则为空列表
         - sarif_path (str): SARIF输出文件的路径
     """
-    # 在执行前验证数据库
-    is_valid, validation_error = validate_codeql_database(database_path)
+    # 在执行前验证数据库并解析真正的数据库路径
+    resolved_database_path = resolve_codeql_database_root(database_path, language)
+    is_valid, validation_error = validate_codeql_database(resolved_database_path, language)
     if not is_valid:
         return {
             'success': False,
@@ -672,9 +697,9 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             'sarif_path': None,
         }
 
-    # 如果指定了alert参数，执行简单查询
+    # 如果指定了alert参数，执行简单查询（使用解析后的路径）
     if alert == 'alert':
-        return run_simple_query(query_content, database_path, language, query_file)
+        return run_simple_query(query_content, resolved_database_path, language, query_file)
     
     sarif_path: Optional[Path] = None
     try:
@@ -703,6 +728,8 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*80}\n")
             f.write(f"[{log_timestamp}] 执行 codeql database analyze\n")
+            f.write(f"原始数据库路径: {database_path}\n")
+            f.write(f"解析后数据库路径: {resolved_database_path}\n")
             f.write(f"{'='*80}\n")
 
         # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出，添加 --verbose 参数
@@ -711,7 +738,7 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
             [
                 'codeql', 'database', 'analyze',
                 '--verbose',
-                database_path,
+                resolved_database_path,
                 str(query_file),
                 '--rerun',
                 '--format=sarifv2.1.0',
@@ -861,8 +888,9 @@ def run_query_and_decode_to_text(
         - output (str): 查询输出或错误消息
         - result_file (str): 结果文件路径
     """
-    # 在执行前验证数据库
-    is_valid, validation_error = validate_codeql_database(database_path)
+    # 在执行前验证数据库并解析真正的数据库路径
+    resolved_database_path = resolve_codeql_database_root(database_path, language)
+    is_valid, validation_error = validate_codeql_database(resolved_database_path, language)
     if not is_valid:
         return {
             'success': False,
@@ -885,6 +913,8 @@ def run_query_and_decode_to_text(
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*80}\n")
             f.write(f"[{log_timestamp}] 执行 codeql query run\n")
+            f.write(f"原始数据库路径: {database_path}\n")
+            f.write(f"解析后数据库路径: {resolved_database_path}\n")
             f.write(f"{'='*80}\n")
 
         # 执行 codeql query run，添加 --verbose 参数
@@ -894,7 +924,7 @@ def run_query_and_decode_to_text(
                 'codeql', 'query', 'run',
                 '--verbose',
                 str(query_file),
-                '--database', database_path,
+                '--database', resolved_database_path,
                 f'--output={str(bqrs_path)}',
             ],
             stdout=subprocess.PIPE,
