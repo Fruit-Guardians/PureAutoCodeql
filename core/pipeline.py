@@ -47,6 +47,8 @@ from agents.cve_analysis_agent import CVEAnalysisAgent
 from agents.unified_sink_path_agent import UnifiedSinkPathAgent
 from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from agents.path_analysis_agent import PathAnalysisAgent
+from agents.sink_verification_agent import SinkVerificationAgent
+from agents.source_verification_agent import SourceVerificationAgent
 from tools.codeql_compose import CodeQLComposeTool
 
 
@@ -144,6 +146,44 @@ class SinkAnalysisStep(AnalysisStep):
                 # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
                 print(result.content)
 
+            # 验证 Sink 分析结果（如果启用）
+            config = getattr(context, '_config', None)
+            if config and getattr(config, 'enable_sink_source_verification', False) and result.success:
+                logger.info("开始验证 Sink 分析结果...")
+                
+                # 初始化验证 Agent
+                verification_agent = SinkVerificationAgent(
+                    analyzer=analyzer,
+                    database_path=str(context.case_paths.db),
+                    language=context.language,
+                    workspace_path=str(context.case_paths.source_code),
+                )
+                
+                # 执行验证
+                is_valid, error_message, verification_query = await verification_agent.verify_analysis_result(
+                    analysis_result=result.content,
+                    max_retries=getattr(config, 'verification_retry_max', 3),
+                    timeout=getattr(config, 'verification_timeout', 30),
+                    show_thinking=context.show_thinking,
+                    event_callback=context.event_callback,
+                    agent_name="Sink Verification Agent",
+                    agent_type="sink_verification",
+                )
+                
+                if not is_valid:
+                    # 验证失败，记录警告并标记结果为无效
+                    logger.warning(f"❌ Sink 分析验证失败: {error_message}")
+                    logger.warning("将使用原始 Sink 分析报告继续流程")
+                    # 可以选择将结果标记为失败或添加警告信息
+                    # 这里我们保留结果但添加警告标记
+                    result.content = f"[VERIFICATION_FAILED] {error_message}\n\n{result.content}"
+                else:
+                    logger.info("✅ Sink 分析验证通过")
+                    # 保存成功的验证查询到上下文，供 CodeQL 生成使用
+                    if verification_query:
+                        context.data["sink_verification_query"] = verification_query
+                        logger.info("已保存 Sink 验证查询到上下文")
+
             return result
         finally:
             await analyzer.aclose()
@@ -189,6 +229,44 @@ class SourceAnalysisStep(AnalysisStep):
             elif not context.show_thinking:
                 # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
                 print(result.content)
+
+            # 验证 Source 分析结果（如果启用）
+            config = getattr(context, '_config', None)
+            if config and getattr(config, 'enable_sink_source_verification', False) and result.success:
+                logger.info("开始验证 Source 分析结果...")
+                
+                # 初始化验证 Agent
+                verification_agent = SourceVerificationAgent(
+                    analyzer=analyzer,
+                    database_path=str(context.case_paths.db),
+                    language=context.language,
+                    workspace_path=str(context.case_paths.source_code),
+                )
+                
+                # 执行验证
+                is_valid, error_message, verification_query = await verification_agent.verify_analysis_result(
+                    analysis_result=result.content,
+                    max_retries=getattr(config, 'verification_retry_max', 3),
+                    timeout=getattr(config, 'verification_timeout', 30),
+                    show_thinking=context.show_thinking,
+                    event_callback=context.event_callback,
+                    agent_name="Source Verification Agent",
+                    agent_type="source_verification",
+                )
+                
+                if not is_valid:
+                    # 验证失败，记录警告并标记结果为无效
+                    logger.warning(f"❌ Source 分析验证失败: {error_message}")
+                    logger.warning("将使用原始 Source 分析报告继续流程")
+                    # 可以选择将结果标记为失败或添加警告信息
+                    # 这里我们保留结果但添加警告标记
+                    result.content = f"[VERIFICATION_FAILED] {error_message}\n\n{result.content}"
+                else:
+                    logger.info("✅ Source 分析验证通过")
+                    # 保存成功的验证查询到上下文，供 CodeQL 生成使用
+                    if verification_query:
+                        context.data["source_verification_query"] = verification_query
+                        logger.info("已保存 Source 验证查询到上下文")
 
             return result
         finally:

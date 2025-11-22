@@ -34,6 +34,8 @@ AGENT_TYPES: Dict[str, str] = {
     "codeql_fix_inplace": "agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
     "codeql_breakpoint_detect": "agents.codeql_gen_agents.codeql_breakpoint_detect_agent.CodeQLBreakpointAgent",
     "template_refinement": "agents.codeql_gen_agents.template_refinement_agent.TemplateRefinementAgent",
+    "sink_verification": "agents.sink_verification_agent.SinkVerificationAgent",
+    "source_verification": "agents.source_verification_agent.SourceVerificationAgent",
 }
 
 AGENT_MCP_PROFILES: Dict[str, list[str]] = {
@@ -50,6 +52,8 @@ AGENT_MCP_PROFILES: Dict[str, list[str]] = {
     "codeql_breakpoint_detect": ["tree_sitter", "ripgrep"],
     "template_refinement": ["filesystem"],
     "source_sink_fallback": ["ripgrep"],  # 需要 ripgrep 以支持 lsplookup 工具
+    "sink_verification": ["ripgrep", "language-server"],  # 需要 ripgrep 和 LSP 以支持 LSPFunctionLookupTool
+    "source_verification": ["ripgrep", "language-server"],  # 需要 ripgrep 和 LSP 以支持 LSPFunctionLookupTool
     "default": [],
 }
 

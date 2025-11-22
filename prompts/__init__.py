@@ -23,6 +23,14 @@ from .path_analysis_prompts import (
     build_batch_path_analysis_prompt,
 )
 
+from .verification_prompt_manager import (
+    VerificationPromptManager,
+    verification_prompt_manager,
+    load_verification_template,
+    build_verification_requirement,
+    get_supported_verification_languages,
+)
+
 __all__ = [
     "build_source_analysis_prompt",
     "build_source_analysis_with_codeql_prompt",
@@ -35,4 +43,9 @@ __all__ = [
     "get_supported_languages",
     "build_path_analysis_prompt",
     "build_batch_path_analysis_prompt",
+    "VerificationPromptManager",
+    "verification_prompt_manager",
+    "load_verification_template",
+    "build_verification_requirement",
+    "get_supported_verification_languages",
 ]

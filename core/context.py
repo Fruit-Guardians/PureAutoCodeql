@@ -28,6 +28,9 @@ class AnalysisContext:
 
     # 分析结果存储
     _results: Dict[str, Any] = field(default_factory=dict)
+    
+    # 额外数据存储（用于存储验证查询等临时数据）
+    data: Dict[str, Any] = field(default_factory=dict)
 
     # 配置选项
     show_thinking: bool = False
@@ -140,3 +143,8 @@ class AnalysisConfig:
     enable_error_tidy: bool = False
     enable_source_sink_fallback: bool = False
     fallback_empty_retry_max: int = 5
+    
+    # Sink/Source 验证配置
+    enable_sink_source_verification: bool = False
+    verification_retry_max: int = 3
+    verification_timeout: int = 30

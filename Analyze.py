@@ -32,6 +32,9 @@ async def run_case_analysis(
     enable_error_tidy: bool = False,
     language: Optional[str] = None,
     enable_source_sink_fallback: bool = False,
+    enable_sink_source_verification: bool = False,
+    verification_retry_max: int = 3,
+    verification_timeout: int = 30,
 ) -> None:
     """
     运行完整的案例分析
@@ -61,6 +64,9 @@ async def run_case_analysis(
         base_url=base_url,
         enable_error_tidy=enable_error_tidy,
         enable_source_sink_fallback=enable_source_sink_fallback,
+        enable_sink_source_verification=enable_sink_source_verification,
+        verification_retry_max=verification_retry_max,
+        verification_timeout=verification_timeout,
     )
 
     # 显示模型提供商信息
@@ -793,6 +799,27 @@ def parse_arguments() -> argparse.Namespace:
         help="仅使用 Source-Sink 回退代理生成不含中间路径的查询（测试模式，仅用于 --md-file）",
     )
     parser.add_argument(
+        "--enable-sink-source-verification",
+        action="store_true",
+        help="启用 Sink/Source 验证功能（实验性）",
+    )
+    parser.add_argument(
+        "--verification-retry-max",
+        type=int,
+        metavar="N",
+        dest="verification_retry_max",
+        default=3,
+        help="Sink/Source 验证失败时的最大重试次数（默认: 3）",
+    )
+    parser.add_argument(
+        "--verification-timeout",
+        type=int,
+        metavar="SECONDS",
+        dest="verification_timeout",
+        default=30,
+        help="单个验证查询的超时时间（秒，默认: 30）",
+    )
+    parser.add_argument(
         "--import-case-id",
         type=str,
         dest="import_case_id",
@@ -938,6 +965,9 @@ async def main() -> None:
                 enable_error_tidy=args.enable_error_tidy,
                 language=args.language,
                 enable_source_sink_fallback=args.enable_source_sink_fallback,
+                enable_sink_source_verification=args.enable_sink_source_verification,
+                verification_retry_max=args.verification_retry_max,
+                verification_timeout=args.verification_timeout,
             )
         elif args.md_file:
             print(f"🚀 PureAutoCodeQL 启动")
