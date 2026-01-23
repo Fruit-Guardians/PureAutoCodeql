@@ -1,6 +1,6 @@
 """语言检测服务
 
-用于检测项目使用的编程语言。
+PureAuto - 基于源码文件检测编程语言
 """
 
 from pathlib import Path
@@ -22,15 +22,6 @@ class LanguageDetector:
 
     def detect_language(self, case_paths: CasePaths) -> str:
         """检测案例使用的编程语言。"""
-        # 检查数据库目录中的语言子目录
-        # 支持两种格式：db/<language> 和 db/db-<language>
-        if (case_paths.db / "java").exists() or (case_paths.db / "db-java").exists():
-            return "java"
-        elif (case_paths.db / "python").exists() or (case_paths.db / "db-python").exists():
-            return "python"
-        elif (case_paths.db / "cpp").exists() or (case_paths.db / "db-cpp").exists():
-            return "cpp"
-
         # 检查源码目录中的文件类型
         file_counts = self._count_source_files(case_paths.source_code)
 
@@ -45,7 +36,7 @@ class LanguageDetector:
 
         # 无法检测到语言时抛出异常
         raise ValueError(
-            "无法检测到编程语言。请确保数据库目录包含有效的语言子目录或源码目录包含可识别的源文件。"
+            "无法检测到编程语言。请确保源码目录包含可识别的源文件（.java, .py, .c, .cpp等）。"
         )
 
     def _count_source_files(self, source_dir: Path) -> Dict[str, int]:

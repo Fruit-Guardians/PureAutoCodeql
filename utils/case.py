@@ -1,4 +1,7 @@
-"""用于管理每个案例分析输入的工作区助手。"""
+"""用于管理每个案例分析输入的工作区助手。
+
+PureAuto - 纯AI漏洞分析工具
+"""
 
 from __future__ import annotations
 
@@ -20,7 +23,6 @@ class CasePaths:
 
     root: Path
     source_code: Path
-    db: Path
     inputs: Path
     intel: Path
 
@@ -68,40 +70,42 @@ class CveAssets:
 
 
 def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePaths:
-    """解析并验证案例工作区。"""
+    """解析并验证案例工作区。
+    
+    自动创建缺失的intel和inputs目录（纯AI分析模式）。
+    source_code目录如果不存在会抛出错误。
+    """
 
     root = (base_dir / case_id).resolve()
-    mapping = {
-        "source_code": root / "source_code",
-        "db": root / "db",
-        "inputs": root / "inputs",
-        "intel": root / "intel",
-    }
-
-    missing = []
-    not_dirs = []
-    for name, path in mapping.items():
-        if not path.exists():
-            missing.append(name)
-        elif not path.is_dir():
-            not_dirs.append(f"{name} (路径存在但不是目录: {path})")
     
-    if missing:
+    # 检查根目录是否存在
+    if not root.exists():
+        raise FileNotFoundError(f"Case directory not found: {root}")
+    
+    # source_code 是必需的
+    source_code = root / "source_code"
+    if not source_code.exists():
         raise FileNotFoundError(
-            f"Case '{case_id}' is missing required directories: {', '.join(missing)}"
+            f"Case '{case_id}' is missing required 'source_code' directory"
         )
     
-    if not_dirs:
-        raise ValueError(
-            f"Case '{case_id}' has invalid paths (expected directories): {', '.join(not_dirs)}"
-        )
+    # 自动创建 inputs 和 intel 目录（如果缺失）
+    inputs = root / "inputs"
+    intel = root / "intel"
+    
+    if not inputs.exists():
+        logger.info(f"📁 [自动创建] 创建 inputs 目录: {inputs}")
+        inputs.mkdir(parents=True, exist_ok=True)
+    
+    if not intel.exists():
+        logger.info(f"📁 [自动创建] 创建 intel 目录: {intel}")
+        intel.mkdir(parents=True, exist_ok=True)
 
     return CasePaths(
         root=root,
-        source_code=mapping["source_code"],
-        db=mapping["db"],
-        inputs=mapping["inputs"],
-        intel=mapping["intel"],
+        source_code=source_code,
+        inputs=inputs,
+        intel=intel,
     )
 
 
@@ -242,16 +246,4 @@ def extract_cve_id(filename: str) -> Optional[str]:
     match = CVE_FILE_PATTERN.search(filename)
     if match:
         return match.group(1).upper()
-    return None
-
-
-def default_language_db(case_paths: CasePaths, language: str) -> Optional[Path]:
-    """如果存在，返回给定语言的预期CodeQL数据库路径。"""
-
-    language = language.lower()
-    candidate = case_paths.db / language
-    if candidate.exists():
-        return candidate
-    if case_paths.db.exists() and any(case_paths.db.iterdir()):
-        return case_paths.db
     return None
