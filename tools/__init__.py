@@ -1,6 +1,3 @@
-"""LangChain tools for CodeQL operations."""
+"""PureAuto Tools - 工具层模块"""
 
-from tools.codeql_compose import CodeQLComposeTool
-
-__all__ = ['CodeQLComposeTool']
-
+__all__ = []

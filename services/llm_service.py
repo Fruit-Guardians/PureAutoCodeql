@@ -22,7 +22,6 @@ from langchain_openai import ChatOpenAI
 from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 from utils.logger import get_logger
 from services.agent_mcp_config import AgentMCPConfigService
-from utils.mcp_schema_fixer import fix_mcp_tools_schemas
 
 
 class APIErrorClassifier:
@@ -895,7 +894,7 @@ class MultiAgentAnalyzer:
         # 修复Ubuntu环境下MCP工具schema不完整的问题
         # 在某些环境下，langchain-mcp-adapters返回的schema只有$schema字段，
         # 缺少type和properties，导致DeepSeek等API拒绝
-        fix_mcp_tools_schemas(self.tools)
+        # fix_mcp_tools_schemas(self.tools)  # 已移除 - PureAuto精简版
 
         # Wrap all tools with token limiting
         logger = get_logger(__name__)

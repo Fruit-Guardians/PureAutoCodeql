@@ -1,15 +1,18 @@
 """
 Utility modules for vulnerability analysis tools.
 
-This package contains common utility functions:
-- io: File I/O operations (read_json_text, write_analysis_output)
-- java: Java-specific utilities (find_path_from_java_file)
-- codeql: CodeQL execution utilities (execute_codeql_query, parse_codeql_results)
+PureAuto - This package contains common utility functions:
+- io: File I/O operations
+- case: Case management utilities
+- intel: Intelligence collection
+- logger: Logging utilities
 """
 
-from utils.codeql import execute_codeql_query, parse_codeql_results
+from utils.io import write_analysis_output
+from utils.case import resolve_case, discover_cve_assets
 
 __all__ = [
-    'execute_codeql_query',
-    'parse_codeql_results',
+    'write_analysis_output',
+    'resolve_case',
+    'discover_cve_assets',
 ]

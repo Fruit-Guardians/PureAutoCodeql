@@ -1,25 +1,21 @@
 """
 Agent modules for multi-agent vulnerability analysis.
 
-This package contains specialized agents for different aspects of vulnerability analysis:
+PureAuto - Agents for vulnerability analysis:
 - CVEAnalysisAgent: Converts CVE JSON to Markdown reports
-- UnifiedSinkPathAgent: Unified agent for analyzing Sink points in Java, Python, and C/C++ code
-- UnifiedSourceAnalysisAgent: Unified agent for analyzing Source points in Java, Python, and C/C++ code
-- PathAnalysisAgent: Analyzes source-to-sink paths to identify isAdditionalFlowStep points
-- CodeQLGeneratorAgent: Generates CodeQL query code based on natural language requirements
-- CodeQLRunnerAgent: Executes CodeQL queries and analyzes the results
-- SinkVerificationAgent: Verifies identified Sink points using CodeQL queries
-- SourceVerificationAgent: Verifies identified Source points using CodeQL queries
-
-NOTE: The UnifiedSinkPathAgent and UnifiedSourceAnalysisAgent are the recommended agents 
-for all sink and source path analysis tasks. They support Java, Python, and C/C++ with 
-consistent logic and improved efficiency.
+- UnifiedSinkPathAgent: Unified agent for analyzing Sink points
+- UnifiedSourceAnalysisAgent: Unified agent for analyzing Source points
+- PathAnalysisAgent: Analyzes source-to-sink paths
 """
 
-from .sink_verification_agent import SinkVerificationAgent
-from .source_verification_agent import SourceVerificationAgent
+from .cve_analysis_agent import CVEAnalysisAgent
+from .unified_sink_path_agent import UnifiedSinkPathAgent
+from .unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from .path_analysis_agent import PathAnalysisAgent
 
 __all__ = [
-    "SinkVerificationAgent",
-    "SourceVerificationAgent",
+    "CVEAnalysisAgent",
+    "UnifiedSinkPathAgent",
+    "UnifiedSourceAnalysisAgent",
+    "PathAnalysisAgent",
 ]

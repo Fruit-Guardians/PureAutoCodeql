@@ -1,6 +1,8 @@
 """分析上下文模块
 
 提供分析过程中的上下文管理和结果构建。
+
+PureAuto - 纯粹的AI漏洞分析工具
 """
 
 from dataclasses import dataclass, field
@@ -8,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from services.llm_service import AgentResult
-from services.path_selection import PathSelectionResult
 from utils.case import CasePaths, CveAssets
 from utils.intel import IntelBundle
 
@@ -29,13 +30,13 @@ class AnalysisContext:
     # 分析结果存储
     _results: Dict[str, Any] = field(default_factory=dict)
     
-    # 额外数据存储（用于存储验证查询等临时数据）
+    # 额外数据存储
     data: Dict[str, Any] = field(default_factory=dict)
 
     # 配置选项
     show_thinking: bool = False
 
-    # Phase 3: 事件回调
+    # 事件回调
     event_callback: Optional[Any] = None
 
     def add_result(self, step_name: str, result: Any) -> None:
@@ -63,9 +64,6 @@ class AnalysisResult:
     sink_result: Optional[AgentResult] = None
     source_result: Optional[AgentResult] = None
     path_analysis_result: Optional[AgentResult] = None
-    codeql_result: Optional[AgentResult] = None
-    codeql_execution_result: Optional[Any] = None
-    path_selection_result: Optional[PathSelectionResult] = None
 
     # 执行信息
     success: bool = True
@@ -81,8 +79,6 @@ class AnalysisResult:
             self.cve_result and self.cve_result.success,
             self.sink_result and self.sink_result.success,
             self.source_result and self.source_result.success,
-            self.codeql_result and self.codeql_result.success,
-            self.path_selection_result is not None,
         ])
 
     def get_summary(self) -> str:
@@ -110,21 +106,17 @@ class AnalysisConfig:
 
     # LLM配置
     llm_config: Optional[Any] = None
-    llm_provider: Optional[str] = None  # 模型提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
-    think_model: Optional[str] = None  # 推理模型名称，如果指定则覆盖默认模型
-    chat_model: Optional[str] = None  # 对话模型名称，如果指定则覆盖默认模型
-    api_key: Optional[str] = None  # API Key，如果指定则覆盖环境变量
-    base_url: Optional[str] = None  # Base URL，如果指定则覆盖环境变量
-
-    # LSP配置
-    lsp_enabled: bool = True
-    lsp_pack_root: Optional[str] = None
+    llm_provider: Optional[str] = None
+    think_model: Optional[str] = None
+    chat_model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
 
     # 输出配置
-    output_file: Optional[str] = None  # 如果指定，写入该文件；否则使用时间戳目录
-    output_base_dir: str = "output"  # 输出基础目录
-    output_encoding: str = "utf-8"  # 输出文件编码
-    keep_output_dirs: int = 10  # 保留的输出目录数量（0表示不清理）
+    output_file: Optional[str] = None
+    output_base_dir: str = "output"
+    output_encoding: str = "utf-8"
+    keep_output_dirs: int = 10
 
     # 执行配置
     show_thinking: bool = False
@@ -134,17 +126,6 @@ class AnalysisConfig:
     json_path: Optional[str] = None
     diff_path: Optional[str] = None
     source_root: Optional[str] = None
-    db_path: Optional[str] = None
 
-    # Phase 3: 事件回调
+    # 事件回调
     event_callback: Optional[Any] = None
-
-    # 实验性功能
-    enable_error_tidy: bool = False
-    enable_source_sink_fallback: bool = False
-    fallback_empty_retry_max: int = 5
-    
-    # Sink/Source 验证配置
-    enable_sink_source_verification: bool = False
-    verification_retry_max: int = 3
-    verification_timeout: int = 30
