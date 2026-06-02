@@ -6,7 +6,7 @@
       package conflict with `openai-agents`.
 
 ## 2. Implementation
-- [ ] 2.1 Extract all command handlers from `Analyze.py` into testable functions.
+- [x] 2.1 Extract all command handlers from `Analyze.py` into testable functions.
 - [x] 2.2 Move local modules into the chosen namespace or otherwise remove the
       dependency/package-name collision.
 - [x] 2.3 Add console entry points and subcommands while preserving existing
@@ -16,5 +16,5 @@
 
 ## 3. Verification
 - [x] 3.1 Add CLI parser and handler tests.
-- [ ] 3.2 Add API integration tests for shared validation paths.
+- [x] 3.2 Add API integration tests for shared validation paths.
 - [x] 3.3 Run full regression suite and document migration notes.

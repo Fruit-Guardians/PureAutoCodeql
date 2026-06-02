@@ -59,7 +59,7 @@ Repository = "https://github.com/Fruit-Guardians/PureAutoCodeql"
 Issues = "https://github.com/Fruit-Guardians/PureAutoCodeql/issues"
 
 [project.scripts]
-pure-auto-codeql = "Analyze:cli"
+pure-auto-codeql = "pure_auto_codeql.cli.app:cli"
 
 [tool.setuptools]
 py-modules = ["Analyze"]

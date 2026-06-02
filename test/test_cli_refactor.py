@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from Analyze import _normalize_cli_args
+from pure_auto_codeql.cli.app import (
+    _normalize_cli_args,
+    dispatch_command,
+    parse_arguments,
+)
 from utils.project_import_policy import (
     ProjectImportPolicy,
     ProjectImportPolicyError,
@@ -35,6 +39,53 @@ def test_cli_subcommands_translate_to_legacy_flags():
 
 def test_cli_legacy_flags_are_unchanged():
     assert _normalize_cli_args(["--case", "CVE-1"]) == ["--case", "CVE-1"]
+
+
+def test_parse_arguments_accepts_legacy_and_subcommand_forms():
+    legacy_args = parse_arguments(["--case", "CVE-1", "--no-stream"])
+    subcommand_args = parse_arguments(["analyze", "CVE-1", "--no-stream"])
+
+    assert legacy_args.case == "CVE-1"
+    assert subcommand_args.case == "CVE-1"
+    assert legacy_args.stream is False
+    assert subcommand_args.stream is False
+
+
+@pytest.mark.asyncio
+async def test_dispatch_command_routes_import_handler(monkeypatch):
+    observed = {}
+
+    def fake_run_project_import(**kwargs):
+        observed.update(kwargs)
+
+    monkeypatch.setattr(
+        "pure_auto_codeql.cli.app.run_project_import",
+        fake_run_project_import,
+    )
+
+    args = parse_arguments(
+        [
+            "import",
+            "/tmp/case",
+            "--import-case-id",
+            "CASE-1",
+            "--import-overwrite",
+            "--import-skip-codeql",
+        ]
+    )
+
+    await dispatch_command(args)
+
+    assert observed == {
+        "source_path": "/tmp/case",
+        "case_id": "CASE-1",
+        "overwrite": True,
+        "language": None,
+        "skip_codeql": True,
+        "build_command": None,
+        "build_script": None,
+        "build_workdir": None,
+    }
 
 
 def test_project_import_policy_allows_configured_import_root(tmp_path):

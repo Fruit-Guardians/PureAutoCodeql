@@ -56,6 +56,58 @@ def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypat
     assert command_exc.value.status_code == 403
 
 
+def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
+    from api import config as api_config
+    import api.server as server_module
+
+    allowed = tmp_path / "imports"
+    outside = tmp_path / "outside"
+    projects = tmp_path / "projects"
+    allowed.mkdir()
+    outside.mkdir()
+    projects.mkdir()
+
+    monkeypatch.setattr(api_config.config, "auth_token", "")
+    monkeypatch.setattr(api_config.config, "import_sources_dir", allowed)
+    monkeypatch.setattr(api_config.config, "projects_dir", projects)
+    monkeypatch.setattr(api_config.config, "allow_external_import_paths", False)
+    monkeypatch.setattr(api_config.config, "allow_api_build_commands", False)
+
+    client = TestClient(server_module.app)
+
+    outside_response = client.post(
+        "/api/projects/import",
+        json={"source_path": str(outside), "skip_codeql": True},
+    )
+    assert outside_response.status_code == 403
+    assert "API_IMPORT_SOURCES_DIR" in outside_response.json()["detail"]
+
+    command_response = client.post(
+        "/api/projects/import",
+        json={
+            "source_path": str(allowed),
+            "skip_codeql": True,
+            "build_command": "make",
+        },
+    )
+    assert command_response.status_code == 403
+    assert "build commands" in command_response.json()["detail"]
+
+
+def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
+    from api import config as api_config
+    import api.server as server_module
+
+    monkeypatch.setattr(api_config.config, "auth_token", "")
+    monkeypatch.setattr(api_config.config, "projects_dir", tmp_path / "projects")
+
+    client = TestClient(server_module.app)
+    response = client.post("/api/analysis/start", json={"case_id": "../outside"})
+
+    assert response.status_code == 400
+    assert "无效的项目ID" in response.json()["detail"]
+
+
 def test_auth_token_protects_api_routes(monkeypatch):
     from api import config as api_config
     import api.server as server_module
