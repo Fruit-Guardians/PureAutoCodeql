@@ -1,7 +1,8 @@
 import argparse
 import asyncio
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 from core.orchestrator import AnalysisOrchestrator
 from core.context import AnalysisConfig
 from services.language_detector import LanguageDetector
@@ -10,7 +11,7 @@ from utils.logger import setup_logging, get_logger, print_user_success, print_us
 from config import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
 from tools.codeql_compose import CodeQLComposeTool
 from services.llm_service import MultiAgentAnalyzer
-from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from utils.project_importer import import_project, ProjectImportResult
 from utils.doctor import run_doctor
 
@@ -644,17 +645,69 @@ def _auto_import_case_directory(case_dir: Path) -> ProjectImportResult:
 
 
 
-def parse_arguments() -> argparse.Namespace:
+SUBCOMMANDS = {
+    "analyze",
+    "doctor",
+    "import",
+    "list",
+    "md",
+    "models",
+    "providers",
+    "serve",
+    "validate",
+}
+
+
+def _normalize_cli_args(argv: Sequence[str]) -> list[str]:
+    """Translate new subcommands to the existing flag-based parser."""
+    args = list(argv)
+    if not args or args[0] not in SUBCOMMANDS:
+        return args
+
+    command, rest = args[0], args[1:]
+    if command == "analyze":
+        if rest and not rest[0].startswith("-"):
+            return ["--case", rest[0], *rest[1:]]
+        return rest
+    if command == "doctor":
+        return ["--doctor", *rest]
+    if command == "import":
+        if rest and not rest[0].startswith("-"):
+            return ["--import-project", rest[0], *rest[1:]]
+        return rest
+    if command == "list":
+        return ["--list", *rest]
+    if command == "md":
+        if rest and not rest[0].startswith("-"):
+            return ["--md-file", rest[0], *rest[1:]]
+        return rest
+    if command == "models":
+        return ["--list-models", *rest]
+    if command == "providers":
+        return ["--list-providers", *rest]
+    if command == "serve":
+        return ["--serve", *rest]
+    if command == "validate":
+        if rest and not rest[0].startswith("-"):
+            return ["--validate", rest[0], *rest[1:]]
+        return rest
+    return args
+
+
+def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     """解析命令行参数"""
+    normalized_argv = _normalize_cli_args(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(
         description="PureAutoCodeQL - 基于AI的自动化漏洞分析工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
   %(prog)s --case CVE-2021-21985                    # 分析已导入的案例
+  %(prog)s analyze --case CVE-2021-21985            # 子命令形式（兼容新CLI）
   %(prog)s --case "C:\\Targets\\java\\CVE-2023-51444"  # Java项目：自动导入+建库+分析
   %(prog)s --case CVE-2021-21985 --no-stream       # 禁用AI思考过程显示
   %(prog)s --doctor                                # 检查本机运行环境
+  %(prog)s serve                                   # 启动本地 API 服务
   %(prog)s --import-project "C:\\Targets\\CVE-2023-51444" --import-language java  # 仅导入Java项目
   %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
   %(prog)s --md-file vulnerability.md --src-path /path/to/source  # 从MD文件生成source点分析报告
@@ -708,6 +761,11 @@ def parse_arguments() -> argparse.Namespace:
         "--doctor",
         action="store_true",
         help="检查本机运行环境、依赖工具和模型配置"
+    )
+    group.add_argument(
+        "--serve",
+        action="store_true",
+        help="启动 FastAPI 服务"
     )
 
     # 可选参数
@@ -876,10 +934,28 @@ def parse_arguments() -> argparse.Namespace:
         dest="prev_ql_file",
         help="指定上一次生成的 CodeQL 查询文件（用于测试 Source-Sink Fallback）"
     )
+    parser.add_argument(
+        "--host",
+        type=str,
+        dest="serve_host",
+        help="搭配 serve/--serve 使用，覆盖 API_HOST"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        dest="serve_port",
+        help="搭配 serve/--serve 使用，覆盖 API_PORT"
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        dest="serve_reload",
+        help="搭配 serve/--serve 使用，启用 uvicorn reload"
+    )
 
     parser.set_defaults(stream=True)
 
-    return parser.parse_args()
+    return parser.parse_args(normalized_argv)
 
 
 def list_providers() -> None:
@@ -932,6 +1008,16 @@ async def main() -> None:
             )
         elif args.doctor:
             raise SystemExit(run_doctor(Path.cwd()))
+        elif args.serve:
+            import uvicorn
+            from api.config import get_config
+
+            api_config = get_config()
+            host = args.serve_host or api_config.host
+            port = args.serve_port or api_config.port
+            reload = args.serve_reload or api_config.reload
+            print_user_info(f"🚀 启动 API 服务: http://{host}:{port}")
+            uvicorn.run("api.server:app", host=host, port=port, reload=reload)
         elif args.case:
             effective_case_id = args.case
             auto_case_dir = _detect_case_directory_input(args.case)
@@ -1056,8 +1142,17 @@ async def main() -> None:
         logger.exception(f"执行出错: {e}")
 
 
-def cli() -> None:
-    asyncio.run(main())
+def cli(argv: Optional[Sequence[str]] = None) -> None:
+    async def _run() -> None:
+        original_argv = sys.argv
+        if argv is not None:
+            sys.argv = [original_argv[0], *argv]
+        try:
+            await main()
+        finally:
+            sys.argv = original_argv
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -49,10 +49,38 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
 ]
 
+[build-system]
+requires = ["setuptools>=80.0"]
+build-backend = "setuptools.build_meta"
+
 [project.urls]
 Homepage = "https://github.com/Fruit-Guardians/PureAutoCodeql"
 Repository = "https://github.com/Fruit-Guardians/PureAutoCodeql"
 Issues = "https://github.com/Fruit-Guardians/PureAutoCodeql/issues"
+
+[project.scripts]
+pure-auto-codeql = "Analyze:cli"
+
+[tool.setuptools]
+py-modules = ["Analyze"]
+
+[tool.setuptools.packages.find]
+include = [
+    "Information*",
+    "api*",
+    "config*",
+    "core*",
+    "prompts*",
+    "pure_auto_codeql*",
+    "services*",
+    "tools*",
+    "utils*",
+]
+exclude = [
+    "projects*",
+    "resources*",
+    "test*",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

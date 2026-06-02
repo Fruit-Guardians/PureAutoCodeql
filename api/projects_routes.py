@@ -24,6 +24,11 @@ from utils.case import (
     resolve_case,
 )
 from utils.project_importer import import_project
+from utils.project_import_policy import (
+    ProjectImportPolicy,
+    ProjectImportPolicyError,
+    validate_project_import_policy,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -31,23 +36,16 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 def _ensure_api_import_allowed(payload: ProjectImportRequest) -> None:
     config = get_config()
-
-    source_path = Path(payload.source_path).expanduser().resolve()
-    allowed_root = config.import_sources_dir.expanduser().resolve()
-    if not config.allow_external_import_paths and not source_path.is_relative_to(allowed_root):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Import source_path must be under API_IMPORT_SOURCES_DIR "
-                "unless API_ALLOW_EXTERNAL_IMPORT_PATHS=true"
-            ),
-        )
-
-    if (payload.build_command or payload.build_script) and not config.allow_api_build_commands:
-        raise HTTPException(
-            status_code=403,
-            detail="API-provided build commands are disabled. Set API_ALLOW_API_BUILD_COMMANDS=true to enable.",
-        )
+    validate_project_import_policy(
+        source_path=payload.source_path,
+        policy=ProjectImportPolicy(
+            import_sources_dir=config.import_sources_dir,
+            allow_external_import_paths=config.allow_external_import_paths,
+            allow_build_commands=config.allow_api_build_commands,
+        ),
+        build_command=payload.build_command,
+        build_script=payload.build_script,
+    )
 
 
 def _detect_languages(case_paths: CasePaths) -> List[str]:
@@ -258,6 +256,8 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectImportPolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pylint: disable=broad-except

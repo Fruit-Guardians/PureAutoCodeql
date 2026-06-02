@@ -140,7 +140,7 @@ class MCPLanguageConfigService:
     def _escape_path(self, path: str) -> str:
         """
         转义路径中的反斜杠,以便 shlex 正确处理
-        在 Windows 上 C:\Path 变为 C:\\Path, shlex 解析后变回 C:\Path
+        在 Windows 上 C:\\Path 变为 C:\\\\Path, shlex 解析后变回 C:\\Path
         在 Linux 上保持不变 (除非路径本身包含反斜杠)
         """
         if not path:

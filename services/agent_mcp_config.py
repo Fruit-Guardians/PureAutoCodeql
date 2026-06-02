@@ -7,16 +7,16 @@ from utils.logger import get_logger
 from services.mcp_language_config import MCPLanguageConfigService
 
 if TYPE_CHECKING:
-    from agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
-    from agents.unified_sink_path_agent import UnifiedSinkPathAgent as _UnifiedSinkPathAgent
-    from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent as _UnifiedSourceAnalysisAgent
-    from agents.path_analysis_agent import PathAnalysisAgent as _PathAnalysisAgent
-    from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent as _CodeQLGenAgent
-    from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent as _CodeQLErrorAgent
-    from agents.codeql_gen_agents.codeql_fix_inplace_agent import (
+    from pure_auto_codeql.agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
+    from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent as _UnifiedSinkPathAgent
+    from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent as _UnifiedSourceAnalysisAgent
+    from pure_auto_codeql.agents.path_analysis_agent import PathAnalysisAgent as _PathAnalysisAgent
+    from pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent as _CodeQLGenAgent
+    from pure_auto_codeql.agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent as _CodeQLErrorAgent
+    from pure_auto_codeql.agents.codeql_gen_agents.codeql_fix_inplace_agent import (
         CodeQLFixInplaceAgent as _CodeQLFixInplaceAgent,
     )
-    from agents.codeql_gen_agents.codeql_breakpoint_detect_agent import (
+    from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent import (
         CodeQLBreakpointAgent as _CodeQLBreakpointAgent,
     )
 
@@ -25,17 +25,17 @@ logger = get_logger(__name__)
 
 
 AGENT_TYPES: Dict[str, str] = {
-    "cve_analysis": "agents.cve_analysis_agent.CVEAnalysisAgent",
-    "unified_sink_path": "agents.unified_sink_path_agent.UnifiedSinkPathAgent",
-    "unified_source_analysis": "agents.unified_source_analysis_agent.UnifiedSourceAnalysisAgent",
-    "path_analysis": "agents.path_analysis_agent.PathAnalysisAgent",
-    "codeql_gen": "agents.codeql_gen_agents.codeql_gen_agent.CodeQLGenAgent",
-    "codeql_error": "agents.codeql_gen_agents.codeql_error_agent.CodeQLErrorAgent",
-    "codeql_fix_inplace": "agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
-    "codeql_breakpoint_detect": "agents.codeql_gen_agents.codeql_breakpoint_detect_agent.CodeQLBreakpointAgent",
-    "template_refinement": "agents.codeql_gen_agents.template_refinement_agent.TemplateRefinementAgent",
-    "sink_verification": "agents.sink_verification_agent.SinkVerificationAgent",
-    "source_verification": "agents.source_verification_agent.SourceVerificationAgent",
+    "cve_analysis": "pure_auto_codeql.agents.cve_analysis_agent.CVEAnalysisAgent",
+    "unified_sink_path": "pure_auto_codeql.agents.unified_sink_path_agent.UnifiedSinkPathAgent",
+    "unified_source_analysis": "pure_auto_codeql.agents.unified_source_analysis_agent.UnifiedSourceAnalysisAgent",
+    "path_analysis": "pure_auto_codeql.agents.path_analysis_agent.PathAnalysisAgent",
+    "codeql_gen": "pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent.CodeQLGenAgent",
+    "codeql_error": "pure_auto_codeql.agents.codeql_gen_agents.codeql_error_agent.CodeQLErrorAgent",
+    "codeql_fix_inplace": "pure_auto_codeql.agents.codeql_gen_agents.codeql_fix_inplace_agent.CodeQLFixInplaceAgent",
+    "codeql_breakpoint_detect": "pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent.CodeQLBreakpointAgent",
+    "template_refinement": "pure_auto_codeql.agents.codeql_gen_agents.template_refinement_agent.TemplateRefinementAgent",
+    "sink_verification": "pure_auto_codeql.agents.sink_verification_agent.SinkVerificationAgent",
+    "source_verification": "pure_auto_codeql.agents.source_verification_agent.SourceVerificationAgent",
 }
 
 AGENT_MCP_PROFILES: Dict[str, list[str]] = {

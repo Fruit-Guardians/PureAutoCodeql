@@ -100,6 +100,12 @@ uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 ```
 
+新的子命令形式也可用，并会保持与旧参数形式等价：
+
+```bash
+uv run pure-auto-codeql analyze --case CVE-2021-21985 --provider deepseek
+```
+
 默认会展示 AI 思考过程；如需安静运行：
 
 ```bash
@@ -165,6 +171,7 @@ uv run python Analyze.py --md-file vulnerability.md \
 
 ```bash
 uv run python Analyze.py --doctor
+uv run pure-auto-codeql doctor
 uv run python Analyze.py --list
 uv run python Analyze.py --validate CVE-2021-21985
 uv run python Analyze.py --list-providers
@@ -211,6 +218,12 @@ output/
 uv run uvicorn api.server:app --host 127.0.0.1 --port 8000
 ```
 
+或使用 CLI 子命令：
+
+```bash
+uv run pure-auto-codeql serve --host 127.0.0.1 --port 8000
+```
+
 也可以使用脚本：
 
 ```bash
@@ -247,13 +260,13 @@ export API_ALLOW_API_BUILD_COMMANDS=true
 ```text
 PureAutoCodeQL/
 ├── Analyze.py                 # CLI 主入口
-├── agents/                    # CVE、Source、Sink、CodeQL 生成等 Agent
 ├── api/                       # FastAPI 服务端
 ├── config/                    # LLM Provider 与运行配置
 ├── core/                      # 分析上下文、流水线和编排器
 ├── docs/                      # 使用指南与功能说明
 ├── Information/               # GHSA / NVD 情报获取
 ├── prompts/                   # 各语言与各阶段提示词
+├── pure_auto_codeql/agents/    # CVE、Source、Sink、CodeQL 生成等 Agent
 ├── resources/                 # CodeQL 模板、知识库与扩展库
 ├── services/                  # LLM、LSP、路径精选等服务
 ├── tools/                     # CodeQL 组合、LSP 查询、MCP 工具
@@ -280,7 +293,7 @@ PureAutoCodeQL/
 ```bash
 uv run pytest -q
 uv lock --check
-uv run python -m compileall -q Analyze.py api core services utils agents tools
+uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
 ```
 
 ## 安全说明

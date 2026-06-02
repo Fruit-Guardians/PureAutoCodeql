@@ -13,6 +13,7 @@ from core.context import AnalysisResult as CoreAnalysisResult
 from services.llm_service import AgentResult
 from utils.case import resolve_case
 from utils.project_importer import import_project
+from utils.project_import_policy import ProjectImportPolicyError
 
 
 def test_resolve_case_rejects_path_escape(tmp_path):
@@ -40,11 +41,11 @@ def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypat
 
     _ensure_api_import_allowed(ProjectImportRequest(source_path=str(allowed), skip_codeql=True))
 
-    with pytest.raises(Exception) as outside_exc:
+    with pytest.raises(ProjectImportPolicyError) as outside_exc:
         _ensure_api_import_allowed(ProjectImportRequest(source_path=str(outside), skip_codeql=True))
     assert outside_exc.value.status_code == 403
 
-    with pytest.raises(Exception) as command_exc:
+    with pytest.raises(ProjectImportPolicyError) as command_exc:
         _ensure_api_import_allowed(
             ProjectImportRequest(
                 source_path=str(allowed),

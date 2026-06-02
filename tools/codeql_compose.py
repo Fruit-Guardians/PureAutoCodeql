@@ -20,12 +20,12 @@ from services.knowledge_base.base import LanguageKnowledgeBase
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
-from agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
-from agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
-from agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
-from agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
-from agents.codeql_gen_agents.source_sink_fallback_agent import SourceSinkFallbackAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
+from pure_auto_codeql.agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
+from pure_auto_codeql.agents.codeql_gen_agents.source_sink_fallback_agent import SourceSinkFallbackAgent
 from services import (
     KnowledgeBaseFactory,
     build_placeholder_map,

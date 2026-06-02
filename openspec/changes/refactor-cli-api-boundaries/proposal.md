@@ -18,7 +18,8 @@ described by the same contracts.
 
 ## Impact
 - Affected specs: cli, api, analysis-orchestration
-- Affected code: `Analyze.py`, `agents/*`, `api/*`, `core/*`,
-  `utils/project_importer.py`, packaging metadata, documentation and tests
+- Affected code: `Analyze.py`, `pure_auto_codeql/agents/*`, `api/*`,
+  `core/*`, `utils/project_importer.py`, packaging metadata, documentation
+  and tests
 - Risk: Medium. The change touches public command behavior and API task
   contracts, so it should be implemented behind tests and migration notes.

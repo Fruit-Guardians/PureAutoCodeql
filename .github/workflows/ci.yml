@@ -38,7 +38,7 @@ jobs:
         run: uv run pytest -q
 
       - name: Compile Python modules
-        run: uv run python -m compileall -q Analyze.py api core services utils agents tools
+        run: uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
 
       - name: Check diff whitespace
         run: git diff --check

@@ -43,12 +43,12 @@ def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
 logger = logging.getLogger(__name__)
 
 # 导入现有的Agent和工具
-from agents.cve_analysis_agent import CVEAnalysisAgent
-from agents.unified_sink_path_agent import UnifiedSinkPathAgent
-from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
-from agents.path_analysis_agent import PathAnalysisAgent
-from agents.sink_verification_agent import SinkVerificationAgent
-from agents.source_verification_agent import SourceVerificationAgent
+from pure_auto_codeql.agents.cve_analysis_agent import CVEAnalysisAgent
+from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent
+from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from pure_auto_codeql.agents.path_analysis_agent import PathAnalysisAgent
+from pure_auto_codeql.agents.sink_verification_agent import SinkVerificationAgent
+from pure_auto_codeql.agents.source_verification_agent import SourceVerificationAgent
 from tools.codeql_compose import CodeQLComposeTool
 
 

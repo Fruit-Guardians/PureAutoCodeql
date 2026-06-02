@@ -21,6 +21,7 @@ Run the environment doctor on a new machine:
 
 ```bash
 uv run python Analyze.py --doctor
+uv run pure-auto-codeql doctor
 ```
 
 ## Before Opening a Pull Request
@@ -30,7 +31,7 @@ Please run the focused checks that match your change. For broad changes, run:
 ```bash
 uv run pytest -q
 uv lock --check
-uv run python -m compileall -q Analyze.py api core services utils agents tools
+uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
 ```
 
 For documentation-only changes, at minimum check Markdown links and run:
