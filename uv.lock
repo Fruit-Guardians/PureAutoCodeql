@@ -932,7 +932,7 @@ requires-dist = [
     { name = "langchain-mcp-adapters", specifier = ">=0.1.11" },
     { name = "langchain-openai", specifier = ">=1.0.0" },
     { name = "langgraph", specifier = ">=0.2.30" },
-    { name = "langserve", extras = ["all"], specifier = ">=0.3.0" },
+    { name = "langserve", extras = ["all"], specifier = ">=0.3.3" },
     { name = "mcp-server-tree-sitter", specifier = ">=0.5.1" },
     { name = "numpy", specifier = ">=2.3.4" },
     { name = "openai-agents", specifier = ">=0.4.0" },
