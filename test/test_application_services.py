@@ -88,10 +88,15 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     import pure_auto_codeql.configuration as canonical_config
     import utils.project_import_policy as legacy_policy
     from Analyze import cli as legacy_cli
+    from config import get_llm_config as legacy_get_llm_config
     from pure_auto_codeql.application import ProjectImportPolicyError
     from pure_auto_codeql.cli.app import cli as canonical_cli
 
+    config_path = Path(config.__file__)
+    assert config_path.name == "__init__.py"
+    assert config_path.parent.name == "config"
     assert canonical_cli is legacy_cli
     assert canonical_config.LLMRole is config.LLMRole
+    assert canonical_config.get_llm_config is legacy_get_llm_config
     assert callable(canonical_config.get_llm_config)
     assert legacy_policy.ProjectImportPolicyError is ProjectImportPolicyError

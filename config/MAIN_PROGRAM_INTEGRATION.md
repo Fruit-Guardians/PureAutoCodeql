@@ -5,7 +5,8 @@
 
 ## 验证范围
 
-本报告验证了项目主程序及关键模块是否正确使用了重构后的 `config/` 模块。
+本报告验证了项目主程序及关键模块是否正确使用了 canonical 配置入口
+`pure_auto_codeql.configuration`，并确认旧版 `config/` 模块兼容层仍可用。
 
 ## 验证结果
 
@@ -13,7 +14,7 @@
 
 **导入内容:**
 ```python
-from config import (
+from pure_auto_codeql.configuration import (
     list_available_providers, 
     get_llm_config_by_provider, 
     LLMRole, 
@@ -23,7 +24,8 @@ from config import (
 ```
 
 **状态:** ✅ 完全兼容
-- 所有导入的函数和类都已在新的 `config/__init__.py` 中正确导出
+- 所有导入的函数和类都已通过 `pure_auto_codeql.configuration` 统一导出
+- 旧版 `from config import ...` 入口仍可用于历史脚本
 - `list_siliconflow_models()` 在命令行参数 `--list-models` 中被调用
 - `get_llm_config()` 用于获取 think 和 chat 模型配置
 
@@ -31,7 +33,7 @@ from config import (
 
 **导入内容:**
 ```python
-from config import (
+from pure_auto_codeql.configuration import (
     get_chat_config, 
     LLMConfig, 
     get_resilient_llm_config, 
@@ -47,7 +49,7 @@ from config import (
 
 **导入内容:**
 ```python
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 ```
 
 **状态:** ✅ 完全兼容
@@ -57,7 +59,7 @@ from config import get_chat_config
 
 **导入内容:**
 ```python
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 ```
 
 **状态:** ✅ 完全兼容
@@ -148,10 +150,10 @@ config/
 
 ## 结论
 
-**✅ 主程序完全正确地使用了新的 config 模块**
+**✅ 主程序完全正确地使用了 canonical 配置入口**
 
 所有关键功能均已验证：
-1. 主程序 `Analyze.py` 可以正常导入和调用所有需要的config函数
+1. 主程序 `Analyze.py` 可以正常导入和调用所有需要的配置函数
 2. 服务层 `services/llm_service.py` 正确使用配置系统
 3. 示例和测试代码都能正常工作
 4. 向后兼容性完全保持
@@ -165,7 +167,6 @@ config/
 3. 运行主程序：`python Analyze.py --case CVE-XXXX-XXXX`
 
 ### 对于开发者
-1. 导入核心函数：`from config import get_llm_config, LLMRole`
+1. 导入核心函数：`from pure_auto_codeql.configuration import get_llm_config, LLMRole`
 2. 使用配置：`config = get_llm_config(LLMRole.CHAT)`
-3. 所有旧版API仍然可用，无需修改现有代码
-
+3. 所有旧版 API 仍然可用，历史代码无需立即修改

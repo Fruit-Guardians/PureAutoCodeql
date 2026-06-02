@@ -133,7 +133,7 @@ python config.py register --file my_providers.yaml
 ### 3. 使用自定义服务商
 
 ```python
-from config import get_llm_config, LLMRole
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
 
 config = get_llm_config(LLMRole.THINK, provider_name="my_openai")
 ```
@@ -175,7 +175,7 @@ python config.py setup
 ### 基本使用
 
 ```python
-from config import get_llm_config, LLMRole
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
 
 # 使用默认服务商
 think_config = get_llm_config(LLMRole.THINK)
@@ -204,7 +204,11 @@ config = get_llm_config(
 ### 使用注册中心
 
 ```python
-from config import ProviderRegistry, display_providers_status
+from pure_auto_codeql.configuration import (
+    ProviderConfig,
+    ProviderRegistry,
+    display_providers_status,
+)
 
 # 查看所有服务商
 display_providers_status()
@@ -221,8 +225,6 @@ is_available = provider.is_configured() and provider.is_reachable()
 available = ProviderRegistry.list_available()
 
 # 注册自定义服务商
-from config import ProviderConfig
-
 ProviderRegistry.register(ProviderConfig(
     name="my_llm",
     display_name="My Custom LLM",
@@ -248,7 +250,7 @@ config = get_llm_config(
 ### 信息展示
 
 ```python
-from config import (
+from pure_auto_codeql.configuration import (
     display_providers_status,
     display_provider_detail,
     display_all_providers,
@@ -342,7 +344,11 @@ custom_providers:
 ### 5. 错误处理
 
 ```python
-from config import get_llm_config, LLMRole, ProviderRegistry
+from pure_auto_codeql.configuration import (
+    LLMRole,
+    ProviderRegistry,
+    get_llm_config,
+)
 
 try:
     config = get_llm_config(LLMRole.THINK, provider_name="unknown")
@@ -400,4 +406,3 @@ A: 创建自定义服务商配置，指向本地 API 端点（如 `http://localh
 - 基本的服务商支持（硬编码）
 - 环境变量配置
 - 简单的模型选择
-

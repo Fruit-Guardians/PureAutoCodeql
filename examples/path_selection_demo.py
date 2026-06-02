@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from services.path_selection import PathSelectionService
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 
 
 SEPARATOR = "=" * 60

@@ -21,10 +21,10 @@ def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
     """从上下文中获取LLM配置，支持配置中的模型、API Key和Base URL"""
     config = getattr(context, '_config', None)
     if not config:
-        from config import get_resilient_llm_config, LLMRole
+        from pure_auto_codeql.configuration import get_resilient_llm_config, LLMRole
         return get_resilient_llm_config(role)
 
-    from config import get_llm_config, LLMRole
+    from pure_auto_codeql.configuration import get_llm_config, LLMRole
     # 从配置中获取参数
     provider = config.llm_provider
     model_name = config.think_model if role == LLMRole.THINK else config.chat_model
@@ -73,7 +73,7 @@ class CVEAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行CVE分析。"""
-        from config import LLMRole
+        from pure_auto_codeql.configuration import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize(
@@ -116,7 +116,7 @@ class SinkAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Sink路径分析。"""
-        from config import LLMRole
+        from pure_auto_codeql.configuration import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize(
@@ -197,7 +197,7 @@ class SourceAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Source分析。"""
-        from config import LLMRole
+        from pure_auto_codeql.configuration import LLMRole
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
         await analyzer.initialize(
@@ -281,7 +281,7 @@ class PathAnalysisStep(AnalysisStep):
 
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Path分析。"""
-        from config import LLMRole
+        from pure_auto_codeql.configuration import LLMRole
         
         # 检查是否有 Source 分析结果
         if not context.has_result("source_analysis"):
@@ -405,7 +405,7 @@ class CodeQLGenerationStep(AnalysisStep):
                     logger.warning("Path 分析结果 JSON 解析失败")
 
         # 使用推理模型
-        from config import LLMRole
+        from pure_auto_codeql.configuration import LLMRole
         think_config = _get_llm_config_from_context(context, LLMRole.THINK)
         codeql_analyzer = MultiAgentAnalyzer(think_config)
         await codeql_analyzer.initialize(
@@ -758,7 +758,7 @@ class AnalysisPipeline:
             return None
 
         try:
-            from config import LLMRole
+            from pure_auto_codeql.configuration import LLMRole
 
             llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
             service = PathSelectionService(llm_config, language=context.language)

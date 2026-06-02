@@ -19,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_mcp_adapters.sessions import create_session
 from langchain_openai import ChatOpenAI
 
-from config import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
+from pure_auto_codeql.configuration import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
 from utils.logger import get_logger
 from services.agent_mcp_config import AgentMCPConfigService
 from utils.mcp_schema_fixer import fix_mcp_tools_schemas

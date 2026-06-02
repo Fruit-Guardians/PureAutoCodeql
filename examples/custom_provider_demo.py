@@ -14,7 +14,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config import (
+from pure_auto_codeql.configuration import (
     ProviderRegistry,
     get_llm_config,
     LLMRole,

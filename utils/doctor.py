@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from config import list_available_providers
+from pure_auto_codeql.configuration import list_available_providers
 
 
 @dataclass

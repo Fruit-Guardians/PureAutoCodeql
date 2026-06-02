@@ -40,6 +40,13 @@ chat_config = get_chat_config()
 #### 新增的 API
 
 ```python
+from pure_auto_codeql.configuration import (
+    LLMRole,
+    ProviderRegistry,
+    display_providers_status,
+    get_llm_config,
+)
+
 # 🆕 新增：指定服务商
 config = get_llm_config(LLMRole.THINK, provider_name="siliconflow")
 
@@ -47,11 +54,9 @@ config = get_llm_config(LLMRole.THINK, provider_name="siliconflow")
 config = get_llm_config(LLMRole.THINK, auto_fallback=True)
 
 # 🆕 新增：注册中心
-from config import ProviderRegistry
 providers = ProviderRegistry.list_all()
 
 # 🆕 新增：美观展示
-from config import display_providers_status
 display_providers_status()
 ```
 
@@ -85,7 +90,7 @@ think_config = get_llm_config(LLMRole.THINK)
 
 ```python
 # 使用新的展示功能
-from config import display_providers_status
+from pure_auto_codeql.configuration import display_providers_status
 
 # 查看当前配置状态
 display_providers_status()
@@ -115,7 +120,7 @@ chat_config = get_llm_config(LLMRole.CHAT)
 
 **新代码（推荐）：**
 ```python
-from config import get_llm_config, LLMRole
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
 
 # 基本使用保持不变
 think_config = get_llm_config(LLMRole.THINK)
@@ -188,6 +193,13 @@ config = LLMConfig(
 
 **新代码（更灵活）：**
 ```python
+from pure_auto_codeql.configuration import (
+    LLMRole,
+    ProviderConfig,
+    ProviderRegistry,
+    get_llm_config,
+)
+
 # 方式 1: 使用 get_llm_config（推荐）
 config = get_llm_config(
     LLMRole.THINK,
@@ -197,8 +209,6 @@ config = get_llm_config(
 )
 
 # 方式 2: 注册自定义服务商（更好的复用）
-from config import ProviderRegistry, ProviderConfig
-
 ProviderRegistry.register(ProviderConfig(
     name="my_custom",
     display_name="My Custom Provider",
@@ -261,7 +271,10 @@ providers = list_available_providers()  # 返回 dict 列表
 
 ```python
 # 新方式：使用 ProviderRegistry
-from config import ProviderRegistry
+from pure_auto_codeql.configuration import (
+    ProviderRegistry,
+    display_providers_status,
+)
 
 # 获取所有服务商
 providers = ProviderRegistry.list_all()  # 返回 ProviderConfig 对象列表
@@ -270,7 +283,6 @@ providers = ProviderRegistry.list_all()  # 返回 ProviderConfig 对象列表
 available = ProviderRegistry.list_available()
 
 # 美观展示
-from config import display_providers_status
 display_providers_status()
 ```
 
@@ -299,7 +311,11 @@ python config.py test siliconflow
 
 ```python
 # test_config_migration.py
-from config import get_llm_config, LLMRole, display_providers_status
+from pure_auto_codeql.configuration import (
+    LLMRole,
+    display_providers_status,
+    get_llm_config,
+)
 
 def test_basic():
     """测试基本用法"""
@@ -378,4 +394,3 @@ A: 如果您只使用了 `get_llm_config()`、`get_think_config()`、`get_chat_c
 - ✅ 逐步迁移，无压力
 
 欢迎使用新的配置系统！🎉
-

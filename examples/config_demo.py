@@ -5,7 +5,7 @@ LLM 配置系统演示脚本
 展示新配置系统的各种功能和用法。
 """
 
-from config import (
+from pure_auto_codeql.configuration import (
     get_llm_config,
     LLMRole,
     ProviderRegistry,

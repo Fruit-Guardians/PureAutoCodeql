@@ -338,7 +338,7 @@ class LanguageAdapter(ABC):
 
 ```python
 from services.path_selection import PathSelectionService
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 
 # 初始化
 llm_config = get_chat_config()
@@ -472,4 +472,3 @@ class CustomVerifier(PathVerifier):
 6. ✅ 鲁棒性（降级方案、聚类优化）
 
 **这就是最终的智能解决方案！** 🚀
-

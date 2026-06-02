@@ -300,6 +300,16 @@ uv lock --check
 uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
 ```
 
+## 配置导入约定
+
+运行时代码推荐从 `pure_auto_codeql.configuration` 导入 LLM 配置：
+
+```python
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
+```
+
+历史脚本中的 `from config import ...` 和 `python config.py ...` 仍保持兼容。
+
 ## 安全说明
 
 - 不要提交真实密钥。`config/keys*.toml` 已被忽略，仓库只保留 `config/keys.example.toml` 模板。

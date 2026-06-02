@@ -15,7 +15,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from tools import CodeQLRunnerTool  # type: ignore
 
 # 导入集中化配置
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 
 QUERY_PATH = PROJECT_ROOT / "templates/java/target_query.ql"
 DATABASE_PATH = PROJECT_ROOT / "h5-vsan"

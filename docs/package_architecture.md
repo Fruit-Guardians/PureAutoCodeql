@@ -11,7 +11,7 @@ migration window.
 | `Analyze.py` | `pure_auto_codeql.cli` | Legacy shim kept |
 | `agents` | `pure_auto_codeql.agents` | Migrated |
 | shared CLI/API workflow helpers | `pure_auto_codeql.application` | Introduced |
-| LLM configuration imports | `pure_auto_codeql.configuration` | Introduced as canonical facade |
+| LLM configuration imports | `pure_auto_codeql.configuration` | Canonical facade |
 | `api` | `pure_auto_codeql.api` | Planned staged migration |
 | `core` | `pure_auto_codeql.core` | Planned staged migration |
 | `services` | `pure_auto_codeql.services` | Planned staged migration |
@@ -42,9 +42,24 @@ canonical imports and supported legacy imports before a module is moved.
 2. Add shared application services under `pure_auto_codeql.application`.
 3. Route CLI/API overlapping workflows through the shared services.
 4. Use `pure_auto_codeql.configuration` as the canonical LLM configuration
-   facade while keeping `config` available.
+   facade while keeping `config` and `python config.py` available for legacy
+   callers.
 5. Move low-risk modules in small batches, leaving top-level wrappers.
 6. Update CI and documentation after each batch.
+
+## Configuration Boundary
+
+Runtime application code should import LLM configuration helpers from
+`pure_auto_codeql.configuration`:
+
+```python
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
+```
+
+The `config/` package remains a compatibility surface for older scripts that
+use `from config import ...`. The root-level `config.py` file is only a legacy
+script shim for `python config.py ...`; normal `import config` resolves to the
+`config/` package in this repository.
 
 ## Verification
 

@@ -10,7 +10,7 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 from tools.codeql_compose import CodeQLComposeTool
 
 

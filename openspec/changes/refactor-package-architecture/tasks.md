@@ -6,7 +6,7 @@
 ## 2. Package Architecture
 - [x] 2.1 Add canonical `pure_auto_codeql` modules for shared application services.
 - [x] 2.2 Move selected low-risk modules into the namespace with compatibility shims.
-- [ ] 2.3 Resolve the `config.py` and `config/` ambiguity with a clearer canonical module and legacy wrapper.
+- [x] 2.3 Resolve the `config.py` and `config/` ambiguity with a clearer canonical module and legacy wrapper.
 - [x] 2.4 Update packaging metadata so installed commands include the canonical modules.
 
 ## 3. CLI/API Shared Behavior

@@ -185,8 +185,11 @@ python Analyze.py --md-file vuln.md --src-path /path/to/src --provider my_api
 
 ### 在代码中使用
 
+运行时代码推荐使用 `pure_auto_codeql.configuration` 作为统一导入入口；旧的
+`from config import ...` 仍保持兼容。
+
 ```python
-from config import get_llm_config, LLMRole
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
 
 # 获取默认配置
 chat_config = get_llm_config(LLMRole.CHAT)
@@ -219,7 +222,7 @@ print(f"Base URL: {config.base_url}")
 ### 便捷函数
 
 ```python
-from config import get_chat_config, get_think_config
+from pure_auto_codeql.configuration import get_chat_config, get_think_config
 
 # 直接获取对话模型配置
 chat_config = get_chat_config()
@@ -525,7 +528,10 @@ exists = ProviderRegistry.has("my_api")
 ### 显示函数
 
 ```python
-from config import display_providers_status, display_provider_detail
+from pure_auto_codeql.configuration import (
+    display_provider_detail,
+    display_providers_status,
+)
 
 # 显示所有提供商状态
 display_providers_status(validate_keys=False)
@@ -537,7 +543,7 @@ display_provider_detail("my_api")
 ### 向后兼容函数
 
 ```python
-from config import (
+from pure_auto_codeql.configuration import (
     list_available_providers,
     get_llm_config_by_provider,
     list_siliconflow_models

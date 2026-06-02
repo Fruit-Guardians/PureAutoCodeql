@@ -74,7 +74,7 @@ uv run python examples/path_selection_demo.py
 ```python
 import asyncio
 from services.path_selection import PathSelectionService
-from config import get_chat_config
+from pure_auto_codeql.configuration import get_chat_config
 
 async def run():
     service = PathSelectionService(get_chat_config(), language="python")

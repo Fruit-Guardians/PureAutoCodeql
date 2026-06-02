@@ -28,7 +28,7 @@ from services.llm_service import (
     RetryableChatOpenAI,
     MultiAgentAnalyzer,
 )
-from config import LLMConfig
+from pure_auto_codeql.configuration import LLMConfig
 
 
 # ============================================================================
