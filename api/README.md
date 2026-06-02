@@ -34,7 +34,7 @@
 uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-默认情况下，API 只绑定 `127.0.0.1`，项目导入只允许 `imports/` 目录下的源路径，并拒绝请求体中的构建命令。需要开放远程访问或构建命令时，请显式设置对应的 `API_*` 环境变量，并建议同时设置 `API_AUTH_TOKEN`。
+默认情况下，API 只绑定 `127.0.0.1`，项目导入只允许 `imports/` 目录下的源路径，并拒绝请求体中的构建命令。需要开放远程访问或构建命令时，请显式设置对应的 `API_*` 环境变量，并建议同时设置 `API_AUTH_TOKEN`。API 运行配置中，`API_*` 环境变量优先于 `config/keys.toml` 的 `[settings]` 默认值。
 
 ### API文档
 
@@ -106,8 +106,11 @@ eventSource.onmessage = (event) => {
 ## 测试
 
 ```bash
-# 测试SSE流式输出
-python test/test_sse_stream.py
+# 手工测试SSE流式输出（需要先启动 API 服务和可分析案例）
+python scripts/smoke_sse_stream.py
+
+# 手工测试 CodeQL LSP 语法检查（需要本机 CodeQL/LSP 环境）
+python scripts/smoke_lsp_syntax.py
 
 # 使用curl测试
 curl -N http://localhost:8000/api/analysis/{task_id}/stream

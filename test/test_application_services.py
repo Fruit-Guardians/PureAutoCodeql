@@ -100,3 +100,21 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert canonical_config.get_llm_config is legacy_get_llm_config
     assert callable(canonical_config.get_llm_config)
     assert legacy_policy.ProjectImportPolicyError is ProjectImportPolicyError
+
+
+def test_api_environment_settings_override_keys_toml_settings(monkeypatch):
+    from api.config import _create_config
+
+    monkeypatch.setenv("API_USE_DOCKER_FOR_CPP", "true")
+    monkeypatch.setattr(
+        "api.config._load_keys_toml_settings",
+        lambda: {
+            "use_docker_for_cpp": False,
+            "docker_builder_image": "from-keys",
+        },
+    )
+
+    api_config = _create_config()
+
+    assert api_config.use_docker_for_cpp is True
+    assert api_config.docker_builder_image == "from-keys"

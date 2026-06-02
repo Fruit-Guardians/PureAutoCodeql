@@ -1,7 +1,4 @@
-"""
-SSE 流式接口测试脚本
-测试 CVE-2021-21985 任务的 SSE 实时事件流
-"""
+"""手工 SSE 流式接口 smoke 脚本。"""
 
 import requests
 import json

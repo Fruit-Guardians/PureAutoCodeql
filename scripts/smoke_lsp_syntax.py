@@ -1,6 +1,5 @@
 from utils.codeql import create_temporary_qlpack
 from services.lsp_service import CodeQLLSPService
-import time
 
 wrong_ql = '''/**
  * @kind path-problem
@@ -104,16 +103,22 @@ where Flow::flowPath(src, sink)
 select sink.getNode(), src, sink,
   "Potential security vulnerability: User input flows to dangerous sink",
   src, "source", sink, "sink"'''
-try:
-    query_file = create_temporary_qlpack("", language="python")
-    pack_root = query_file.parent
-    lsp_service = CodeQLLSPService(pack_root, query_file)
-    lsp_service.start()
-    res = lsp_service.check_syntax(wrong_ql)
-    print(res)
-    time.sleep(300)
-except Exception as e:
-    print(f"LSP服务器启动失败: {e}")
-finally:
-    print("LSP服务器停止")
-    lsp_service.stop()
+def main() -> None:
+    lsp_service = None
+    try:
+        query_file = create_temporary_qlpack("", language="python")
+        pack_root = query_file.parent
+        lsp_service = CodeQLLSPService(pack_root, query_file)
+        lsp_service.start()
+        result = lsp_service.check_syntax(wrong_ql)
+        print(result)
+    except Exception as e:
+        print(f"LSP服务器启动失败: {e}")
+    finally:
+        if lsp_service is not None:
+            print("LSP服务器停止")
+            lsp_service.stop()
+
+
+if __name__ == "__main__":
+    main()

@@ -193,6 +193,28 @@ def test_import_project_rejects_zip_symlink(tmp_path, monkeypatch):
         import_project(str(source_root), case_id="CASE-3", create_codeql_db=False)
 
 
+def test_import_project_skips_external_metadata_symlink(tmp_path, monkeypatch):
+    from api import config as api_config
+
+    projects = tmp_path / "projects"
+    source_root = tmp_path / "incoming"
+    src = source_root / "src"
+    src.mkdir(parents=True)
+    (src / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    external = tmp_path / "CVE-2024-0001.json"
+    external.write_text('{"secret": true}\n', encoding="utf-8")
+    (source_root / "CVE-2024-0001.json").symlink_to(external)
+
+    monkeypatch.setattr(api_config.config, "projects_dir", projects)
+
+    result = import_project(str(source_root), case_id="CASE-4", create_codeql_db=False)
+    target_inputs = Path(result.target_path) / "inputs"
+
+    assert result.metadata_files == []
+    assert not (target_inputs / "CVE-2024-0001.json").exists()
+
+
 @pytest.mark.asyncio
 async def test_task_manager_rejects_duplicate_start_and_preserves_language(monkeypatch):
     observed = {}

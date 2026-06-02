@@ -1,6 +1,5 @@
 # Python
 __pycache__/
-.trae/
 *.py[cod]
 *$py.class
 *.so
@@ -51,29 +50,16 @@ config\\keys*.toml
 temp/
 tmp/
 *.tmp
+*.bak
+*.mdbak
 output/
 results/
-
 
 # OS
 projects/
 .DS_Store
 Thumbs.db
-.projects/CVE-2025-46725/
-.projects/CVE-2025-47789/
-.projects/CVE-2025-48683/
-.projects/CVE-2025-54381/
-.projects/CVE-2021-21985/
-.projects/CVE-2021-21985/
-projects/CVE-2021-21985/
-projects/CVE-2024-7099/
-projects/CVE-2025-54802/
-projects/CVE-2022-22817/
-projects/CVE-2024-10940/
-projects/CVE-2025-47789/
-projects/CVE-2025-46725/
-projects/CVE-2024-8412/
-projects/CVE*
+.projects/
 *.zip
 projects/*.zip
 projects/C_Qi

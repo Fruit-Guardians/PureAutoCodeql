@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import List
 
@@ -110,22 +109,23 @@ def _load_keys_toml_settings() -> dict:
 
 
 def _create_config() -> APIConfig:
-    """创建配置实例，优先从 keys.toml 读取"""
-    # 1. 从 keys.toml 读取 settings
+    """创建配置实例，API_* 环境变量优先，keys.toml 作为默认补充。"""
     toml_settings = _load_keys_toml_settings()
-    
-    # 2. 构建配置字典（keys.toml 优先，环境变量次之）
-    config_dict = {}
-    
-    # Docker 构建配置
-    if 'use_docker_for_cpp' in toml_settings:
-        config_dict['use_docker_for_cpp'] = toml_settings['use_docker_for_cpp']
-    
-    if 'docker_builder_image' in toml_settings:
-        config_dict['docker_builder_image'] = toml_settings['docker_builder_image']
-    
-    # 3. 创建配置实例（Pydantic 会自动处理环境变量覆盖）
-    return APIConfig(**config_dict)
+    env_config = APIConfig()
+
+    values = {}
+    for key in (
+        "prefer_local_cpp_build",
+        "local_build_prepare_timeout",
+        "use_docker_for_cpp",
+        "docker_builder_image",
+    ):
+        if key in toml_settings and key not in env_config.model_fields_set:
+            values[key] = toml_settings[key]
+
+    if not values:
+        return env_config
+    return env_config.model_copy(update=values)
 
 
 # 全局配置实例

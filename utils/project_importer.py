@@ -466,6 +466,7 @@ def _copy_metadata_files(input_dir: Path, target_dir: Path, case_id: str) -> Lis
     db_dir = target_dir / "db"
     inputs_dir = target_dir / "inputs"
     patch_counter = 1
+    input_root = input_dir.resolve()
 
     def iter_metadata_sources():
         yield from sorted(input_dir.glob("CVE-*.*"))
@@ -477,6 +478,18 @@ def _copy_metadata_files(input_dir: Path, target_dir: Path, case_id: str) -> Lis
     for file_path in iter_metadata_sources():
         suffix = file_path.suffix.lower()
         if suffix not in {".json", ".diff", ".patch"}:
+            continue
+        try:
+            resolved_file = file_path.resolve()
+        except OSError:
+            logger.warning("Skipping unresolvable metadata file: %s", file_path)
+            continue
+        if file_path.is_symlink() and not resolved_file.is_relative_to(input_root):
+            logger.warning(
+                "Skipping metadata symlink outside import root: %s -> %s",
+                file_path,
+                resolved_file,
+            )
             continue
 
         destination_name = file_path.name
