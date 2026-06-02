@@ -8,11 +8,17 @@ from core.context import AnalysisConfig
 from services.language_detector import LanguageDetector
 from utils.case import resolve_case, discover_cve_assets
 from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
-from config import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
+from pure_auto_codeql.configuration import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
 from tools.codeql_compose import CodeQLComposeTool
 from services.llm_service import MultiAgentAnalyzer
+from pure_auto_codeql.application import (
+    AnalysisValidationError,
+    ProjectImportRequest,
+    ProjectImportResult,
+    import_project_for_workflow,
+    validate_analysis_case,
+)
 from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
-from utils.project_importer import import_project, ProjectImportResult
 from utils.doctor import run_doctor
 
 # 初始化日志系统
@@ -507,7 +513,7 @@ def list_available_cases() -> None:
 async def validate_case(case_id: str) -> bool:
     """验证案例是否有效"""
     try:
-        case_paths = resolve_case(case_id)
+        case_paths = validate_analysis_case(case_id)
         cve_assets = discover_cve_assets(case_paths)
 
         print_user_success(f"✅ 案例 {case_id} 验证通过")
@@ -527,6 +533,10 @@ async def validate_case(case_id: str) -> bool:
         logger.info(f"案例 {case_id} 验证通过，语言: {language}")
 
         return True
+    except AnalysisValidationError as e:
+        print_user_error(f"❌ 案例 {case_id} 验证失败: {e}")
+        logger.error(f"案例 {case_id} 验证失败: {e}", exc_info=True)
+        return False
     except Exception as e:
         print_user_error(f"❌ 案例 {case_id} 验证失败: {e}")
         logger.error(f"案例 {case_id} 验证失败: {e}", exc_info=True)
@@ -559,15 +569,17 @@ def run_project_import(
         print_user_info(f"📂 构建目录: {build_workdir}")
 
     try:
-        result: ProjectImportResult = import_project(
-            source_path=source_path,
-            case_id=case_id,
-            overwrite=overwrite,
-            language=language,
-            create_codeql_db=not skip_codeql,
-            build_command=build_command,
-            build_script=build_script,
-            build_workdir=build_workdir,
+        result: ProjectImportResult = import_project_for_workflow(
+            ProjectImportRequest(
+                source_path=source_path,
+                case_id=case_id,
+                overwrite=overwrite,
+                language=language,
+                skip_codeql=skip_codeql,
+                build_command=build_command,
+                build_script=build_script,
+                build_workdir=build_workdir,
+            )
         )
     except FileNotFoundError as exc:
         print_user_error(f"❌ 输入路径不存在: {exc}")
@@ -627,10 +639,12 @@ def _auto_import_case_directory(case_dir: Path) -> ProjectImportResult:
     """
     print_user_info(f"📦 检测到外部CVE目录: {case_dir}")
     print_user_info("🔄 正在自动导入并创建CodeQL数据库...")
-    result = import_project(
-        source_path=str(case_dir),
-        overwrite=True,
-        create_codeql_db=True,
+    result = import_project_for_workflow(
+        ProjectImportRequest(
+            source_path=str(case_dir),
+            overwrite=True,
+            skip_codeql=False,
+        )
     )
     print_user_success(f"✅ 自动导入完成，案例ID: {result.case_id}")
     if result.metadata_files:

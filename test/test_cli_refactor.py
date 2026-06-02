@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,12 +56,32 @@ def test_parse_arguments_accepts_legacy_and_subcommand_forms():
 async def test_dispatch_command_routes_import_handler(monkeypatch):
     observed = {}
 
-    def fake_run_project_import(**kwargs):
-        observed.update(kwargs)
+    def fake_import_project_for_workflow(request, *, policy=None):
+        observed.update(
+            source_path=request.source_path,
+            case_id=request.case_id,
+            overwrite=request.overwrite,
+            language=request.language,
+            skip_codeql=request.skip_codeql,
+            build_command=request.build_command,
+            build_script=request.build_script,
+            build_workdir=request.build_workdir,
+            policy=policy,
+        )
+        return SimpleNamespace(
+            case_id=request.case_id,
+            target_path="/tmp/projects/CASE-1",
+            language=request.language,
+            metadata_files=[],
+            codeql_created=False,
+            codeql_error=None,
+            build_command=request.build_command,
+            build_workdir=request.build_workdir,
+        )
 
     monkeypatch.setattr(
-        "pure_auto_codeql.cli.app.run_project_import",
-        fake_run_project_import,
+        "pure_auto_codeql.cli.app.import_project_for_workflow",
+        fake_import_project_for_workflow,
     )
 
     args = parse_arguments(
@@ -85,6 +106,7 @@ async def test_dispatch_command_routes_import_handler(monkeypatch):
         "build_command": None,
         "build_script": None,
         "build_workdir": None,
+        "policy": None,
     }
 
 

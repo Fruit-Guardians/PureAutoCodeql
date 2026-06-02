@@ -18,16 +18,17 @@ from api.models import (
     ProjectImportResponse,
     ProjectInfo,
 )
+from pure_auto_codeql.application import (
+    ProjectImportPolicyError,
+    ProjectImportPolicySettings,
+    ProjectImportRequest as WorkflowProjectImportRequest,
+    import_project_for_workflow,
+    validate_project_import_request,
+)
 from utils.case import (
     CasePaths,
     discover_cve_assets,
     resolve_case,
-)
-from utils.project_importer import import_project
-from utils.project_import_policy import (
-    ProjectImportPolicy,
-    ProjectImportPolicyError,
-    validate_project_import_policy,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,15 +37,26 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 def _ensure_api_import_allowed(payload: ProjectImportRequest) -> None:
     config = get_config()
-    validate_project_import_policy(
-        source_path=payload.source_path,
-        policy=ProjectImportPolicy(
+    validate_project_import_request(
+        _to_workflow_import_request(payload),
+        policy=ProjectImportPolicySettings(
             import_sources_dir=config.import_sources_dir,
             allow_external_import_paths=config.allow_external_import_paths,
             allow_build_commands=config.allow_api_build_commands,
         ),
+    )
+
+
+def _to_workflow_import_request(payload: ProjectImportRequest) -> WorkflowProjectImportRequest:
+    return WorkflowProjectImportRequest(
+        source_path=payload.source_path,
+        case_id=payload.case_id,
+        overwrite=payload.overwrite,
+        language=payload.language,
+        skip_codeql=payload.skip_codeql,
         build_command=payload.build_command,
         build_script=payload.build_script,
+        build_workdir=payload.build_workdir,
     )
 
 
@@ -242,17 +254,15 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
     
     自动整理目录结构并尝试创建CodeQL数据库。
     """
+    config = get_config()
     try:
-        _ensure_api_import_allowed(payload)
-        result = import_project(
-            payload.source_path,
-            case_id=payload.case_id,
-            overwrite=payload.overwrite,
-            language=payload.language,
-            create_codeql_db=not payload.skip_codeql,
-            build_command=payload.build_command,
-            build_script=payload.build_script,
-            build_workdir=payload.build_workdir,
+        result = import_project_for_workflow(
+            _to_workflow_import_request(payload),
+            policy=ProjectImportPolicySettings(
+                import_sources_dir=config.import_sources_dir,
+                allow_external_import_paths=config.allow_external_import_paths,
+                allow_build_commands=config.allow_api_build_commands,
+            ),
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

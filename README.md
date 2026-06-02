@@ -259,13 +259,16 @@ export API_ALLOW_API_BUILD_COMMANDS=true
 
 ```text
 PureAutoCodeQL/
-├── Analyze.py                 # CLI 主入口
+├── Analyze.py                 # 旧版 CLI 兼容入口
 ├── api/                       # FastAPI 服务端
 ├── config/                    # LLM Provider 与运行配置
 ├── core/                      # 分析上下文、流水线和编排器
 ├── docs/                      # 使用指南与功能说明
 ├── Information/               # GHSA / NVD 情报获取
 ├── prompts/                   # 各语言与各阶段提示词
+├── pure_auto_codeql/           # 规范化 Python 包命名空间
+├── pure_auto_codeql/application/ # CLI/API 共享工作流服务
+├── pure_auto_codeql/cli/       # 打包后的 CLI 实现
 ├── pure_auto_codeql/agents/    # CVE、Source、Sink、CodeQL 生成等 Agent
 ├── resources/                 # CodeQL 模板、知识库与扩展库
 ├── services/                  # LLM、LSP、路径精选等服务
@@ -281,6 +284,7 @@ PureAutoCodeQL/
 | [config/README.md](config/README.md) | LLM Provider、`keys.toml` 与自定义服务商 |
 | [api/README.md](api/README.md) | API 启动、路由与开发说明 |
 | [api/SSE_REFERENCE.md](api/SSE_REFERENCE.md) | SSE 流式事件参考 |
+| [docs/package_architecture.md](docs/package_architecture.md) | 包命名空间迁移、兼容导入与架构检查 |
 | [docs/auto_import_quickstart.md](docs/auto_import_quickstart.md) | 外部 CVE 项目自动导入 |
 | [docs/output_files_guide.md](docs/output_files_guide.md) | 输出文件结构和用途 |
 | [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选模块运行说明 |

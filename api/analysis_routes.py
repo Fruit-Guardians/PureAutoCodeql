@@ -12,8 +12,12 @@ from api.models import (
     TaskStatus,
     ErrorResponse
 )
+from api.config import get_config
 from api.task_manager import get_task_manager
-from utils.case import resolve_case
+from pure_auto_codeql.application import (
+    AnalysisValidationError,
+    validate_analysis_case,
+)
 
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -26,17 +30,12 @@ async def start_analysis(
 ) -> AnalysisTaskInfo:
 
     try:
-        resolve_case(request.case_id)
-    except FileNotFoundError as e:
+        validate_analysis_case(request.case_id, projects_dir=get_config().projects_dir)
+    except AnalysisValidationError as e:
         raise HTTPException(
-            status_code=404,
-            detail=f"项目 '{request.case_id}' 不存在: {str(e)}"
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"无效的项目ID: {str(e)}"
-        )
+            status_code=e.status_code,
+            detail=str(e),
+        ) from e
 
     task_manager = get_task_manager()
     task_id = task_manager.create_task(request.case_id)

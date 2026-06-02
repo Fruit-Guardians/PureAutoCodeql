@@ -40,6 +40,9 @@ jobs:
       - name: Compile Python modules
         run: uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
 
+      - name: Validate OpenSpec
+        run: uv run openspec validate --all --strict
+
       - name: Check diff whitespace
         run: git diff --check
 
