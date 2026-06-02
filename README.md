@@ -164,11 +164,14 @@ uv run python Analyze.py --md-file vulnerability.md \
 ### 常用命令
 
 ```bash
+uv run python Analyze.py --doctor
 uv run python Analyze.py --list
 uv run python Analyze.py --validate CVE-2021-21985
 uv run python Analyze.py --list-providers
 uv run python Analyze.py --list-models
 ```
+
+`--doctor` 会检查 Python、uv、CodeQL CLI、Node.js、npm、MCP 构建产物、`keys.toml`、`JAVA_HOME` 和可用 LLM Provider，适合在新机器或 CI 失败时快速定位环境问题。
 
 ## 输出结果
 
@@ -270,6 +273,7 @@ PureAutoCodeQL/
 | [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选模块运行说明 |
 | [docs/extra_input_files_simple.md](docs/extra_input_files_simple.md) | `inputs/` 额外上下文文件 |
 | [C/CPP_TWO_STEP_BUILD_GUIDE.md](C/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 两步走建库策略 |
+| [docs/archive/](docs/archive/) | 历史设计方案、诊断笔记和阶段性总结 |
 
 ## 测试
 

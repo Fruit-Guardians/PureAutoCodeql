@@ -17,6 +17,12 @@ chmod +x build_mcp.sh
 ./build_mcp.sh
 ```
 
+Run the environment doctor on a new machine:
+
+```bash
+uv run python Analyze.py --doctor
+```
+
 ## Before Opening a Pull Request
 
 Please run the focused checks that match your change. For broad changes, run:
@@ -39,6 +45,7 @@ git diff --check
 - Include reproduction steps for bug fixes.
 - Include sample input or output when behavior changes.
 - Do not commit secrets, generated local reports, or private target projects.
+- Do not commit editor or local agent configuration directories such as `.vscode/`, `.cursor/`, `.windsurf/`, or `.trae/`.
 - Follow existing module boundaries and local coding style.
 
 ## Commit Message Examples

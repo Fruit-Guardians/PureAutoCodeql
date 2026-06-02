@@ -12,6 +12,7 @@ from tools.codeql_compose import CodeQLComposeTool
 from services.llm_service import MultiAgentAnalyzer
 from agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from utils.project_importer import import_project, ProjectImportResult
+from utils.doctor import run_doctor
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -653,6 +654,7 @@ def parse_arguments() -> argparse.Namespace:
   %(prog)s --case CVE-2021-21985                    # 分析已导入的案例
   %(prog)s --case "C:\\Targets\\java\\CVE-2023-51444"  # Java项目：自动导入+建库+分析
   %(prog)s --case CVE-2021-21985 --no-stream       # 禁用AI思考过程显示
+  %(prog)s --doctor                                # 检查本机运行环境
   %(prog)s --import-project "C:\\Targets\\CVE-2023-51444" --import-language java  # 仅导入Java项目
   %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
   %(prog)s --md-file vulnerability.md --src-path /path/to/source  # 从MD文件生成source点分析报告
@@ -701,6 +703,11 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         metavar="PATH",
         help="导入外部CVE目录 (例如: C:\\Targets\\CVE-2025-54381)"
+    )
+    group.add_argument(
+        "--doctor",
+        action="store_true",
+        help="检查本机运行环境、依赖工具和模型配置"
     )
 
     # 可选参数
@@ -923,6 +930,8 @@ async def main() -> None:
                 build_script=args.import_build_script,
                 build_workdir=args.import_build_workdir,
             )
+        elif args.doctor:
+            raise SystemExit(run_doctor(Path.cwd()))
         elif args.case:
             effective_case_id = args.case
             auto_case_dir = _detect_case_directory_input(args.case)
@@ -1047,5 +1056,9 @@ async def main() -> None:
         logger.exception(f"执行出错: {e}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    cli()

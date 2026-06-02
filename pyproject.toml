@@ -1,9 +1,29 @@
 [project]
-name = "agentcodeqltest"
+name = "pure-auto-codeql"
 version = "0.1.0"
 description = "Multi-agent CodeQL vulnerability analysis pipeline for CVE research"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    { name = "Fruit Guardians" },
+]
+keywords = [
+    "codeql",
+    "security",
+    "static-analysis",
+    "vulnerability-research",
+    "cve",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "httpx[socks]>=0.28.1",
@@ -28,6 +48,11 @@ dependencies = [
     "tomli>=2.0.0; python_version < '3.11'",
     "uvicorn[standard]>=0.32.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Fruit-Guardians/PureAutoCodeql"
+Repository = "https://github.com/Fruit-Guardians/PureAutoCodeql"
+Issues = "https://github.com/Fruit-Guardians/PureAutoCodeql/issues"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

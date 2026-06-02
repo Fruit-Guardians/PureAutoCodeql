@@ -30,6 +30,9 @@ env/
 # IDE
 .vscode/
 .idea/
+.cursor/
+.windsurf/
+.trae/
 *.swp
 *.swo
 *~
@@ -49,6 +52,7 @@ temp/
 tmp/
 *.tmp
 output/
+results/
 
 
 # OS
