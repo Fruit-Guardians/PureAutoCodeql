@@ -8,6 +8,8 @@ Tests both the LSPDefinitionLookup utility and LSPFunctionLookupTool.
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -29,7 +31,7 @@ def test_lsp_definition_lookup():
     
     if not query_file.exists():
         print("✗ Test query file not found")
-        return False
+        pytest.skip("Test query file not found")
     
     try:
         # Start LSP engine
@@ -58,7 +60,7 @@ def test_lsp_definition_lookup():
             print(f"✓ Found 'hasQualifiedName' at line {position[0]}, char {position[1]}")
         else:
             print("✗ Could not find 'hasQualifiedName' in query")
-            return False
+            pytest.fail("Could not find 'hasQualifiedName' in query")
         
         # Test query_definition
         print("\n[4] Testing query_definition...")
@@ -68,7 +70,7 @@ def test_lsp_definition_lookup():
             print(f"  Result type: {type(definition)}")
         else:
             print("✗ Definition query failed")
-            return False
+            pytest.fail("Definition query failed")
         
         # Test get_function_definition (main entry point)
         print("\n[5] Testing get_function_definition...")
@@ -83,20 +85,20 @@ def test_lsp_definition_lookup():
                 print(f"    {i}: {line}")
         else:
             print("✗ Could not retrieve function definition")
-            return False
+            pytest.fail("Could not retrieve function definition")
         
         print("\n" + "=" * 60)
         print("LSPDefinitionLookup tests passed")
         print("=" * 60)
         
         engine.shutdown()
-        return True
+        return
         
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(str(e))
 
 
 def test_lsp_function_lookup_tool():
@@ -112,7 +114,7 @@ def test_lsp_function_lookup_tool():
     
     if not query_file.exists():
         print("✗ Test query file not found")
-        return False
+        pytest.skip("Test query file not found")
     
     try:
         # Start LSP engine
@@ -150,7 +152,7 @@ def test_lsp_function_lookup_tool():
             print("✓ Correctly handled non-existent function")
         else:
             print("✗ Unexpected result for non-existent function")
-            return False
+            pytest.fail("Unexpected result for non-existent function")
         
         # Test error handling
         print("\n[5] Testing error handling with invalid input...")
@@ -159,20 +161,20 @@ def test_lsp_function_lookup_tool():
             print("✓ Correctly handled invalid input")
         else:
             print("✗ Should have returned error for empty input")
-            return False
+            pytest.fail("Should have returned error for empty input")
         
         print("\n" + "=" * 60)
         print("LSPFunctionLookupTool tests passed")
         print("=" * 60)
         
         engine.shutdown()
-        return True
+        return
         
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(str(e))
 
 
 def main():

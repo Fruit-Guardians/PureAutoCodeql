@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import zipfile
@@ -11,7 +12,7 @@ import sys
 from dataclasses import dataclass, field
 import shlex
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from api.config import get_config
 from utils.case import extract_cve_id
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_LANGUAGES = {"python", "java", "cpp"}
 CPP_AUTOGEN_BUILD_DIR = "build"
+SAFE_CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 def _safe_rmtree(path: Path) -> None:
@@ -122,9 +124,16 @@ def import_project(
     inferred_case_id = case_id or _infer_case_id(input_dir)
     if not inferred_case_id:
         raise ValueError("Unable to determine CVE ID. Provide 'case_id' explicitly.")
+    if not SAFE_CASE_ID_PATTERN.fullmatch(inferred_case_id):
+        raise ValueError(
+            "Invalid case_id. Use 1-128 characters from letters, numbers, '.', '_' and '-'."
+        )
 
     config = get_config()
-    target_dir = (config.projects_dir / inferred_case_id).resolve()
+    projects_root = config.projects_dir.resolve()
+    target_dir = (projects_root / inferred_case_id).resolve()
+    if not target_dir.is_relative_to(projects_root):
+        raise ValueError(f"Target path escapes projects directory: {target_dir}")
 
     if target_dir.exists():
         if not overwrite:
@@ -227,12 +236,63 @@ def _reset_directory(path: Path) -> None:
 
 def _copy_dir_contents(src: Path, dst: Path) -> None:
     _reset_directory(dst)
+    source_root = src.resolve()
     for entry in src.iterdir():
-        dest_path = dst / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, dest_path, dirs_exist_ok=True)
-        else:
-            shutil.copy2(entry, dest_path)
+        _copy_entry_safely(entry, dst / entry.name, source_root, {source_root})
+
+
+def _copy_entry_safely(
+    entry: Path,
+    destination: Path,
+    source_root: Path,
+    seen_dirs: Set[Path],
+) -> None:
+    """Copy source files without following symlinks outside the import root."""
+
+    if entry.is_symlink():
+        try:
+            resolved_entry = entry.resolve()
+        except OSError:
+            logger.warning("Skipping broken symlink during import: %s", entry)
+            return
+        if not resolved_entry.is_relative_to(source_root):
+            logger.warning("Skipping symlink outside import root: %s -> %s", entry, resolved_entry)
+            return
+
+        if resolved_entry.is_dir():
+            if resolved_entry in seen_dirs:
+                logger.warning("Skipping recursive symlink during import: %s -> %s", entry, resolved_entry)
+                return
+            destination.mkdir(parents=True, exist_ok=True)
+            next_seen = seen_dirs | {resolved_entry}
+            for child in resolved_entry.iterdir():
+                _copy_entry_safely(child, destination / child.name, source_root, next_seen)
+        elif resolved_entry.is_file():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(resolved_entry, destination)
+        return
+
+    try:
+        resolved_entry = entry.resolve()
+    except OSError:
+        logger.warning("Skipping unresolvable path during import: %s", entry)
+        return
+
+    if not resolved_entry.is_relative_to(source_root):
+        logger.warning("Skipping path outside import root: %s -> %s", entry, resolved_entry)
+        return
+
+    if entry.is_dir():
+        if resolved_entry in seen_dirs:
+            logger.warning("Skipping recursive directory during import: %s", entry)
+            return
+        destination.mkdir(parents=True, exist_ok=True)
+        next_seen = seen_dirs | {resolved_entry}
+        for child in entry.iterdir():
+            _copy_entry_safely(child, destination / child.name, source_root, next_seen)
+    elif entry.is_file():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(entry, destination)
 
 
 def _safe_extract_zip(zip_path: Path, dst: Path) -> None:
@@ -242,7 +302,18 @@ def _safe_extract_zip(zip_path: Path, dst: Path) -> None:
             member_path = Path(member.filename)
             if member_path.is_absolute() or ".." in member_path.parts:
                 raise ValueError(f"Unsafe path detected in zip archive: {member.filename}")
+            file_type = (member.external_attr >> 16) & 0o170000
+            if file_type == 0o120000:
+                raise ValueError(f"Symlink entries are not allowed in zip archive: {member.filename}")
         archive.extractall(dst)
+
+    extracted_root = dst.resolve()
+    for extracted in dst.rglob("*"):
+        try:
+            if not extracted.resolve().is_relative_to(extracted_root):
+                raise ValueError(f"Unsafe extracted path detected: {extracted}")
+        except OSError as exc:
+            raise ValueError(f"Unable to validate extracted path: {extracted}") from exc
     logger.info("解压源码包: %s -> %s", zip_path, dst)
 
 
@@ -1041,4 +1112,3 @@ def _format_command(parts: List[str]) -> str:
 
 
 __all__ = ["import_project", "ProjectImportResult"]
-

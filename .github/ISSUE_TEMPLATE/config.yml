@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/Fruit-Guardians/PureAutoCodeql/security/policy
+    about: Please avoid public exploit details. Review the security policy first.

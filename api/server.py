@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -66,6 +67,19 @@ if config.cors_enabled:
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
+
+    public_paths = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+    if config.auth_token and request.url.path not in public_paths:
+        expected = f"Bearer {config.auth_token}"
+        if not secrets.compare_digest(request.headers.get("Authorization", ""), expected):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=ErrorResponse(
+                    error="Unauthorized",
+                    message="Valid Bearer token required",
+                    timestamp=datetime.now(),
+                ).model_dump(mode="json"),
+            )
 
     if config.log_requests:
         logger.info(f"[*] {request.method} {request.url.path}")
@@ -161,7 +175,7 @@ app.include_router(projects_router, prefix=config.api_prefix)
 logger.info("[*] Registered projects routes")
 
 # 集成分析任务路由
-app.include_router(analysis_router)
+app.include_router(analysis_router, prefix=config.api_prefix)
 logger.info("[*] Registered analysis routes")
 
 

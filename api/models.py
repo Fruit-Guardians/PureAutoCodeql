@@ -118,6 +118,7 @@ class AnalysisResult(BaseModel):
     status: TaskStatus = Field(..., description="任务状态")
     cve_analysis: Optional[Dict[str, Any]] = Field(None, description="CVE分析结果")
     sink_analysis: Optional[Dict[str, Any]] = Field(None, description="Sink/Source分析结果")
+    source_analysis: Optional[Dict[str, Any]] = Field(None, description="Source分析结果")
     codeql_query: Optional[str] = Field(None, description="生成的CodeQL查询")
     query_results: Optional[Dict[str, Any]] = Field(None, description="查询执行结果")
     output_dir: Optional[str] = Field(None, description="输出目录路径")
@@ -186,5 +187,4 @@ class StreamEvent(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="附加数据")
     agent_name: Optional[str] = Field(None, description="Agent名称")
     agent_type: Optional[str] = Field(None, description="Agent类型")
-
 

@@ -2,8 +2,8 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
-from enum import Enum
 
+from api.config import get_config
 from api.models import TaskStatus, AnalysisTaskInfo, AnalysisResult
 from core.orchestrator import AnalysisOrchestrator
 from core.context import AnalysisConfig
@@ -15,7 +15,8 @@ class TaskManager:
         self._tasks: Dict[str, AnalysisTaskInfo] = {}
         self._results: Dict[str, AnalysisResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
-        self._max_concurrent_tasks = 3
+        self._max_concurrent_tasks = max(1, get_config().max_concurrent_tasks)
+        self._semaphore = asyncio.Semaphore(self._max_concurrent_tasks)
         self._event_queues: Dict[str, asyncio.Queue] = {}
         self._task_events: Dict[str, List[Dict]] = {}
         self._max_events_per_task = 1000
@@ -39,21 +40,31 @@ class TaskManager:
             return False
 
         task_info = self._tasks[task_id]
+        if task_info.status != TaskStatus.PENDING or task_id in self._running_tasks:
+            return False
 
-        if len(self._running_tasks) >= self._max_concurrent_tasks:
-            task_info.progress = "等待其他任务完成..."
-            return True
-
-        task_info.status = TaskStatus.RUNNING
-        task_info.started_at = datetime.now()
-        task_info.progress = "正在初始化分析环境..."
+        task_info.progress = "任务已排队，等待执行"
 
         background_task = asyncio.create_task(
-            self._run_analysis(task_id, task_info.case_id, config)
+            self._run_queued_analysis(task_id, task_info.case_id, config)
         )
         self._running_tasks[task_id] = background_task
 
         return True
+
+    async def _run_queued_analysis(self, task_id: str, case_id: str, config: Optional[dict] = None):
+        task_info = self._tasks[task_id]
+        try:
+            async with self._semaphore:
+                if task_info.status == TaskStatus.CANCELLED:
+                    return
+                task_info.status = TaskStatus.RUNNING
+                task_info.started_at = datetime.now()
+                task_info.progress = "正在初始化分析环境..."
+                await self._run_analysis(task_id, case_id, config)
+        finally:
+            self._running_tasks.pop(task_id, None)
+
 
     async def _run_analysis(self, task_id: str, case_id: str, config: Optional[dict] = None):
         task_info = self._tasks[task_id]
@@ -91,7 +102,10 @@ class TaskManager:
             orchestrator = AnalysisOrchestrator(analysis_config)
 
             task_info.progress = "正在执行CVE分析..."
-            result = await orchestrator.analyze_case(case_id)
+            result = await orchestrator.analyze_case(
+                case_id,
+                language=config.get("language") if config else None,
+            )
 
             self._results[task_id] = self._convert_to_api_result(task_id, case_id, result)
 
@@ -156,8 +170,7 @@ class TaskManager:
                 pass
 
         finally:
-            if task_id in self._running_tasks:
-                del self._running_tasks[task_id]
+            self._running_tasks.pop(task_id, None)
 
     def _convert_to_api_result(self, task_id: str, case_id: str, core_result) -> AnalysisResult:
         cve_analysis = None
@@ -207,6 +220,7 @@ class TaskManager:
             status=TaskStatus.COMPLETED if core_result.success else TaskStatus.FAILED,
             cve_analysis=cve_analysis,
             sink_analysis=sink_analysis,
+            source_analysis=source_analysis,
             codeql_query=codeql_query,
             query_results=query_results,
             output_dir=output_dir

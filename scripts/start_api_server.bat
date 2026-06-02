@@ -12,7 +12,7 @@ echo Project root: %CD%
 
 rem Read env defaults
 set "HOST=%API_HOST%"
-if not defined HOST set "HOST=0.0.0.0"
+if not defined HOST set "HOST=127.0.0.1"
 set "PORT=%API_PORT%"
 if not defined PORT set "PORT=8000"
 set "RELOAD=%API_RELOAD%"
@@ -126,7 +126,7 @@ exit /b %ERRORLEVEL%
 echo Usage: scripts\start_api_server.bat [options]
 echo.
 echo Options:
-echo   --host HOST          Server host ^(default: 0.0.0.0^)
+echo   --host HOST          Server host ^(default: 127.0.0.1^)
 echo   --port PORT          Server port ^(default: 8000^)
 echo   --reload             Enable auto-reload
 echo   --workers N          Number of workers ^(default: 1^)

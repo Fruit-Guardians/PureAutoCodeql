@@ -15,7 +15,7 @@ echo "Project root: $PROJECT_ROOT"
 
 
 # 解析命令行参数
-HOST="${API_HOST:-0.0.0.0}"
+HOST="${API_HOST:-127.0.0.1}"
 PORT="${API_PORT:-8000}"
 RELOAD="${API_RELOAD:-false}"
 WORKERS="${API_WORKERS:-1}"
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --host HOST          Server host (default: 0.0.0.0)"
+            echo "  --host HOST          Server host (default: 127.0.0.1)"
             echo "  --port PORT          Server port (default: 8000)"
             echo "  --reload             Enable auto-reload"
             echo "  --workers N          Number of workers (default: 1)"

@@ -33,8 +33,10 @@ env/
 *.swp
 *.swo
 *~
-config/keys.toml
-config\\keys.toml
+config/keys*.toml
+config\\keys*.toml
+!config/keys.example.toml
+!config\\keys.example.toml
 
 # 配置文件 - 敏感信息
 .env

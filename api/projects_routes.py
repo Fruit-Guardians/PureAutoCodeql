@@ -29,6 +29,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
 
+def _ensure_api_import_allowed(payload: ProjectImportRequest) -> None:
+    config = get_config()
+
+    source_path = Path(payload.source_path).expanduser().resolve()
+    allowed_root = config.import_sources_dir.expanduser().resolve()
+    if not config.allow_external_import_paths and not source_path.is_relative_to(allowed_root):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Import source_path must be under API_IMPORT_SOURCES_DIR "
+                "unless API_ALLOW_EXTERNAL_IMPORT_PATHS=true"
+            ),
+        )
+
+    if (payload.build_command or payload.build_script) and not config.allow_api_build_commands:
+        raise HTTPException(
+            status_code=403,
+            detail="API-provided build commands are disabled. Set API_ALLOW_API_BUILD_COMMANDS=true to enable.",
+        )
+
+
 def _detect_languages(case_paths: CasePaths) -> List[str]:
     """检测项目中的编程语言"""
     languages = set()
@@ -62,34 +83,63 @@ def _count_files(directory: Path) -> int:
     """统计目录中的文件数量"""
     if not directory.exists():
         return 0
-    return sum(1 for _ in directory.rglob("*") if _.is_file())
+
+    root = directory.resolve()
+    count = 0
+    for item in directory.rglob("*"):
+        try:
+            if item.is_file() and item.resolve().is_relative_to(root):
+                count += 1
+        except OSError:
+            continue
+    return count
 
 
 def _build_directory_structure(directory: Path, max_depth: int = 3) -> dict:
     """构建目录结构树"""
     if not directory.exists():
         return {}
-    
-    def _build_tree(path: Path, current_depth: int = 0) -> dict:
+
+    root = directory.resolve()
+
+    def _build_tree(path: Path, current_depth: int = 0, seen: Optional[set[Path]] = None) -> dict:
+        seen = seen or set()
+        try:
+            resolved_path = path.resolve()
+        except OSError:
+            return {"type": "unknown", "error": "Unable to resolve path"}
+
+        if not resolved_path.is_relative_to(root):
+            return {"type": "skipped", "reason": "outside_project"}
+
         if current_depth >= max_depth:
             return {"type": "directory", "truncated": True}
-        
+
         if path.is_file():
             return {
                 "type": "file",
                 "size": path.stat().st_size,
                 "extension": path.suffix,
             }
-        
+
+        if resolved_path in seen:
+            return {"type": "directory", "truncated": True}
+
         children = {}
         try:
+            next_seen = seen | {resolved_path}
             for item in sorted(path.iterdir()):
-                children[item.name] = _build_tree(item, current_depth + 1)
+                try:
+                    if not item.resolve().is_relative_to(root):
+                        continue
+                except OSError:
+                    continue
+                children[item.name] = _build_tree(item, current_depth + 1, next_seen)
         except PermissionError:
             return {"type": "directory", "error": "Permission denied"}
-        
+
         return {"type": "directory", "children": children}
-    
+
     return _build_tree(directory)
 
 
@@ -195,6 +245,7 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
     自动整理目录结构并尝试创建CodeQL数据库。
     """
     try:
+        _ensure_api_import_allowed(payload)
         result = import_project(
             payload.source_path,
             case_id=payload.case_id,
@@ -241,6 +292,8 @@ async def get_project_detail(case_id: str) -> ProjectDetail:
         case_paths = resolve_case(case_id, base_dir=config.projects_dir)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Project not found: {str(e)}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     # 检测语言
     languages = _detect_languages(case_paths)
@@ -324,14 +377,17 @@ async def get_project_files(
         case_paths = resolve_case(case_id, base_dir=config.projects_dir)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Project not found: {str(e)}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     # 确定要扫描的目录
+    source_root = case_paths.source_code.resolve()
     if directory:
-        scan_dir = case_paths.source_code / directory
-        if not scan_dir.exists() or not scan_dir.is_relative_to(case_paths.source_code):
+        scan_dir = (source_root / directory).resolve()
+        if not scan_dir.exists() or not scan_dir.is_relative_to(source_root):
             raise HTTPException(status_code=400, detail="Invalid directory path")
     else:
-        scan_dir = case_paths.source_code
+        scan_dir = source_root
     
     if not scan_dir.exists():
         raise HTTPException(status_code=404, detail="Source code directory not found")
@@ -345,7 +401,10 @@ async def get_project_files(
             break
         
         try:
-            relative_path = item.relative_to(case_paths.source_code)
+            resolved_item = item.resolve()
+            if not resolved_item.is_relative_to(source_root):
+                continue
+            relative_path = resolved_item.relative_to(source_root)
             
             file_info = FileInfo(
                 path=str(relative_path),

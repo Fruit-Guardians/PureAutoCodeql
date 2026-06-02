@@ -70,7 +70,14 @@ class CveAssets:
 def resolve_case(case_id: str, *, base_dir: Path = Path("projects")) -> CasePaths:
     """解析并验证案例工作区。"""
 
-    root = (base_dir / case_id).resolve()
+    if not case_id or Path(case_id).is_absolute():
+        raise ValueError(f"Invalid case id: {case_id!r}")
+
+    base_root = base_dir.resolve()
+    root = (base_root / case_id).resolve()
+    if not root.is_relative_to(base_root):
+        raise ValueError(f"Case path escapes projects directory: {case_id!r}")
+
     mapping = {
         "source_code": root / "source_code",
         "db": root / "db",

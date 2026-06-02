@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
     import tomli as tomllib  # Python < 3.11
@@ -21,8 +21,15 @@ except ImportError:
 class APIConfig(BaseSettings):
     """API服务器配置"""
 
+    model_config = SettingsConfigDict(
+        env_prefix="API_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
     # 服务器配置
-    host: str = Field(default="0.0.0.0", description="服务器监听地址")
+    host: str = Field(default="127.0.0.1", description="服务器监听地址")
     port: int = Field(default=8000, description="服务器监听端口")
     reload: bool = Field(default=False, description="开发模式自动重载")
     workers: int = Field(default=1, description="工作进程数")
@@ -46,6 +53,14 @@ class APIConfig(BaseSettings):
         default_factory=lambda: Path(__file__).parent.parent / "projects",
         description="案例项目目录"
     )
+    import_sources_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent / "imports",
+        description="允许通过 API 导入的源项目根目录"
+    )
+    allow_external_import_paths: bool = Field(
+        default=False,
+        description="是否允许 API 从 import_sources_dir 之外的任意本机路径导入"
+    )
 
     # API配置
     api_prefix: str = Field(default="/api", description="API路径前缀")
@@ -55,6 +70,7 @@ class APIConfig(BaseSettings):
         description="API描述"
     )
     api_version: str = Field(default="0.1.0", description="API版本")
+    auth_token: str = Field(default="", description="API Bearer token；为空时不启用认证")
 
     # 日志配置
     log_level: str = Field(default="INFO", description="日志级别")
@@ -73,13 +89,10 @@ class APIConfig(BaseSettings):
     # 自动依赖安装配置
     auto_install_dependencies: bool = Field(default=True, description="自动检测并安装缺失的C/C++构建依赖")
     auto_install_max_retries: int = Field(default=5, description="自动安装依赖后的最大重试次数")
-
-    class Config:
-        env_prefix = "API_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-
+    allow_api_build_commands: bool = Field(
+        default=False,
+        description="是否允许 API 请求提供 C/C++ 构建命令或脚本"
+    )
 
 def _load_keys_toml_settings() -> dict:
     """从 keys.toml 加载 [settings] 配置"""

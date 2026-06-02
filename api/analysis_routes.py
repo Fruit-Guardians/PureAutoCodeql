@@ -16,7 +16,7 @@ from api.task_manager import get_task_manager
 from utils.case import resolve_case
 
 
-router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 # 启动任务
 @router.post("/start", response_model=AnalysisTaskInfo, status_code=202)
@@ -26,13 +26,13 @@ async def start_analysis(
 ) -> AnalysisTaskInfo:
 
     try:
-        case_paths = resolve_case(request.case_id)
-        if not case_paths.root.exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"项目 '{request.case_id}' 不存在"
-            )
-    except Exception as e:
+        resolve_case(request.case_id)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"项目 '{request.case_id}' 不存在: {str(e)}"
+        )
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
             detail=f"无效的项目ID: {str(e)}"

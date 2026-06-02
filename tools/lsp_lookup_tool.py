@@ -7,7 +7,7 @@ CodeQL function definitions using LSP protocol.
 """
 
 from typing import Optional, Type
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from langchain.tools import BaseTool
 
 from tools.lsp_codeql import HotCodeQL
@@ -56,9 +56,7 @@ class LSPFunctionLookupTool(BaseTool):
     # Default language for lookups (can be overridden per call)
     default_language: str = "java"
     
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def __init__(self, engine: Optional[HotCodeQL] = None, default_language: str = "java", **kwargs):
         """

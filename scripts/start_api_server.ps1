@@ -15,7 +15,7 @@ Write-Host "Starting PureAutoCodeql API Server..."
 Write-Host "Project root: $ProjectRoot"
 
 # 读取环境变量（提供默认值）
-$ApiHost  = if ($env:API_HOST) { $env:API_HOST } else { "0.0.0.0" }
+$ApiHost  = if ($env:API_HOST) { $env:API_HOST } else { "127.0.0.1" }
 $ApiPort  = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
 $Reload   = if ($env:API_RELOAD) { $env:API_RELOAD } else { "false" }
 $Workers  = if ($env:API_WORKERS) { $env:API_WORKERS } else { "1" }
@@ -25,7 +25,7 @@ function Show-Help {
     Write-Host "Usage: .\\scripts\\start_api_server.ps1 [options]"
     Write-Host ""
     Write-Host "Options:"
-    Write-Host "  --host HOST          Server host (default: 0.0.0.0)"
+    Write-Host "  --host HOST          Server host (default: 127.0.0.1)"
     Write-Host "  --port PORT          Server port (default: 8000)"
     Write-Host "  --reload             Enable auto-reload"
     Write-Host "  --workers N          Number of workers (default: 1)"

@@ -83,6 +83,7 @@ class CodeQLComposeTool(BaseTool):
     enable_source_sink_fallback: bool = False
     fallback_empty_retry_max: int = 5
     enable_breakpoint_recovery: bool = False
+    last_execution_result: Optional[Dict[str, Any]] = None
 
     def __init__(
         self,
@@ -112,6 +113,7 @@ class CodeQLComposeTool(BaseTool):
         self.enable_source_sink_fallback = enable_source_sink_fallback
         self.fallback_empty_retry_max = fallback_empty_retry_max
         self.enable_breakpoint_recovery = enable_breakpoint_recovery
+        self.last_execution_result = None
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
@@ -258,7 +260,9 @@ class CodeQLComposeTool(BaseTool):
                 self.default_database_path,
                 target_language,
                 query_file,
+                output_dir=query_file.parent / "results",
             )
+            self.last_execution_result = exec_result
 
             if not exec_result.get("success", False):
                 error_output = exec_result.get("output", "")
@@ -1134,8 +1138,10 @@ class CodeQLComposeTool(BaseTool):
                                     self.default_database_path,
                                     target_language,
                                     query_file,
-                                    alert="alert"  # 添加alert参数，执行简单查询而不进行路径分析
+                                    alert="alert",  # 添加alert参数，执行简单查询而不进行路径分析
+                                    output_dir=query_file.parent / "results",
                                 )
+                            self.last_execution_result = exec_result
                             
                             #借助agent开始分析断流点并且生成断流条件
                             print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{breakpoint_add_count}次尝试）")

@@ -455,6 +455,7 @@ class CodeQLGenerationStep(AnalysisStep):
                 source_verification_query=source_verification_query,  # 传递 Source 验证查询
             )
             print(compose_output)
+            context.data["codeql_execution_result"] = codeql_tool.last_execution_result
 
             # Normalize output into AgentResult for downstream consumers
             if isinstance(compose_output, AgentResult):
@@ -524,6 +525,7 @@ class AnalysisPipeline:
                     result.path_analysis_result = step_result
                 elif step.name == "codeql_generation":
                     result.codeql_result = step_result
+                    result.codeql_execution_result = context.data.get("codeql_execution_result")
 
                 # 检查步骤是否成功
                 if hasattr(step_result, 'success') and not step_result.success:
@@ -605,6 +607,7 @@ class AnalysisPipeline:
                 sarif_dir=sarif_dir,
                 codeql_dir=codeql_dir,
                 config=config,
+                execution_result=result.codeql_execution_result,
             )
 
             if json_result_path:
@@ -642,15 +645,22 @@ class AnalysisPipeline:
         sarif_dir: Path,
         codeql_dir: Path,
         config: AnalysisConfig,
+        execution_result: Optional[Any] = None,
     ) -> Optional[Path]:
         """处理SARIF文件：复制、转换、删除，并返回生成的JSON路径。"""
         try:
-            sarif_files = list(output_base.glob('result_*.sarif')) if output_base.exists() else []
-            if not sarif_files:
-                logger.debug("未找到SARIF文件")
-                return None
+            explicit_sarif = None
+            if isinstance(execution_result, dict):
+                explicit_sarif = execution_result.get("sarif_path")
+            latest_sarif = Path(explicit_sarif) if explicit_sarif else None
 
-            latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
+            if not latest_sarif or not latest_sarif.exists():
+                sarif_files = list(output_base.glob('result_*.sarif')) if output_base.exists() else []
+                if not sarif_files:
+                    logger.debug("未找到SARIF文件")
+                    return None
+                latest_sarif = max(sarif_files, key=lambda x: x.stat().st_mtime)
+
             target_sarif = sarif_dir / "codeql-run.sarif"
 
             # 先复制文件
@@ -681,12 +691,13 @@ class AnalysisPipeline:
                 logger.warning(f"SARIF转JSON失败: {e}，但SARIF文件已保存")
                 json_path = None
 
-            # 所有处理完成后再删除原文件
-            try:
-                latest_sarif.unlink()
-                logger.debug(f"已删除原始SARIF文件: {latest_sarif}")
-            except Exception as e:
-                logger.warning(f"删除原始SARIF文件失败: {e}，文件已保留")
+            # 只清理兼容回退的全局 SARIF；工具专属目录下的文件保留用于调试。
+            if latest_sarif.parent == output_base:
+                try:
+                    latest_sarif.unlink()
+                    logger.debug(f"已删除原始SARIF文件: {latest_sarif}")
+                except Exception as e:
+                    logger.warning(f"删除原始SARIF文件失败: {e}，文件已保留")
 
             return json_path
 

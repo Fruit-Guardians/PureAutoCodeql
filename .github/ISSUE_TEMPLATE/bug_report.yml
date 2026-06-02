@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in PureAutoCodeQL.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please remove secrets and private target details before submitting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: The analysis fails when...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include commands, case layout, and relevant configuration.
+      placeholder: |
+        1. Run `uv run python Analyze.py ...`
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Paste the smallest useful snippet. Redact tokens and private paths if needed.
+      render: shell
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.13.x"
+  - type: input
+    id: codeql
+    attributes:
+      label: CodeQL CLI version
+      placeholder: "`codeql version` output"
+  - type: dropdown
+    id: language
+    attributes:
+      label: Target language
+      options:
+        - Java
+        - Python
+        - C/C++
+        - Other
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Anything else that may help diagnose the issue.

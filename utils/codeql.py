@@ -400,7 +400,13 @@ dependencies:
     return query_file
 
 
-def run_simple_query(query_content: str, database_path: str, language: Optional[str] = None, query_file: Optional[Path] = None) -> Dict[str, Any]:
+def run_simple_query(
+    query_content: str,
+    database_path: str,
+    language: Optional[str] = None,
+    query_file: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
     """
     执行简单的CodeQL查询，不进行路径分析。
 
@@ -433,7 +439,7 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
         open(query_file,'w').write(query_content)
         
         # 准备输出目录
-        output_dir = Path('./output')
+        output_dir = Path(output_dir) if output_dir else Path('./output')
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -665,7 +671,14 @@ def run_simple_query(query_content: str, database_path: str, language: Optional[
         }
 
 
-def execute_codeql_query(query_content: str, database_path: str, language: Optional[str] = None , query_file: Optional[Path] = None, alert: Optional[str] = None) -> Dict[str, Any]:
+def execute_codeql_query(
+    query_content: str,
+    database_path: str,
+    language: Optional[str] = None,
+    query_file: Optional[Path] = None,
+    alert: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
     """
     对指定的数据库执行CodeQL查询。
 
@@ -699,13 +712,13 @@ def execute_codeql_query(query_content: str, database_path: str, language: Optio
 
     # 如果指定了alert参数，执行简单查询（使用解析后的路径）
     if alert == 'alert':
-        return run_simple_query(query_content, resolved_database_path, language, query_file)
+        return run_simple_query(query_content, resolved_database_path, language, query_file, output_dir)
     
     sarif_path: Optional[Path] = None
     try:
         open(query_file,'w').write(query_content)
         # 准备标准化的SARIF输出路径
-        output_dir = Path('./output')
+        output_dir = Path(output_dir) if output_dir else Path('./output')
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except Exception:

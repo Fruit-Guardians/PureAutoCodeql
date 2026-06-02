@@ -177,6 +177,7 @@ class SourceVerificationAgent:
                     self.database_path,
                     self.language,
                     query_file,
+                    output_dir=query_file.parent / "results",
                 )
 
                 if not exec_result.get("success"):

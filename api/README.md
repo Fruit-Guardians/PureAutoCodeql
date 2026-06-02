@@ -30,9 +30,11 @@
 # Windows (PowerShell)
 .\scripts\start_api_server.ps1
 
-# 或直接运行
-uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
+# 或直接运行（默认仅监听本机）
+uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+默认情况下，API 只绑定 `127.0.0.1`，项目导入只允许 `imports/` 目录下的源路径，并拒绝请求体中的构建命令。需要开放远程访问或构建命令时，请显式设置对应的 `API_*` 环境变量，并建议同时设置 `API_AUTH_TOKEN`。
 
 ### API文档
 
@@ -128,4 +130,3 @@ curl -N http://localhost:8000/api/analysis/{task_id}/stream
 ## 许可证
 
 与项目主体保持一致
-

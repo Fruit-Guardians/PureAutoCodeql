@@ -652,7 +652,7 @@ def parse_arguments() -> argparse.Namespace:
 使用示例:
   %(prog)s --case CVE-2021-21985                    # 分析已导入的案例
   %(prog)s --case "C:\\Targets\\java\\CVE-2023-51444"  # Java项目：自动导入+建库+分析
-  %(prog)s --case CVE-2021-21985 --stream          # 显示AI思考过程
+  %(prog)s --case CVE-2021-21985 --no-stream       # 禁用AI思考过程显示
   %(prog)s --import-project "C:\\Targets\\CVE-2023-51444" --import-language java  # 仅导入Java项目
   %(prog)s --md-file vulnerability.md              # 从MD文件直接生成CodeQL
   %(prog)s --md-file vulnerability.md --src-path /path/to/source  # 从MD文件生成source点分析报告
