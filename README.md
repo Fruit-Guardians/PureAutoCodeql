@@ -7,90 +7,135 @@
 [![CodeQL](https://img.shields.io/badge/CodeQL-enabled-2EA44F.svg)](https://codeql.github.com/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](pure_auto_codeql/api/README.md)
 [![uv](https://img.shields.io/badge/package-uv-DE5FE9.svg)](https://github.com/astral-sh/uv)
+[![Languages](https://img.shields.io/badge/lang-Java%20%7C%20Python%20%7C%20C%2FC%2B%2B-informational.svg)](#它做什么)
 
-**面向 CVE 研究与源码审计的多智能体 CodeQL 自动分析流水线。**
+**多智能体驱动的 CVE 自动分析与 CodeQL 查询生成流水线**
 
-把漏洞情报、补丁上下文、Source/Sink 识别、CodeQL 查询生成、查询执行和路径精选串成一条可复用的分析流程，支持 Java、Python 与 C/C++ 项目。
+把「读漏洞情报 → 找 Source/Sink → 写并修好 CodeQL → 跑查询 → 筛路径」串成一条可复用流程。  
+面向安全研究、漏洞复现与源码审计。
 
-[快速开始](#快速开始) · [能力概览](#能力概览) · [API 服务](#api-服务) · [安全说明](#安全说明) · [文档索引](#文档索引)
+<br/>
+
+[快速开始](#快速开始) ·
+[它做什么](#它做什么) ·
+[系统架构](#系统架构) ·
+[使用方式](#使用方式) ·
+[输出结果](#输出结果) ·
+[API](#api-服务) ·
+[文档](#文档)
 
 </div>
 
-## 能力概览
+---
 
-PureAutoCodeQL 适合用来快速复盘 CVE、生成漏洞定制 CodeQL 查询、定位关键数据流路径，并把结果沉淀为结构化报告。
+## 它做什么
 
-| 模块 | 作用 |
+CVE 复盘或审计时，常见流程是：读 advisory 和补丁、在代码里找入口与危险点、手写 CodeQL、修语法、跑查询，再从大量路径里挑出真正相关的几条。
+
+**PureAutoCodeQL 把这条链路自动化**，给你结构化报告和可复用的查询产物。
+
+| 你的目标 | 系统产出 |
 | --- | --- |
-| CVE 情报分析 | 拉取并汇总 GHSA/NVD、补丁、输入文件等上下文 |
-| Source/Sink 分析 | 结合 LLM、LSP 与源码上下文识别攻击入口和危险调用 |
-| CodeQL 查询生成 | 自动生成、执行、修复并复跑漏洞定制查询 |
-| 路径精选 | 从 SARIF/dataFlowPath 中筛选最有价值的候选路径 |
-| 项目导入 | 支持 `src/`、`source_code/`、zip 源码包、patch/diff 同步与 CodeQL 建库 |
-| HTTP API | 提供任务管理、项目管理与 SSE 流式事件，便于接入前端或平台 |
+| 弄清这个 CVE 在说什么 | 汇总本地 JSON / patch / 补充材料，可选拉取 NVD、GHSA |
+| 定位危险调用与用户可控输入 | Sink / Source Agent + 源码检索 + 语言 LSP |
+| 得到可执行的 CodeQL | 语言模板与内部知识库生成 Path Query，LSP 校验并迭代修复 |
+| 查询为空或数据流断掉 | 断流点分析，补 `isAdditionalFlowStep` 后重跑 |
+| 路径太多、噪声大 | 硬过滤 + 特征打分 + LLM 只读解释，收敛高质量路径 |
+| 接入平台或前端 | CLI 一键跑通；FastAPI + SSE 任务流 |
 
-## 工作流
+**适合：** 安全研究、漏洞复现、定制 CodeQL 规则沉淀、需要结构化报告的审计场景。
+
+---
+
+## 系统架构
+
+<p align="center">
+  <img src="docs/images/system-architecture.png" alt="PureAutoCodeQL 系统架构" width="900" />
+</p>
+
+<details>
+<summary><b>阶段一览（点击展开）</b></summary>
+
+<br/>
+
+| # | 阶段 | 输入 | 输出 |
+| --- | --- | --- | --- |
+| 1 | CVE 分析 | 案例目录、`inputs/`、可选在线情报 | 漏洞摘要、Source/Sink 线索 |
+| 2 | Sink 分析 | CVE 报告 + 源码 | 危险点 / API 报告 |
+| 3 | Source 分析 | Sink 结果 + 源码 + LSP | 用户可控入口与路径摘要 |
+| 4 | QL 生成与执行 | 上下文 + 语言知识库 | 可执行 QL、SARIF、原始 dataflow |
+| 5 | 路径选择 | SARIF + 前期摘要 | 精选路径与 `summary.md` |
 
 ```mermaid
-flowchart LR
-    A["CVE / Markdown / 外部项目"] --> B["情报与补丁上下文"]
-    B --> C["Sink 分析"]
-    C --> D["Source 分析"]
-    D --> E["CodeQL 查询生成与修复"]
-    E --> F["CodeQL 执行 / SARIF"]
-    F --> G["路径精选与验证"]
-    G --> H["Markdown / JSON / dataFlowPath 输出"]
+flowchart TB
+    A[CVE / 外部项目 / Markdown] --> B[① 情报与补丁上下文]
+    B --> C[② Sink 分析]
+    C --> D[③ Source 分析]
+    D --> E[④ CodeQL 生成 · 纠错 · 断流 · 执行]
+    E --> F[⑤ 路径筛选与报告]
+    F --> G[summary.md / SARIF / dataflow.json]
 ```
+
+多 Agent（LangChain / LangGraph）协作：源码侧经 MCP（文件系统、ripgrep）与语言服务器按需取上下文；CodeQL 侧用内部知识库约束生成，并用 CodeQL LSP 做语法闭环。支持 DeepSeek 等 OpenAI 兼容模型。
+
+</details>
+
+---
 
 ## 快速开始
 
-### 环境准备
+### 1. 环境
 
-- Python 3.13+
-- [uv](https://github.com/astral-sh/uv)
-- [CodeQL CLI](https://github.com/github/codeql-cli-binaries)，并加入 `PATH`
-- Node.js 18+ 与 npm，用于构建 MCP ripgrep 工具
-- 可选：Docker，用于 C/C++ 项目的容器化建库兜底
+| 依赖 | 说明 |
+| --- | --- |
+| Python **3.13+** | 运行时 |
+| [uv](https://github.com/astral-sh/uv) | 依赖与命令入口 |
+| [CodeQL CLI](https://github.com/github/codeql-cli-binaries) | 需在 `PATH` 中 |
+| Node.js 18+ / npm | 构建 MCP ripgrep |
+| Docker（可选） | C/C++ 建库兜底 |
 
-### 安装依赖
+### 2. 安装
 
 ```bash
 git clone https://github.com/Fruit-Guardians/PureAutoCodeql.git
 cd PureAutoCodeql
-
 uv sync
 ```
 
-构建 MCP ripgrep 工具：
+构建 MCP ripgrep：
 
 ```bash
 # macOS / Linux
-chmod +x scripts/build_mcp.sh
-./scripts/build_mcp.sh
+chmod +x scripts/build_mcp.sh && ./scripts/build_mcp.sh
 
 # Windows
 scripts\build_mcp.bat
 ```
 
-### 配置模型
-
-复制密钥模板并填入自己的 API Key：
+### 3. 配置模型
 
 ```bash
 cp config/keys.example.toml config/keys.toml
+# 编辑 keys.toml，填入 API Key
 ```
 
-内置提供商包括 `deepseek`、`siliconflow`、`zhipu`、`kimi`、`gemini`，也支持任意 OpenAI 兼容的自定义服务商。
+内置：`deepseek` · `siliconflow` · `zhipu` · `kimi` · `gemini`  
+也支持任意 OpenAI 兼容服务商 → [config/README.md](config/README.md)
+
+### 4. 跑起来
 
 ```bash
-# 查看可用提供商
 uv run python Analyze.py --list-providers
-
-# 使用指定提供商
 uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 ```
 
-命令行参数优先级高于环境变量和 `config/keys.toml`。更多配置方式见 [config/README.md](config/README.md)。
+新环境建议先自检：
+
+```bash
+uv run python Analyze.py --doctor
+```
+
+---
 
 ## 使用方式
 
@@ -98,23 +143,17 @@ uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 
 ```bash
 uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
-```
 
-新的子命令形式也可用，并会保持与旧参数形式等价：
-
-```bash
+# 等价入口
 uv run pure-auto-codeql analyze --case CVE-2021-21985 --provider deepseek
-```
 
-默认会展示 AI 思考过程；如需安静运行：
-
-```bash
+# 安静模式（不流式展示思考过程）
 uv run python Analyze.py --case CVE-2021-21985 --no-stream
 ```
 
-### 自动导入并分析外部项目
+### 导入外部项目并分析
 
-当 `--case` 传入的是目录路径时，系统会自动导入到 `projects/`、同步补丁并尝试创建 CodeQL 数据库。
+`--case` 为**目录路径**时，会导入到 `projects/`、同步补丁并尝试建库：
 
 ```bash
 uv run python Analyze.py --case "/path/to/CVE-2025-54381" \
@@ -122,18 +161,16 @@ uv run python Analyze.py --case "/path/to/CVE-2025-54381" \
   --refresh-intel
 ```
 
-推荐的外部目录结构：
+推荐外部目录结构：
 
 ```text
 CVE-XXXX-XXXX/
-├── CVE-XXXX-XXXX.json
-├── patch/
-│   └── *.patch 或 *.diff
-└── src/ 或 source_code/
-    └── 源码目录或源码压缩包
+├── CVE-XXXX-XXXX.json      # 漏洞描述（可选，缺失时可在线补全）
+├── patch/                  # *.patch / *.diff
+└── src/ 或 source_code/    # 源码目录或压缩包
 ```
 
-### 仅导入项目
+### 仅导入
 
 ```bash
 uv run python Analyze.py --import-project "/path/to/CVE-2025-54381" \
@@ -141,7 +178,7 @@ uv run python Analyze.py --import-project "/path/to/CVE-2025-54381" \
   --import-overwrite
 ```
 
-C/C++ 项目可以传入构建命令或脚本：
+C/C++ 可附带构建命令：
 
 ```bash
 uv run python Analyze.py --import-project "/path/to/CVE-XXXX" \
@@ -149,18 +186,16 @@ uv run python Analyze.py --import-project "/path/to/CVE-XXXX" \
   --import-build-command "make -j4"
 ```
 
-### 从 Markdown 生成 CodeQL
+### 从 Markdown 起步
 
 ```bash
+# 已有 CodeQL 数据库：生成并执行查询
 uv run python Analyze.py --md-file vulnerability.md \
   --database-path /path/to/codeql-db \
   --language java \
   --provider deepseek
-```
 
-也可以先基于漏洞描述和源码生成 Source 分析报告：
-
-```bash
+# 先出 Source 分析报告
 uv run python Analyze.py --md-file vulnerability.md \
   --src-path /path/to/source \
   --language python \
@@ -170,125 +205,115 @@ uv run python Analyze.py --md-file vulnerability.md \
 ### 常用命令
 
 ```bash
-uv run python Analyze.py --doctor
+uv run python Analyze.py --doctor                 # 环境诊断
 uv run pure-auto-codeql doctor
-uv run python Analyze.py --list
+uv run python Analyze.py --list                   # 列出案例
 uv run python Analyze.py --validate CVE-2021-21985
 uv run python Analyze.py --list-providers
 uv run python Analyze.py --list-models
 ```
 
-`--doctor` 会检查 Python、uv、CodeQL CLI、Node.js、npm、MCP 构建产物、`keys.toml`、`JAVA_HOME` 和可用 LLM Provider，适合在新机器或 CI 失败时快速定位环境问题。
+---
 
 ## 输出结果
 
-默认输出会写入按案例与时间戳组织的目录：
+默认写入 `output/<案例>/<时间戳>/`：
 
 ```text
 output/
 └── CVE-XXXX-XXXX/
     └── YYYYMMDD-HHMMSS/
-        ├── summary.md
+        ├── summary.md                  # 完整分析报告
         ├── sarif/
-        │   └── codeql-run.sarif
+        │   └── codeql-run.sarif        # CodeQL 原始结果
         ├── codeql/
-        │   └── all-paths-raw.json
+        │   └── all-paths-raw.json      # 未筛选 dataflow 路径
         └── path-selection/
-            ├── report.md
-            ├── selection.json
-            └── dataflow.json
+            ├── report.md               # 精选说明
+            ├── selection.json          # 精选元数据
+            └── dataflow.json           # 精简路径（便于二次集成）
 ```
 
-核心文件说明：
+详见 [docs/output_files_guide.md](docs/output_files_guide.md)。
 
-| 文件 | 用途 |
-| --- | --- |
-| `summary.md` | 完整分析报告，包含 CVE、Source、Sink、查询生成与执行摘要 |
-| `sarif/codeql-run.sarif` | CodeQL 原始 SARIF 输出 |
-| `codeql/all-paths-raw.json` | 未筛选的原始 dataFlowPath |
-| `path-selection/report.md` | 人类可读的路径精选说明 |
-| `path-selection/selection.json` | 路径精选完整元数据 |
-| `path-selection/dataflow.json` | 精简后的最佳路径结果，适合二次集成 |
+---
 
 ## API 服务
 
-启动本地 API：
-
 ```bash
 uv run uvicorn pure_auto_codeql.api.server:app --host 127.0.0.1 --port 8000
-```
 
-或使用 CLI 子命令：
-
-```bash
+# 或
 uv run pure-auto-codeql serve --host 127.0.0.1 --port 8000
-```
-
-也可以使用脚本：
-
-```bash
 ./scripts/start_api_server.sh
 ```
 
-默认安全策略：
-
-- API 仅监听 `127.0.0.1`
-- 项目导入只允许 `API_IMPORT_SOURCES_DIR` 指向的目录，默认是仓库内 `imports/`
-- 请求体中的 C/C++ 构建命令默认禁用
-- 设置 `API_AUTH_TOKEN` 后，所有接口需要 Bearer Token
-
-示例：
+| 默认策略 | 说明 |
+| --- | --- |
+| 监听地址 | 仅 `127.0.0.1` |
+| 导入范围 | `API_IMPORT_SOURCES_DIR`（默认仓库内 `imports/`） |
+| 构建命令 | 请求体中默认禁用 |
+| 鉴权 | 设置 `API_AUTH_TOKEN` 后需 Bearer Token |
 
 ```bash
 export API_AUTH_TOKEN="change-me"
-uv run uvicorn pure_auto_codeql.api.server:app --host 127.0.0.1 --port 8000
-
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:8000/api/projects
 ```
 
-如需开放远程导入或 API 构建命令，请显式设置：
+更多： [API README](pure_auto_codeql/api/README.md) · [SSE 参考](pure_auto_codeql/api/SSE_REFERENCE.md)
 
-```bash
-export API_ALLOW_EXTERNAL_IMPORT_PATHS=true
-export API_ALLOW_API_BUILD_COMMANDS=true
-```
-
-详细接口和 SSE 事件见 [pure_auto_codeql/api/README.md](pure_auto_codeql/api/README.md) 与 [pure_auto_codeql/api/SSE_REFERENCE.md](pure_auto_codeql/api/SSE_REFERENCE.md)。
+---
 
 ## 项目结构
 
 ```text
 PureAutoCodeQL/
-├── Analyze.py / config.py     # 兼容 CLI / 配置脚本入口
-├── pure_auto_codeql/          # 全部运行时 Python 包
-│   ├── agents/ application/ api/ cli/ config/ core/
-│   ├── information/ prompts/ services/ tools/ utils/
-│   ├── configuration.py paths.py
-│   └── …
-├── config/                    # keys.example.toml + 本地 keys.toml（不入库）
-├── tools/mcp_ripgrep/         # Node MCP 工具
-├── docs/ resources/ scripts/ docker/
-├── projects/case-template/ examples/ test/
-└── README / pyproject.toml / …
+├── Analyze.py / config.py      # CLI / 配置兼容入口
+├── pure_auto_codeql/           # 运行时包
+│   ├── agents/                 # CVE · Sink · Source · CodeQL 多智能体
+│   ├── application/            # CLI 与 API 共享工作流
+│   ├── api/                    # FastAPI + SSE
+│   ├── cli/ · core/ · services/ · tools/
+│   ├── information/ · prompts/ · utils/
+│   ├── config/                 # LLM 配置实现
+│   ├── configuration.py        # 推荐配置门面
+│   └── paths.py
+├── config/                     # keys.example.toml（本地 keys 不入库）
+├── tools/mcp_ripgrep/          # ripgrep MCP
+├── docs/images/                # 架构图等
+├── resources/ · scripts/ · docker/
+├── projects/case-template/ · examples/ · test/
+└── pyproject.toml
 ```
 
-## 文档索引
+应用代码中推荐：
+
+```python
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
+```
+
+包布局说明见 [docs/package_architecture.md](docs/package_architecture.md)。
+
+---
+
+## 文档
 
 | 文档 | 内容 |
 | --- | --- |
-| [config/README.md](config/README.md) | LLM Provider、`keys.toml` 与自定义服务商 |
-| [pure_auto_codeql/api/README.md](pure_auto_codeql/api/README.md) | API 启动、路由与开发说明 |
-| [pure_auto_codeql/api/SSE_REFERENCE.md](pure_auto_codeql/api/SSE_REFERENCE.md) | SSE 流式事件参考 |
-| [docs/package_architecture.md](docs/package_architecture.md) | 包命名空间迁移、兼容导入与架构检查 |
-| [docs/auto_import_quickstart.md](docs/auto_import_quickstart.md) | 外部 CVE 项目自动导入 |
-| [docs/output_files_guide.md](docs/output_files_guide.md) | 输出文件结构和用途 |
-| [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选模块运行说明 |
-| [docs/extra_input_files_simple.md](docs/extra_input_files_simple.md) | `inputs/` 额外上下文文件 |
-| [docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md](docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 两步走建库策略 |
-| [docs/codeql_lsp_troubleshooting.md](docs/codeql_lsp_troubleshooting.md) | CodeQL LSP 启动问题排查 |
-| [docs/archive/](docs/archive/) | 历史设计方案、诊断笔记和阶段性总结 |
+| [config/README.md](config/README.md) | Provider 与 `keys.toml` |
+| [pure_auto_codeql/api/README.md](pure_auto_codeql/api/README.md) | API 启动与路由 |
+| [pure_auto_codeql/api/SSE_REFERENCE.md](pure_auto_codeql/api/SSE_REFERENCE.md) | SSE 事件 |
+| [docs/auto_import_quickstart.md](docs/auto_import_quickstart.md) | 外部项目导入 |
+| [docs/output_files_guide.md](docs/output_files_guide.md) | 输出文件 |
+| [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选 |
+| [docs/codeql_breakpoint_detection_README.md](docs/codeql_breakpoint_detection_README.md) | 断流点检测 |
+| [docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md](docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 建库 |
+| [docs/codeql_lsp_troubleshooting.md](docs/codeql_lsp_troubleshooting.md) | CodeQL LSP 排查 |
+| [docs/package_architecture.md](docs/package_architecture.md) | 包结构 |
 
-## 测试
+---
+
+## 开发与测试
 
 ```bash
 uv run pytest -q
@@ -296,29 +321,21 @@ uv lock --check
 uv run python -m compileall -q Analyze.py pure_auto_codeql
 ```
 
-## 配置导入约定
+欢迎 Issue / PR，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-运行时代码推荐从 `pure_auto_codeql.configuration` 导入 LLM 配置：
-
-```python
-from pure_auto_codeql.configuration import get_llm_config, LLMRole
-```
-
-历史脚本中的 `from config import ...` 和 `python config.py ...` 仍保持兼容。
+---
 
 ## 安全说明
 
-- 不要提交真实密钥。`config/keys*.toml` 已被忽略，仓库只保留 `config/keys.example.toml` 模板。
-- 如果历史提交中曾经暴露过真实密钥，请立即轮换或吊销，并按需清理 Git 历史。
-- 对外暴露 API 时请设置 `API_AUTH_TOKEN`，并谨慎启用外部路径导入和 API 构建命令。
-- 导入第三方源码和补丁时请优先在隔离环境运行，尤其是需要执行构建脚本的 C/C++ 项目。
+- 不要提交真实密钥；仓库只保留 `config/keys.example.toml`。
+- 若密钥曾进入历史提交，请立即轮换并视情况清理 Git 历史。
+- 对外暴露 API 时请设置 `API_AUTH_TOKEN`，谨慎开启外部导入与构建命令。
+- 分析第三方源码（尤其执行构建脚本）时建议在隔离环境中运行。
 
-漏洞报告与披露流程见 [SECURITY.md](SECURITY.md)。
+漏洞披露流程见 [SECURITY.md](SECURITY.md)。
 
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。开始前建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并尽量附上可复现输入、运行命令和关键输出。
+---
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE)。
+[MIT License](LICENSE)

@@ -69,3 +69,6 @@ Thumbs.db
 
 # OpenSpec local workspace (not versioned)
 openspec/
+
+# Local presentation / contest materials (not versioned)
+HnuSec材料/
