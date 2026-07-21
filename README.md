@@ -65,11 +65,11 @@ uv sync
 
 ```bash
 # macOS / Linux
-chmod +x build_mcp.sh
-./build_mcp.sh
+chmod +x scripts/build_mcp.sh
+./scripts/build_mcp.sh
 
 # Windows
-build_mcp.bat
+scripts\build_mcp.bat
 ```
 
 ### 配置模型
@@ -263,14 +263,15 @@ PureAutoCodeQL/
 ├── api/                       # FastAPI 服务端
 ├── config/                    # LLM Provider 与运行配置
 ├── core/                      # 分析上下文、流水线和编排器
-├── docs/                      # 使用指南与功能说明
+├── docs/                      # 使用指南与功能说明（含 docs/cpp/）
 ├── Information/               # GHSA / NVD 情报获取
 ├── prompts/                   # 各语言与各阶段提示词
-├── pure_auto_codeql/           # 规范化 Python 包命名空间
-├── pure_auto_codeql/application/ # CLI/API 共享工作流服务
-├── pure_auto_codeql/cli/       # 打包后的 CLI 实现
-├── pure_auto_codeql/agents/    # CVE、Source、Sink、CodeQL 生成等 Agent
+├── pure_auto_codeql/          # 规范化 Python 包命名空间
+│   ├── application/           # CLI/API 共享工作流服务
+│   ├── cli/                   # 打包后的 CLI 实现
+│   └── agents/                # CVE、Source、Sink、CodeQL 生成等 Agent
 ├── resources/                 # CodeQL 模板、知识库与扩展库
+├── scripts/                   # API 启动、MCP 构建与 smoke 脚本
 ├── services/                  # LLM、LSP、路径精选等服务
 ├── tools/                     # CodeQL 组合、LSP 查询、MCP 工具
 ├── utils/                     # 案例解析、项目导入、CodeQL 执行等工具
@@ -289,7 +290,7 @@ PureAutoCodeQL/
 | [docs/output_files_guide.md](docs/output_files_guide.md) | 输出文件结构和用途 |
 | [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选模块运行说明 |
 | [docs/extra_input_files_simple.md](docs/extra_input_files_simple.md) | `inputs/` 额外上下文文件 |
-| [C/CPP_TWO_STEP_BUILD_GUIDE.md](C/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 两步走建库策略 |
+| [docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md](docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 两步走建库策略 |
 | [docs/archive/](docs/archive/) | 历史设计方案、诊断笔记和阶段性总结 |
 
 ## 测试

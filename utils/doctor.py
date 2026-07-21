@@ -90,7 +90,7 @@ def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
             "MCP ripgrep build",
             mcp_dist.exists(),
             str(mcp_dist) if mcp_dist.exists() else "dist/index.js missing",
-            "Run ./build_mcp.sh or build_mcp.bat.",
+            "Run ./scripts/build_mcp.sh or scripts\\build_mcp.bat.",
         )
     )
 

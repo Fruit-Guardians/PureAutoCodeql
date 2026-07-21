@@ -13,8 +13,8 @@ uv sync
 Build the MCP ripgrep tool when you need agent-side code search:
 
 ```bash
-chmod +x build_mcp.sh
-./build_mcp.sh
+chmod +x scripts/build_mcp.sh
+./scripts/build_mcp.sh
 ```
 
 Run the environment doctor on a new machine:

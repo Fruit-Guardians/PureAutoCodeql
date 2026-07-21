@@ -148,7 +148,7 @@ docker_builder_image = "pure-codeql-cpp:latest"
 # 
 # 3. 失败报告（提供诊断信息）
 #
-# 详细说明请查看：C/CPP_TWO_STEP_BUILD_GUIDE.md
+# 详细说明请查看：docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md
 
 
 # ============================================================================
