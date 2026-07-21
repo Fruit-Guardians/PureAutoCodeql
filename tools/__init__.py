@@ -1,6 +1,9 @@
-"""LangChain tools for CodeQL operations."""
+"""Legacy tools package.
 
-from tools.codeql_compose import CodeQLComposeTool
+Python tool implementations live under ``pure_auto_codeql.tools``.
+``tools/mcp_ripgrep`` remains at the repository root for Node build tooling.
+"""
 
-__all__ = ['CodeQLComposeTool']
+from pure_auto_codeql.tools import CodeQLComposeTool
 
+__all__ = ["CodeQLComposeTool"]

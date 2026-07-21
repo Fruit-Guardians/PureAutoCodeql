@@ -141,11 +141,21 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert legacy_exec is canonical_exec
     assert collect_diagnostics()  # uses get_repo_root under the hood
 
+    # tools package migration shims (Python modules; mcp_ripgrep stays at tools/)
+    from tools import CodeQLComposeTool as legacy_compose
+    from pure_auto_codeql.tools import CodeQLComposeTool as canonical_compose
+    import tools.lsp_codeql as legacy_lsp_codeql
+    import pure_auto_codeql.tools.lsp_codeql as canonical_lsp_codeql
+
+    assert legacy_compose is canonical_compose
+    assert legacy_lsp_codeql is canonical_lsp_codeql
+
     # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
     assert (prompts_dir() / "codeql_generate.md").is_file()
     assert "pure_auto_codeql" in prompts_dir().parts
+    assert (root / "tools" / "mcp_ripgrep" / "package.json").is_file()
 
 
 def test_api_environment_settings_override_keys_toml_settings(monkeypatch):
