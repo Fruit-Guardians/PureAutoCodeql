@@ -36,5 +36,15 @@ def get_repo_root() -> Path:
 
 
 def prompts_dir() -> Path:
-    """Return the repository ``prompts/`` directory."""
-    return get_repo_root() / "prompts"
+    """Return the directory that holds prompt templates (``*.md``).
+
+    Canonical location is ``pure_auto_codeql/prompts/`` next to the prompt
+    Python package. Falls back to a top-level ``prompts/`` directory if the
+    nested package layout is not present (unusual installs).
+    """
+    package_prompts = Path(__file__).resolve().parent / "prompts"
+    if package_prompts.is_dir() and any(package_prompts.glob("*.md")):
+        return package_prompts
+
+    legacy = get_repo_root() / "prompts"
+    return legacy

@@ -14,12 +14,12 @@ migration window.
 | LLM configuration imports | `pure_auto_codeql.configuration` | Canonical facade |
 | repo path helpers | `pure_auto_codeql.paths` | Introduced (`get_repo_root`, `prompts_dir`) |
 | `Information` | `pure_auto_codeql.information` | Migrated (top-level re-export shim kept) |
+| `prompts` | `pure_auto_codeql.prompts` | Migrated (top-level re-export shim kept; `.md` assets co-located) |
 | `api` | `pure_auto_codeql.api` | Planned staged migration |
 | `core` | `pure_auto_codeql.core` | Planned staged migration |
 | `services` | `pure_auto_codeql.services` | Planned staged migration |
 | `utils` | `pure_auto_codeql.utils` | Planned staged migration |
 | `tools` | `pure_auto_codeql.tools` | Planned staged migration |
-| `prompts` | `pure_auto_codeql.prompts` | Planned staged migration |
 
 ## Compatibility Surface
 
@@ -35,6 +35,7 @@ explicitly removes them:
 - `from utils import ...`
 - `from tools import ...`
 - `from Information import ...`
+- `from prompts import ...`
 
 Compatibility shims should be quiet by default. Tests should cover both the new
 canonical imports and supported legacy imports before a module is moved.

@@ -794,19 +794,21 @@ class CodeQLComposeTool(BaseTool):
 
     def _load_ql_template(self, lang: str) -> str:
         try:
+            from pure_auto_codeql.paths import prompts_dir as _prompts_dir
+
             target = (lang or "").lower()
-            prompts_dir = Path(__file__).parent.parent / "prompts"
-            java_path = prompts_dir / "java_temple_ql.md"
-            py_path = prompts_dir / "python_template_ql.md"
-            c_path = prompts_dir / "c_template_ql.md"
+            prompts_root = _prompts_dir()
+            java_path = prompts_root / "java_temple_ql.md"
+            py_path = prompts_root / "python_template_ql.md"
+            c_path = prompts_root / "c_template_ql.md"
 
             if target == "python" and py_path.exists():
                 # Python 特殊处理：拼接主模板 + 模式库 + 案例库
                 # 这样在维护时是分离的，但在注入 Prompt 时是完整的。
                 base_content = py_path.read_text(encoding="utf-8")
                 
-                patterns_path = prompts_dir / "python_patterns.md"
-                cases_path = prompts_dir / "python_cases.md"
+                patterns_path = prompts_root / "python_patterns.md"
+                cases_path = prompts_root / "python_cases.md"
                 
                 extra_content = []
                 if patterns_path.exists():
@@ -820,8 +822,8 @@ class CodeQLComposeTool(BaseTool):
                 # C/CPP 特殊处理：拼接主模板 + 模式库 + 案例库
                 base_content = c_path.read_text(encoding="utf-8")
                 
-                patterns_path = prompts_dir / "c_patterns.md"
-                cases_path = prompts_dir / "c_cases.md"
+                patterns_path = prompts_root / "c_patterns.md"
+                cases_path = prompts_root / "c_cases.md"
                 
                 extra_content = []
                 if patterns_path.exists():
@@ -833,7 +835,8 @@ class CodeQLComposeTool(BaseTool):
             return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
         except Exception:
             try:
-                fallback = Path(__file__).parent.parent / "prompts" / "java_temple_ql.md"
+                from pure_auto_codeql.paths import prompts_dir as _prompts_dir
+                fallback = _prompts_dir() / "java_temple_ql.md"
                 return fallback.read_text(encoding="utf-8") if fallback.exists() else ""
             except Exception:
                 return ""

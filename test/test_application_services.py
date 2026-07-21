@@ -118,10 +118,23 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert dotted_ghsa is dotted_canonical_ghsa
     assert dotted_ghsa is canonical_ghsa
 
-    # Repo root helper resolves real asset layout
+    # prompts package migration shims
+    import prompts as legacy_prompts
+    import pure_auto_codeql.prompts as canonical_prompts
+    from prompts import build_sink_prompt as legacy_build_sink
+    from pure_auto_codeql.prompts import build_sink_prompt as canonical_build_sink
+    import prompts.codeql_prompts as legacy_codeql_prompts
+    import pure_auto_codeql.prompts.codeql_prompts as canonical_codeql_prompts
+
+    assert legacy_build_sink is canonical_build_sink
+    assert legacy_codeql_prompts is canonical_codeql_prompts
+    assert legacy_prompts.build_path_analysis_prompt is canonical_prompts.build_path_analysis_prompt
+
+    # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
     assert (prompts_dir() / "codeql_generate.md").is_file()
+    assert "pure_auto_codeql" in prompts_dir().parts
 
 
 def test_api_environment_settings_override_keys_toml_settings(monkeypatch):

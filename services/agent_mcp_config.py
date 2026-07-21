@@ -5,6 +5,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient  # noqa: F401  # 
 
 from utils.logger import get_logger
 from services.mcp_language_config import MCPLanguageConfigService
+from pure_auto_codeql.paths import prompts_dir
 
 if TYPE_CHECKING:
     from pure_auto_codeql.agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
@@ -106,7 +107,7 @@ class AgentMCPConfigService:
 
                 # 添加对于错误整理Agent的MCP配置
                 if agent_type == "template_refinement":
-                    prompts_path = repo_root / "prompts"
+                    prompts_path = prompts_dir()
                     mcp_servers["filesystem"] = {
                         "command": "npx",
                         "args": [
@@ -118,7 +119,7 @@ class AgentMCPConfigService:
                     }
                 else:
                     temp_codeql_path = repo_root / "temp" / "codeql_temp"
-                    prompts_path = repo_root / "prompts"
+                    prompts_path = prompts_dir()
                     mcp_servers["filesystem"] = {
                         "command": "npx",
                         "args": [
