@@ -84,94 +84,40 @@ def test_application_analysis_validation_maps_case_errors(tmp_path):
 
 
 def test_canonical_and_legacy_import_surfaces_remain_available():
+    """Canonical package surfaces and key legacy entry points stay wired."""
     import config
     import pure_auto_codeql.configuration as canonical_config
-    import utils.project_import_policy as legacy_policy
+    import pure_auto_codeql.config as config_impl
     from Analyze import cli as legacy_cli
     from config import get_llm_config as legacy_get_llm_config
     from pure_auto_codeql.application import ProjectImportPolicyError
     from pure_auto_codeql.cli.app import cli as canonical_cli
-    from pure_auto_codeql.information import ghsa_fetch as canonical_ghsa
-    from pure_auto_codeql.information import nvd_info_fetch as canonical_nvd
     from pure_auto_codeql.paths import get_repo_root, prompts_dir
-    from Information import ghsa_fetch as legacy_ghsa
-    from Information import nvd_info_fetch as legacy_nvd
+    from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError as util_policy_err
+    from pure_auto_codeql.information import ghsa_fetch, nvd_info_fetch
+    from pure_auto_codeql.prompts import build_sink_prompt
+    from pure_auto_codeql.tools import CodeQLComposeTool
+    from pure_auto_codeql.services import MultiAgentAnalyzer
+    from pure_auto_codeql.core import AnalysisOrchestrator
+    from pure_auto_codeql.api.config import get_config
+    from pure_auto_codeql.utils.doctor import collect_diagnostics
 
-    config_path = Path(config.__file__)
-    assert config_path.name == "__init__.py"
-    assert config_path.parent.name == "config"
+    assert Path(config.__file__).parent.name == "config"
     assert canonical_cli is legacy_cli
-    assert canonical_config.LLMRole is config.LLMRole
+    assert canonical_config.LLMRole is config.LLMRole is config_impl.LLMRole
     assert canonical_config.get_llm_config is legacy_get_llm_config
-    import pure_auto_codeql.config as config_impl
-    assert config_impl.LLMRole is config.LLMRole
     assert callable(canonical_config.get_llm_config)
-    assert legacy_policy.ProjectImportPolicyError is ProjectImportPolicyError
+    assert util_policy_err is ProjectImportPolicyError
 
-    # Information package migration shims
-    assert legacy_ghsa is canonical_ghsa
-    assert legacy_nvd is canonical_nvd
-    assert canonical_ghsa.AdvisoryLookupError is legacy_ghsa.AdvisoryLookupError
-    assert canonical_nvd.CveLookupError is legacy_nvd.CveLookupError
+    assert ghsa_fetch.AdvisoryLookupError
+    assert nvd_info_fetch.CveLookupError
+    assert callable(build_sink_prompt)
+    assert CodeQLComposeTool
+    assert MultiAgentAnalyzer
+    assert AnalysisOrchestrator
+    assert get_config().project_root.resolve() == get_repo_root().resolve()
+    assert collect_diagnostics()
 
-    import Information.ghsa_fetch as dotted_ghsa
-    import pure_auto_codeql.information.ghsa_fetch as dotted_canonical_ghsa
-
-    assert dotted_ghsa is dotted_canonical_ghsa
-    assert dotted_ghsa is canonical_ghsa
-
-    # prompts package migration shims
-    import prompts as legacy_prompts
-    import pure_auto_codeql.prompts as canonical_prompts
-    from prompts import build_sink_prompt as legacy_build_sink
-    from pure_auto_codeql.prompts import build_sink_prompt as canonical_build_sink
-    import prompts.codeql_prompts as legacy_codeql_prompts
-    import pure_auto_codeql.prompts.codeql_prompts as canonical_codeql_prompts
-
-    assert legacy_build_sink is canonical_build_sink
-    assert legacy_codeql_prompts is canonical_codeql_prompts
-    assert legacy_prompts.build_path_analysis_prompt is canonical_prompts.build_path_analysis_prompt
-
-    # utils package migration shims
-    import utils.case as legacy_case
-    import pure_auto_codeql.utils.case as canonical_case
-    from utils import execute_codeql_query as legacy_exec
-    from pure_auto_codeql.utils import execute_codeql_query as canonical_exec
-    from utils.doctor import collect_diagnostics
-
-    assert legacy_case is canonical_case
-    assert legacy_exec is canonical_exec
-    assert collect_diagnostics()  # uses get_repo_root under the hood
-
-    # tools package migration shims (Python modules; mcp_ripgrep stays at tools/)
-    from tools import CodeQLComposeTool as legacy_compose
-    from pure_auto_codeql.tools import CodeQLComposeTool as canonical_compose
-    import tools.lsp_codeql as legacy_lsp_codeql
-    import pure_auto_codeql.tools.lsp_codeql as canonical_lsp_codeql
-
-    assert legacy_compose is canonical_compose
-    assert legacy_lsp_codeql is canonical_lsp_codeql
-
-    # services package migration shims
-    from services import MultiAgentAnalyzer as legacy_analyzer
-    from pure_auto_codeql.services import MultiAgentAnalyzer as canonical_analyzer
-    import services.path_selection.selector as legacy_selector
-    import pure_auto_codeql.services.path_selection.selector as canonical_selector
-
-    assert legacy_analyzer is canonical_analyzer
-    assert legacy_selector is canonical_selector
-
-    # core + api package migration shims
-    from core import AnalysisOrchestrator as legacy_orch
-    from pure_auto_codeql.core import AnalysisOrchestrator as canonical_orch
-    from api.config import get_config as legacy_api_config
-    from pure_auto_codeql.api.config import get_config as canonical_api_config
-
-    assert legacy_orch is canonical_orch
-    assert legacy_api_config is canonical_api_config
-    assert legacy_api_config().project_root.resolve() == get_repo_root().resolve()
-
-    # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
     assert (prompts_dir() / "codeql_generate.md").is_file()
@@ -180,11 +126,11 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
 
 
 def test_api_environment_settings_override_keys_toml_settings(monkeypatch):
-    from api.config import _create_config
+    from pure_auto_codeql.api.config import _create_config
 
     monkeypatch.setenv("API_USE_DOCKER_FOR_CPP", "true")
     monkeypatch.setattr(
-        "api.config._load_keys_toml_settings",
+        "pure_auto_codeql.api.config._load_keys_toml_settings",
         lambda: {
             "use_docker_for_cpp": False,
             "docker_builder_image": "from-keys",

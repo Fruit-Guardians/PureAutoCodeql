@@ -13,13 +13,13 @@ migration window.
 | shared CLI/API workflow helpers | `pure_auto_codeql.application` | Introduced |
 | LLM configuration imports | `pure_auto_codeql.configuration` | Canonical facade |
 | repo path helpers | `pure_auto_codeql.paths` | Introduced (`get_repo_root`, `prompts_dir`) |
-| `Information` | `pure_auto_codeql.information` | Migrated (top-level re-export shim kept) |
-| `prompts` | `pure_auto_codeql.prompts` | Migrated (top-level re-export shim kept; `.md` assets co-located) |
-| `utils` | `pure_auto_codeql.utils` | Migrated (top-level re-export shim kept) |
-| `tools` | `pure_auto_codeql.tools` | Migrated Python modules (top-level re-export shim kept; `tools/mcp_ripgrep` stays at repo root) |
-| `services` | `pure_auto_codeql.services` | Migrated (top-level re-export shim kept) |
-| `core` | `pure_auto_codeql.core` | Migrated (top-level re-export shim kept) |
-| `api` | `pure_auto_codeql.api` | Migrated (top-level re-export shim kept) |
+| `Information` | `pure_auto_codeql.information` | Migrated (top-level shim removed) |
+| `prompts` | `pure_auto_codeql.prompts` | Migrated (top-level shim removed; `.md` assets co-located) |
+| `utils` | `pure_auto_codeql.utils` | Migrated (top-level shim removed) |
+| `tools` | `pure_auto_codeql.tools` | Migrated Python modules (top-level py shim removed; `tools/mcp_ripgrep` stays at repo root) |
+| `services` | `pure_auto_codeql.services` | Migrated (top-level shim removed) |
+| `core` | `pure_auto_codeql.core` | Migrated (top-level shim removed) |
+| `api` | `pure_auto_codeql.api` | Migrated (top-level shim removed; docs remain under pure_auto_codeql/api and mirrored paths if needed) |
 | `config` (LLM provider impl) | `pure_auto_codeql.config` | Migrated (top-level re-export shim kept; user keys stay at repo-root `config/keys.toml`) |
 | `pure_auto_codeql.configuration` | facade over `pure_auto_codeql.config` | Canonical import for app code |
 
@@ -30,14 +30,8 @@ explicitly removes them:
 
 - `python Analyze.py ...`
 - `from Analyze import ...`
-- `from config import ...`
-- `from api import ...`
-- `from core import ...`
-- `from services import ...`
-- `from utils import ...`
-- `from tools import ...`
-- `from Information import ...`
-- `from prompts import ...`
+- `from config import ...` / `python config.py ...` (keys stay at repo-root `config/`)
+- `uvicorn pure_auto_codeql.api.server:app` (preferred; legacy `api.server` removed)
 
 Compatibility shims should be quiet by default. Tests should cover both the new
 canonical imports and supported legacy imports before a module is moved.
@@ -74,9 +68,7 @@ lives under `pure_auto_codeql.config`.
 
 Runtime code under `pure_auto_codeql/` should import siblings via the
 canonical namespace (for example `from pure_auto_codeql.utils.case import ...`),
-not the temporary top-level shim packages. Top-level `utils` / `services` /
-`api` / ... shims remain only for external and legacy callers during the
-migration window.
+not removed flat package names. Flat top-level runtime packages have been deleted.
 
 ## Verification
 
@@ -84,7 +76,7 @@ Run these checks before committing package-architecture changes:
 
 ```bash
 uv run pytest -q
-uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
+uv run python -m compileall -q Analyze.py pure_auto_codeql config
 uv lock --check
 openspec validate --all --strict
 ```
@@ -97,13 +89,11 @@ npm audit --audit-level=high
 npm run build
 ```
 
-## Shim Removal Readiness
+## Top-level layout after migration
 
-Runtime code under `pure_auto_codeql/` no longer imports the top-level shim
-packages. Top-level shims can be removed only after:
+Runtime packages live only under `pure_auto_codeql/`. Repository root still
+keeps:
 
-1. External consumers and docs stop using `from utils/services/api/...`
-2. Tests that intentionally assert legacy identity are retired or updated
-3. `pyproject.toml` package includes and README entry points are updated
-
-Until then, keep the thin re-export packages at the repository root.
+- `Analyze.py` / `config.py` CLI script shims
+- `config/` for `keys.toml` UX plus thin re-exports of `pure_auto_codeql.config`
+- `tools/mcp_ripgrep` for the Node MCP build

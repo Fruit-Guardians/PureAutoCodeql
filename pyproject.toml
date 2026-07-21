@@ -66,15 +66,8 @@ py-modules = ["Analyze"]
 
 [tool.setuptools.packages.find]
 include = [
-    "Information*",
-    "api*",
     "config*",
-    "core*",
-    "prompts*",
     "pure_auto_codeql*",
-    "services*",
-    "tools*",
-    "utils*",
 ]
 exclude = [
     "projects*",

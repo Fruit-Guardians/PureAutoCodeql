@@ -1027,7 +1027,7 @@ def _handle_serve(args: argparse.Namespace) -> None:
     port = args.serve_port or api_config.port
     reload = args.serve_reload or api_config.reload
     print_user_info(f"🚀 启动 API 服务: http://{host}:{port}")
-    uvicorn.run("api.server:app", host=host, port=port, reload=reload)
+    uvicorn.run("pure_auto_codeql.api.server:app", host=host, port=port, reload=reload)
 
 
 async def _handle_case_analysis(args: argparse.Namespace) -> None:

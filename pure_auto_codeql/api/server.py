@@ -186,7 +186,7 @@ def start_server(
     workers: Optional[int] = None,
 ):
     uvicorn.run(
-        "api.server:app",
+        "pure_auto_codeql.api.server:app",
         host=host or config.host,
         port=port or config.port,
         reload=reload if reload is not None else config.reload,

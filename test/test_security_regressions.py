@@ -58,7 +58,7 @@ def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypat
 
 def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
     from pure_auto_codeql.api import config as api_config
-    import api.server as server_module
+    import pure_auto_codeql.api.server as server_module
 
     allowed = tmp_path / "imports"
     outside = tmp_path / "outside"
@@ -96,7 +96,7 @@ def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
 
 def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
     from pure_auto_codeql.api import config as api_config
-    import api.server as server_module
+    import pure_auto_codeql.api.server as server_module
 
     monkeypatch.setattr(api_config.config, "auth_token", "")
     monkeypatch.setattr(api_config.config, "projects_dir", tmp_path / "projects")
@@ -110,7 +110,7 @@ def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
 
 def test_auth_token_protects_api_routes(monkeypatch):
     from pure_auto_codeql.api import config as api_config
-    import api.server as server_module
+    import pure_auto_codeql.api.server as server_module
 
     monkeypatch.setattr(api_config.config, "auth_token", "secret-token")
     reloaded = importlib.reload(server_module)

@@ -93,7 +93,7 @@ while ($idx -lt $argList.Count) {
 
 # 构建 uvicorn 参数
 $UvicornArgs = @(
-    "api.server:app",
+    "pure_auto_codeql.api.server:app",
     "--host", $ApiHost,
     "--port", $ApiPort,
     "--log-level", $LogLevel

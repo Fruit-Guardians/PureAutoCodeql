@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 构建uvicorn命令参数
-UVICORN_ARGS="api.server:app --host $HOST --port $PORT --log-level $LOG_LEVEL"
+UVICORN_ARGS="pure_auto_codeql.api.server:app --host $HOST --port $PORT --log-level $LOG_LEVEL"
 
 if [ "$RELOAD" = "true" ]; then
     UVICORN_ARGS="$UVICORN_ARGS --reload"

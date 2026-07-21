@@ -96,7 +96,7 @@ popd
 exit /b 1
 
 :after_parse
-set "UVICORN_ARGS=api.server:app --host %HOST% --port %PORT% --log-level %LOG_LEVEL%"
+set "UVICORN_ARGS=pure_auto_codeql.api.server:app --host %HOST% --port %PORT% --log-level %LOG_LEVEL%"
 if /I "%RELOAD%"=="true" (
   set "UVICORN_ARGS=%UVICORN_ARGS% --reload"
 ) else (

@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.13%2B-3776AB.svg)](https://www.python.org/)
 [![CodeQL](https://img.shields.io/badge/CodeQL-enabled-2EA44F.svg)](https://codeql.github.com/)
-[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](api/README.md)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](pure_auto_codeql/api/README.md)
 [![uv](https://img.shields.io/badge/package-uv-DE5FE9.svg)](https://github.com/astral-sh/uv)
 
 **面向 CVE 研究与源码审计的多智能体 CodeQL 自动分析流水线。**
@@ -215,7 +215,7 @@ output/
 启动本地 API：
 
 ```bash
-uv run uvicorn api.server:app --host 127.0.0.1 --port 8000
+uv run uvicorn pure_auto_codeql.api.server:app --host 127.0.0.1 --port 8000
 ```
 
 或使用 CLI 子命令：
@@ -241,7 +241,7 @@ uv run pure-auto-codeql serve --host 127.0.0.1 --port 8000
 
 ```bash
 export API_AUTH_TOKEN="change-me"
-uv run uvicorn api.server:app --host 127.0.0.1 --port 8000
+uv run uvicorn pure_auto_codeql.api.server:app --host 127.0.0.1 --port 8000
 
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:8000/api/projects
 ```
@@ -253,25 +253,22 @@ export API_ALLOW_EXTERNAL_IMPORT_PATHS=true
 export API_ALLOW_API_BUILD_COMMANDS=true
 ```
 
-详细接口和 SSE 事件见 [api/README.md](api/README.md) 与 [api/SSE_REFERENCE.md](api/SSE_REFERENCE.md)。
+详细接口和 SSE 事件见 [pure_auto_codeql/api/README.md](pure_auto_codeql/api/README.md) 与 [pure_auto_codeql/api/SSE_REFERENCE.md](pure_auto_codeql/api/SSE_REFERENCE.md)。
 
 ## 项目结构
 
 ```text
 PureAutoCodeQL/
-├── Analyze.py / config.py     # 兼容入口 shim
-├── pure_auto_codeql/          # 规范运行时命名空间
-│   ├── agents/ application/ cli/ configuration.py paths.py
-│   ├── api/ core/ services/ utils/ tools/ prompts/ information/
+├── Analyze.py / config.py     # 兼容 CLI / 配置脚本入口
+├── pure_auto_codeql/          # 全部运行时 Python 包
+│   ├── agents/ application/ api/ cli/ config/ core/
+│   ├── information/ prompts/ services/ tools/ utils/
+│   ├── configuration.py paths.py
 │   └── …
-├── api/ core/ services/ utils/ tools/ prompts/ Information/
-│                              # 顶层 re-export shim（兼容旧 import）
-├── config/                    # LLM Provider 实现 + keys 模板
-├── docs/                      # 使用指南（含 docs/cpp/）
-├── resources/                 # CodeQL 模板、知识库与扩展库
-├── scripts/                   # API 启动、MCP 构建与 smoke
-├── tools/mcp_ripgrep/         # Node MCP 构建产物（仍在顶层 tools/）
-├── projects/ examples/ docker/ openspec/ test/
+├── config/                    # keys.toml / keys.example.toml / 配置说明
+├── tools/mcp_ripgrep/         # Node MCP 工具（构建脚本仍指向此处）
+├── docs/ resources/ scripts/ docker/
+├── projects/ examples/ openspec/ test/
 └── README / pyproject.toml / …
 ```
 
@@ -280,8 +277,8 @@ PureAutoCodeQL/
 | 文档 | 内容 |
 | --- | --- |
 | [config/README.md](config/README.md) | LLM Provider、`keys.toml` 与自定义服务商 |
-| [api/README.md](api/README.md) | API 启动、路由与开发说明 |
-| [api/SSE_REFERENCE.md](api/SSE_REFERENCE.md) | SSE 流式事件参考 |
+| [pure_auto_codeql/api/README.md](pure_auto_codeql/api/README.md) | API 启动、路由与开发说明 |
+| [pure_auto_codeql/api/SSE_REFERENCE.md](pure_auto_codeql/api/SSE_REFERENCE.md) | SSE 流式事件参考 |
 | [docs/package_architecture.md](docs/package_architecture.md) | 包命名空间迁移、兼容导入与架构检查 |
 | [docs/auto_import_quickstart.md](docs/auto_import_quickstart.md) | 外部 CVE 项目自动导入 |
 | [docs/output_files_guide.md](docs/output_files_guide.md) | 输出文件结构和用途 |
@@ -295,7 +292,7 @@ PureAutoCodeQL/
 ```bash
 uv run pytest -q
 uv lock --check
-uv run python -m compileall -q Analyze.py api core services utils pure_auto_codeql tools
+uv run python -m compileall -q Analyze.py pure_auto_codeql config
 ```
 
 ## 配置导入约定
