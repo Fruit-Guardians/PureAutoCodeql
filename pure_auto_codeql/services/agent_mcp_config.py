@@ -3,7 +3,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 
 from langchain_mcp_adapters.client import MultiServerMCPClient  # noqa: F401  # 预留给未来可能的直接使用
 
-from utils.logger import get_logger
+from pure_auto_codeql.utils.logger import get_logger
 from .mcp_language_config import MCPLanguageConfigService
 from pure_auto_codeql.paths import prompts_dir
 from pure_auto_codeql.paths import get_repo_root

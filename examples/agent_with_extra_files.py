@@ -5,8 +5,8 @@
 """
 
 from typing import Any
-from core.context import AnalysisContext
-from core.pipeline import AnalysisStep
+from pure_auto_codeql.core.context import AnalysisContext
+from pure_auto_codeql.core.pipeline import AnalysisStep
 
 
 class EnhancedCVEAnalysisStep(AnalysisStep):
@@ -217,8 +217,8 @@ class SmartSourceAnalysisStep(AnalysisStep):
 
 async def demo_enhanced_analysis():
     """演示增强分析流程"""
-    from utils.case import resolve_case, discover_cve_assets
-    from core.context import AnalysisContext
+    from pure_auto_codeql.utils.case import resolve_case, discover_cve_assets
+    from pure_auto_codeql.core.context import AnalysisContext
     
     print("\n" + "=" * 80)
     print("增强型 Agent 演示 - 使用额外输入文件")

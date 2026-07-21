@@ -5,7 +5,7 @@
 """
 
 from pathlib import Path
-from utils.case import resolve_case, discover_cve_assets
+from pure_auto_codeql.utils.case import resolve_case, discover_cve_assets
 
 
 def example_basic_usage():

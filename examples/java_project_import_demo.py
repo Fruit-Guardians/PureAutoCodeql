@@ -7,7 +7,7 @@ Java项目使用 --build-mode=none，不需要编译追踪。
 
 from pathlib import Path
 
-from utils.project_importer import import_project
+from pure_auto_codeql.utils.project_importer import import_project
 
 
 def demo_java_import():

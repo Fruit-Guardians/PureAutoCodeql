@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
-from utils.logger import get_logger
+from pure_auto_codeql.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -66,6 +66,15 @@ use `from config import ...`. The root-level `config.py` file is only a legacy
 script shim for `python config.py ...`; normal `import config` resolves to the
 `config/` package in this repository.
 
+
+## Internal Import Convention
+
+Runtime code under `pure_auto_codeql/` should import siblings via the
+canonical namespace (for example `from pure_auto_codeql.utils.case import ...`),
+not the temporary top-level shim packages. Top-level `utils` / `services` /
+`api` / ... shims remain only for external and legacy callers during the
+migration window.
+
 ## Verification
 
 Run these checks before committing package-architecture changes:

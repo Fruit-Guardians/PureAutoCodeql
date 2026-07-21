@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from langchain.tools import BaseTool
 
 from .lsp_codeql import HotCodeQL
-from utils.lsp_definition import LSPDefinitionLookup
+from pure_auto_codeql.utils.lsp_definition import LSPDefinitionLookup
 
 
 class LSPFunctionLookupInput(BaseModel):

@@ -14,7 +14,7 @@ import shlex
 from pathlib import Path
 from typing import List, Optional, Set
 
-from api.config import get_config
+from pure_auto_codeql.api.config import get_config
 from .case import extract_cve_id
 from .dependency_installer import DependencyInstaller
 

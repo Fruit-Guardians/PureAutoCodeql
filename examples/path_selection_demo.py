@@ -13,7 +13,7 @@ import textwrap
 from pathlib import Path
 from typing import Any, Dict
 
-from services.path_selection import PathSelectionService
+from pure_auto_codeql.services.path_selection import PathSelectionService
 from pure_auto_codeql.configuration import get_chat_config
 
 

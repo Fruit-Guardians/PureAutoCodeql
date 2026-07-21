@@ -5,8 +5,8 @@ from typing import Dict, Optional, List
 
 from .config import get_config
 from .models import TaskStatus, AnalysisTaskInfo, AnalysisResult
-from core.orchestrator import AnalysisOrchestrator
-from core.context import AnalysisConfig
+from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.core.context import AnalysisConfig
 
 
 class TaskManager:

@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     class MultiAgentAnalyzer:
         pass
 
-from tools.codeql_compose import CodeQLComposeTool
-from prompts.source_prompts import (
+from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
+from pure_auto_codeql.prompts.source_prompts import (
     build_source_analysis_with_sink_prompt,
     build_source_analysis_with_codeql_prompt
 )

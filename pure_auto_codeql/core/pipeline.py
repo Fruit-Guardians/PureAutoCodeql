@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from .context import AnalysisContext, AnalysisConfig, AnalysisResult
-from services.llm_service import AgentResult, MultiAgentAnalyzer
-from services.path_selection import PathSelectionService, PathSelectionResult
+from pure_auto_codeql.services.llm_service import AgentResult, MultiAgentAnalyzer
+from pure_auto_codeql.services.path_selection import PathSelectionService, PathSelectionResult
 
 
 def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
@@ -49,7 +49,7 @@ from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceA
 from pure_auto_codeql.agents.path_analysis_agent import PathAnalysisAgent
 from pure_auto_codeql.agents.sink_verification_agent import SinkVerificationAgent
 from pure_auto_codeql.agents.source_verification_agent import SourceVerificationAgent
-from tools.codeql_compose import CodeQLComposeTool
+from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
 
 
 class AnalysisStep(ABC):
@@ -555,7 +555,7 @@ class AnalysisPipeline:
     ) -> None:
         """整合所有输出文件到统一的文件夹结构。"""
         try:
-            from utils.io import write_analysis_output
+            from pure_auto_codeql.utils.io import write_analysis_output
 
             cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
             case_tag = sanitize_tag(cve_id or context.case_id or "UNKNOWN")
@@ -670,7 +670,7 @@ class AnalysisPipeline:
             # 转换SARIF为JSON（在复制成功后）
             json_path: Optional[Path] = None
             try:
-                from utils.sarif_utils import sarif_to_all_paths
+                from pure_auto_codeql.utils.sarif_utils import sarif_to_all_paths
 
                 with open(target_sarif, 'r', encoding='utf-8') as f:
                     sarif_data = json.load(f)

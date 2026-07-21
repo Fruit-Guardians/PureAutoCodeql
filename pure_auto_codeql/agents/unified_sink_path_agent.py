@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     class MultiAgentAnalyzer:
         pass
 
-from prompts import build_sink_prompt
+from pure_auto_codeql.prompts import build_sink_prompt
 
 
 class UnifiedSinkPathAgent:

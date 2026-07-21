@@ -9,24 +9,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Callable
 
-from services import (
+from pure_auto_codeql.services import (
     build_placeholder_map,
     apply_placeholders,
     CodeQLLSPService,
 )
-from utils.codeql import (
+from pure_auto_codeql.utils.codeql import (
     execute_codeql_query,
     is_empty_result,
     create_temporary_qlpack,
 )
-from utils.logger import get_logger
-from prompts.verification_prompt_manager import (
+from pure_auto_codeql.utils.logger import get_logger
+from pure_auto_codeql.prompts.verification_prompt_manager import (
     load_verification_template,
     build_verification_requirement,
 )
 
 if TYPE_CHECKING:
-    from services.llm_service import MultiAgentAnalyzer
+    from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
 
 logger = get_logger(__name__)
 

@@ -13,8 +13,8 @@ from typing import Any, Dict, Optional, Type, Callable
 logger = logging.getLogger(__name__)
 
 # Service
-from services.lsp_service import CodeQLLSPService
-from services.knowledge_base.base import LanguageKnowledgeBase
+from pure_auto_codeql.services.lsp_service import CodeQLLSPService
+from pure_auto_codeql.services.knowledge_base.base import LanguageKnowledgeBase
 
 
 from langchain_core.tools import BaseTool
@@ -27,13 +27,13 @@ from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent im
 from pure_auto_codeql.agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
 from pure_auto_codeql.agents.codeql_gen_agents.source_sink_fallback_agent import SourceSinkFallbackAgent
 from pure_auto_codeql.paths import get_repo_root
-from services import (
+from pure_auto_codeql.services import (
     KnowledgeBaseFactory,
     build_placeholder_map,
     apply_placeholders,
     CodeQLSyntaxSession,
 )
-from utils.codeql import (
+from pure_auto_codeql.utils.codeql import (
     create_temporary_qlpack,
     execute_codeql_query,
     run_query_and_decode_to_text,
@@ -44,11 +44,11 @@ from utils.codeql import (
     is_empty_result,
     count_dataflow_paths,
 )
-from prompts.codeql_prompts import (
+from pure_auto_codeql.prompts.codeql_prompts import (
     get_codeql_generation_prompt_suffix,
     get_retry_strategy_description,
 )
-from utils.sarif_utils import sarif_to_all_paths
+from pure_auto_codeql.utils.sarif_utils import sarif_to_all_paths
 
 
 class CodeQLComposeInput(BaseModel):
@@ -448,7 +448,7 @@ class CodeQLComposeTool(BaseTool):
         error_retry_count = 0
         max_error_retries = 2
 
-        from services.codeql_execution import CodeQLExecutionResult
+        from pure_auto_codeql.services.codeql_execution import CodeQLExecutionResult
 
         while True:
             attempt += 1
@@ -1461,7 +1461,7 @@ class CodeQLComposeTool(BaseTool):
                     mode_now = (exec_mode or 'analyze').lower()
 
                     # 创建CodeQLExecutionResult对象
-                    from services.codeql_execution import CodeQLExecutionResult
+                    from pure_auto_codeql.services.codeql_execution import CodeQLExecutionResult
                     execution_result = CodeQLExecutionResult(
                         success=exec_result.get('success', False),
                         output=exec_result.get('output', ''),

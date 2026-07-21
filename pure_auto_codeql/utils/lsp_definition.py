@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 from urllib.parse import unquote, urlparse
 
-from tools.lsp_codeql import HotCodeQL, write_msg
+from pure_auto_codeql.tools.lsp_codeql import HotCodeQL, write_msg
 from pure_auto_codeql.paths import get_repo_root
 
 
@@ -688,7 +688,7 @@ class LSPDefinitionLookup:
                     
                     # Notify LSP of the change
                     self.engine.version += 1
-                    from tools.lsp_codeql import write_msg
+                    from pure_auto_codeql.tools.lsp_codeql import write_msg
                     write_msg(self.engine.proc, {
                         "jsonrpc": "2.0",
                         "method": "textDocument/didChange",
@@ -789,7 +789,7 @@ class LSPDefinitionLookup:
             try:
                 self.engine.query_file.write_text(original_content, encoding="utf-8")
                 self.engine.version += 1
-                from tools.lsp_codeql import write_msg
+                from pure_auto_codeql.tools.lsp_codeql import write_msg
                 write_msg(self.engine.proc, {
                     "jsonrpc": "2.0",
                     "method": "textDocument/didChange",

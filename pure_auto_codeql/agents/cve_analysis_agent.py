@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     class MultiAgentAnalyzer:
         pass
 
-from utils.io import read_json_text
+from pure_auto_codeql.utils.io import read_json_text
 
 
 class CVEAnalysisAgent:

@@ -7,8 +7,8 @@ import os
 from pure_auto_codeql.paths import prompts_dir
 
 if TYPE_CHECKING:
-    from utils.io import AgentResult
-from services.llm_service import MultiAgentAnalyzer
+    from pure_auto_codeql.utils.io import AgentResult
+from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
 
 
 class CodeQLBreakpointAgent:

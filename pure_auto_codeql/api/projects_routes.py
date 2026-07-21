@@ -25,7 +25,7 @@ from pure_auto_codeql.application import (
     import_project_for_workflow,
     validate_project_import_request,
 )
-from utils.case import (
+from pure_auto_codeql.utils.case import (
     CasePaths,
     discover_cve_assets,
     resolve_case,

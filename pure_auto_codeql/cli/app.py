@@ -3,14 +3,14 @@ import asyncio
 import sys
 from pathlib import Path
 from typing import Optional, Sequence
-from core.orchestrator import AnalysisOrchestrator
-from core.context import AnalysisConfig
-from services.language_detector import LanguageDetector
-from utils.case import resolve_case, discover_cve_assets
-from utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
+from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.core.context import AnalysisConfig
+from pure_auto_codeql.services.language_detector import LanguageDetector
+from pure_auto_codeql.utils.case import resolve_case, discover_cve_assets
+from pure_auto_codeql.utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
 from pure_auto_codeql.configuration import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
-from tools.codeql_compose import CodeQLComposeTool
-from services.llm_service import MultiAgentAnalyzer
+from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
+from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
 from pure_auto_codeql.application import (
     AnalysisValidationError,
     ProjectImportRequest,
@@ -19,7 +19,7 @@ from pure_auto_codeql.application import (
     validate_analysis_case,
 )
 from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
-from utils.doctor import run_doctor
+from pure_auto_codeql.utils.doctor import run_doctor
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -1020,7 +1020,7 @@ def _handle_doctor() -> None:
 
 def _handle_serve(args: argparse.Namespace) -> None:
     import uvicorn
-    from api.config import get_config
+    from pure_auto_codeql.api.config import get_config
 
     api_config = get_config()
     host = args.serve_host or api_config.host

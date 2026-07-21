@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     class MultiAgentAnalyzer:
         pass
 
-from prompts.path_analysis_prompts import build_path_analysis_prompt
+from pure_auto_codeql.prompts.path_analysis_prompts import build_path_analysis_prompt
 
 logger = logging.getLogger(__name__)
 

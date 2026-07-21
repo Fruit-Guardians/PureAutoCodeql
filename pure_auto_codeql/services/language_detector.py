@@ -6,7 +6,7 @@
 from pathlib import Path
 from typing import Dict, List
 
-from utils.case import CasePaths
+from pure_auto_codeql.utils.case import CasePaths
 
 
 class LanguageDetector:

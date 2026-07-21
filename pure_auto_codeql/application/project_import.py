@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from utils.project_importer import (
+from pure_auto_codeql.utils.project_importer import (
     ProjectImportResult,
     import_project,
 )

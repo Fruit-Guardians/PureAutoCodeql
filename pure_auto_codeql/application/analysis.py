@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from utils.case import CasePaths, resolve_case
+from pure_auto_codeql.utils.case import CasePaths, resolve_case
 
 
 @dataclass(frozen=True)

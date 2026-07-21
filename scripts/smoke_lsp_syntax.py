@@ -1,5 +1,5 @@
-from utils.codeql import create_temporary_qlpack
-from services.lsp_service import CodeQLLSPService
+from pure_auto_codeql.utils.codeql import create_temporary_qlpack
+from pure_auto_codeql.services.lsp_service import CodeQLLSPService
 
 wrong_ql = '''/**
  * @kind path-problem

@@ -9,9 +9,9 @@ from typing import Optional
 
 from .context import AnalysisConfig, AnalysisContext, AnalysisResult
 from .pipeline import AnalysisPipeline
-from services.language_detector import LanguageDetector
-from utils.case import CveAssets, discover_cve_assets, resolve_case
-from utils.intel import IntelBundle, collect_intel
+from pure_auto_codeql.services.language_detector import LanguageDetector
+from pure_auto_codeql.utils.case import CveAssets, discover_cve_assets, resolve_case
+from pure_auto_codeql.utils.intel import IntelBundle, collect_intel
 
 logger = logging.getLogger(__name__)
 

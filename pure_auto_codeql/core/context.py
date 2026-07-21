@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from services.llm_service import AgentResult
-from services.path_selection import PathSelectionResult
-from utils.case import CasePaths, CveAssets
-from utils.intel import IntelBundle
+from pure_auto_codeql.services.llm_service import AgentResult
+from pure_auto_codeql.services.path_selection import PathSelectionResult
+from pure_auto_codeql.utils.case import CasePaths, CveAssets
+from pure_auto_codeql.utils.intel import IntelBundle
 
 
 @dataclass

@@ -20,9 +20,9 @@ from langchain_mcp_adapters.sessions import create_session
 from langchain_openai import ChatOpenAI
 
 from pure_auto_codeql.configuration import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
-from utils.logger import get_logger
+from pure_auto_codeql.utils.logger import get_logger
 from .agent_mcp_config import AgentMCPConfigService
-from utils.mcp_schema_fixer import fix_mcp_tools_schemas
+from pure_auto_codeql.utils.mcp_schema_fixer import fix_mcp_tools_schemas
 
 
 class APIErrorClassifier:
@@ -886,7 +886,7 @@ class MultiAgentAnalyzer:
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
         # 只有当配置包含 ripgrep 时才添加 LSPFunctionLookupTool（因为该工具依赖 ripgrep）
         if "ripgrep" in mcp_servers:
-            from tools.lsp_lookup_tool import LSPFunctionLookupTool
+            from pure_auto_codeql.tools.lsp_lookup_tool import LSPFunctionLookupTool
             # Pass language context to the tool if available
             lsp_lookup_tool = LSPFunctionLookupTool(default_language=self.language or "java")
             self.tools.append(lsp_lookup_tool)
