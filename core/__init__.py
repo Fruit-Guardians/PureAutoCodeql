@@ -1,16 +1,20 @@
-"""核心层模块
+"""Legacy core package.
 
-提供分析编排、流水线和上下文管理等核心功能。
+Implementation lives under ``pure_auto_codeql.core``.
 """
 
-from .context import AnalysisContext, AnalysisResult
-from .pipeline import AnalysisPipeline, AnalysisStep
-from .orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.core import (
+    AnalysisContext,
+    AnalysisOrchestrator,
+    AnalysisPipeline,
+    AnalysisResult,
+    AnalysisStep,
+)
 
 __all__ = [
     "AnalysisContext",
     "AnalysisResult",
     "AnalysisPipeline",
     "AnalysisStep",
-    "AnalysisOrchestrator"
+    "AnalysisOrchestrator",
 ]

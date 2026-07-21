@@ -259,23 +259,20 @@ export API_ALLOW_API_BUILD_COMMANDS=true
 
 ```text
 PureAutoCodeQL/
-├── Analyze.py                 # 旧版 CLI 兼容入口
-├── api/                       # FastAPI 服务端
-├── config/                    # LLM Provider 与运行配置
-├── core/                      # 分析上下文、流水线和编排器
-├── docs/                      # 使用指南与功能说明（含 docs/cpp/）
-├── Information/               # GHSA / NVD 情报获取
-├── prompts/                   # 各语言与各阶段提示词
-├── pure_auto_codeql/          # 规范化 Python 包命名空间
-│   ├── application/           # CLI/API 共享工作流服务
-│   ├── cli/                   # 打包后的 CLI 实现
-│   └── agents/                # CVE、Source、Sink、CodeQL 生成等 Agent
+├── Analyze.py / config.py     # 兼容入口 shim
+├── pure_auto_codeql/          # 规范运行时命名空间
+│   ├── agents/ application/ cli/ configuration.py paths.py
+│   ├── api/ core/ services/ utils/ tools/ prompts/ information/
+│   └── …
+├── api/ core/ services/ utils/ tools/ prompts/ Information/
+│                              # 顶层 re-export shim（兼容旧 import）
+├── config/                    # LLM Provider 实现 + keys 模板
+├── docs/                      # 使用指南（含 docs/cpp/）
 ├── resources/                 # CodeQL 模板、知识库与扩展库
-├── scripts/                   # API 启动、MCP 构建与 smoke 脚本
-├── services/                  # LLM、LSP、路径精选等服务
-├── tools/                     # CodeQL 组合、LSP 查询、MCP 工具
-├── utils/                     # 案例解析、项目导入、CodeQL 执行等工具
-└── test/                      # 回归测试
+├── scripts/                   # API 启动、MCP 构建与 smoke
+├── tools/mcp_ripgrep/         # Node MCP 构建产物（仍在顶层 tools/）
+├── projects/ examples/ docker/ openspec/ test/
+└── README / pyproject.toml / …
 ```
 
 ## 文档索引

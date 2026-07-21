@@ -159,6 +159,16 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert legacy_analyzer is canonical_analyzer
     assert legacy_selector is canonical_selector
 
+    # core + api package migration shims
+    from core import AnalysisOrchestrator as legacy_orch
+    from pure_auto_codeql.core import AnalysisOrchestrator as canonical_orch
+    from api.config import get_config as legacy_api_config
+    from pure_auto_codeql.api.config import get_config as canonical_api_config
+
+    assert legacy_orch is canonical_orch
+    assert legacy_api_config is canonical_api_config
+    assert legacy_api_config().project_root.resolve() == get_repo_root().resolve()
+
     # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()

@@ -18,8 +18,8 @@ migration window.
 | `utils` | `pure_auto_codeql.utils` | Migrated (top-level re-export shim kept) |
 | `tools` | `pure_auto_codeql.tools` | Migrated Python modules (top-level re-export shim kept; `tools/mcp_ripgrep` stays at repo root) |
 | `services` | `pure_auto_codeql.services` | Migrated (top-level re-export shim kept) |
-| `api` | `pure_auto_codeql.api` | Planned staged migration |
-| `core` | `pure_auto_codeql.core` | Planned staged migration |
+| `core` | `pure_auto_codeql.core` | Migrated (top-level re-export shim kept) |
+| `api` | `pure_auto_codeql.api` | Migrated (top-level re-export shim kept) |
 
 ## Compatibility Surface
 
