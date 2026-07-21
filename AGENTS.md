@@ -1,18 +1,11 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# Agent notes
 
-These instructions are for AI assistants working in this project.
+Runtime application code lives under `pure_auto_codeql/`.
 
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+- Prefer: `from pure_auto_codeql.configuration import get_llm_config, LLMRole`
+- Prefer: `from pure_auto_codeql.utils...`, `pure_auto_codeql.services...`, etc.
+- User secrets: repo-root `config/keys.toml` (template: `config/keys.example.toml`)
+- CLI: `uv run pure-auto-codeql ...` or `python Analyze.py ...`
+- API: `uvicorn pure_auto_codeql.api.server:app`
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
+See `docs/package_architecture.md` for the package layout.

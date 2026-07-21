@@ -20,7 +20,7 @@ migration window.
 | `services` | `pure_auto_codeql.services` | Migrated (top-level shim removed) |
 | `core` | `pure_auto_codeql.core` | Migrated (top-level shim removed) |
 | `api` | `pure_auto_codeql.api` | Migrated (top-level shim removed; docs remain under pure_auto_codeql/api and mirrored paths if needed) |
-| `config` (LLM provider impl) | `pure_auto_codeql.config` | Migrated (top-level re-export shim kept; user keys stay at repo-root `config/keys.toml`) |
+| `config` (LLM provider impl) | `pure_auto_codeql.config` | Migrated; repo-root `config/` only holds keys + README |
 | `pure_auto_codeql.configuration` | facade over `pure_auto_codeql.config` | Canonical import for app code |
 
 ## Compatibility Surface
@@ -30,7 +30,7 @@ explicitly removes them:
 
 - `python Analyze.py ...`
 - `from Analyze import ...`
-- `from config import ...` / `python config.py ...` (keys stay at repo-root `config/`)
+- `python config.py ...` (keys stay at repo-root `config/`); prefer `pure_auto_codeql.configuration`
 - `uvicorn pure_auto_codeql.api.server:app` (preferred; legacy `api.server` removed)
 
 Compatibility shims should be quiet by default. Tests should cover both the new
@@ -57,11 +57,15 @@ Runtime application code should import LLM configuration helpers from
 from pure_auto_codeql.configuration import get_llm_config, LLMRole
 ```
 
-The `config/` package remains a compatibility surface for older scripts that
-use `from config import ...`. The root-level `config.py` file is only a legacy
-script shim for `python config.py ...`. User-facing secrets and
-`keys.example.toml` stay at repository-root `config/`; implementation code
-lives under `pure_auto_codeql.config`.
+Repository-root `config/` holds only user-facing secrets (`keys.toml`) and
+`keys.example.toml` / README. Implementation code lives under
+`pure_auto_codeql.config`. Prefer:
+
+```python
+from pure_auto_codeql.configuration import get_llm_config, LLMRole
+```
+
+`python config.py ...` remains a thin launcher for the configuration CLI.
 
 
 ## Internal Import Convention
@@ -76,9 +80,8 @@ Run these checks before committing package-architecture changes:
 
 ```bash
 uv run pytest -q
-uv run python -m compileall -q Analyze.py pure_auto_codeql config
+uv run python -m compileall -q Analyze.py pure_auto_codeql
 uv lock --check
-openspec validate --all --strict
 ```
 
 For the MCP helper:
@@ -91,9 +94,9 @@ npm run build
 
 ## Top-level layout after migration
 
-Runtime packages live only under `pure_auto_codeql/`. Repository root still
-keeps:
+Runtime packages live only under `pure_auto_codeql/`. Repository root keeps:
 
 - `Analyze.py` / `config.py` CLI script shims
-- `config/` for `keys.toml` UX plus thin re-exports of `pure_auto_codeql.config`
+- `config/keys.example.toml` (+ local `keys.toml`, gitignored)
 - `tools/mcp_ripgrep` for the Node MCP build
+- `docs/`, `resources/`, `scripts/`, `projects/case-template/`, `test/`

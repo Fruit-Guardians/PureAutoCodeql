@@ -265,10 +265,10 @@ PureAutoCodeQL/
 │   ├── information/ prompts/ services/ tools/ utils/
 │   ├── configuration.py paths.py
 │   └── …
-├── config/                    # keys.toml / keys.example.toml / 配置说明
-├── tools/mcp_ripgrep/         # Node MCP 工具（构建脚本仍指向此处）
+├── config/                    # keys.example.toml + 本地 keys.toml（不入库）
+├── tools/mcp_ripgrep/         # Node MCP 工具
 ├── docs/ resources/ scripts/ docker/
-├── projects/ examples/ openspec/ test/
+├── projects/case-template/ examples/ test/
 └── README / pyproject.toml / …
 ```
 
@@ -285,6 +285,7 @@ PureAutoCodeQL/
 | [docs/path_selection_run_guide.md](docs/path_selection_run_guide.md) | 路径精选模块运行说明 |
 | [docs/extra_input_files_simple.md](docs/extra_input_files_simple.md) | `inputs/` 额外上下文文件 |
 | [docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md](docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 两步走建库策略 |
+| [docs/codeql_lsp_troubleshooting.md](docs/codeql_lsp_troubleshooting.md) | CodeQL LSP 启动问题排查 |
 | [docs/archive/](docs/archive/) | 历史设计方案、诊断笔记和阶段性总结 |
 
 ## 测试
@@ -292,7 +293,7 @@ PureAutoCodeQL/
 ```bash
 uv run pytest -q
 uv lock --check
-uv run python -m compileall -q Analyze.py pure_auto_codeql config
+uv run python -m compileall -q Analyze.py pure_auto_codeql
 ```
 
 ## 配置导入约定

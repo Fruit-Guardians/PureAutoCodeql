@@ -1,6 +1,6 @@
 # CodeQL LSP 启动失败修复说明
 
-适用范围：本工程 `PureAutoCodeql` 的语言服务包装模块 `tools/lsp_codeql.py`
+适用范围：本工程 `PureAutoCodeql` 的语言服务包装模块 `pure_auto_codeql/tools/lsp_codeql.py`
 
 ## 问题症状
 - 启动后语言服务未完成初始化，进程退出并打印：`[ERR] failed to start LSP: No response to initialize()`。
@@ -20,7 +20,7 @@
 3. 将初始化超时提升至 60 秒，并启用 `--synchronous` 与 `-v --log-to-stderr` 便于稳定与排错。
 
 ## 代码变更
-文件：`tools/lsp_codeql.py`
+文件：`pure_auto_codeql/tools/lsp_codeql.py`
 
 - 增加 JSON-RPC 头：
 ```python

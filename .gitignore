@@ -55,17 +55,17 @@ tmp/
 output/
 results/
 
-# 案例工作区：默认忽略，仅跟踪模板与内置 KB
+# 案例工作区：默认忽略，仅跟踪模板
 projects/*
 !projects/README.md
 !projects/case-template/
 !projects/case-template/**
-!projects/python_kb/
-!projects/python_kb/**
 
 # OS
 .DS_Store
 Thumbs.db
 .projects/
 *.zip
-utils/lsp
+
+# OpenSpec local workspace (not versioned)
+openspec/

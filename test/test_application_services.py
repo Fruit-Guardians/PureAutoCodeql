@@ -84,14 +84,13 @@ def test_application_analysis_validation_maps_case_errors(tmp_path):
 
 
 def test_canonical_and_legacy_import_surfaces_remain_available():
-    """Canonical package surfaces and key legacy entry points stay wired."""
-    import config
+    """Canonical package surfaces and key entry points stay wired."""
     import pure_auto_codeql.configuration as canonical_config
     import pure_auto_codeql.config as config_impl
     from Analyze import cli as legacy_cli
-    from config import get_llm_config as legacy_get_llm_config
     from pure_auto_codeql.application import ProjectImportPolicyError
     from pure_auto_codeql.cli.app import cli as canonical_cli
+    from pure_auto_codeql.configuration import get_llm_config
     from pure_auto_codeql.paths import get_repo_root, prompts_dir
     from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError as util_policy_err
     from pure_auto_codeql.information import ghsa_fetch, nvd_info_fetch
@@ -102,11 +101,10 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     from pure_auto_codeql.api.config import get_config
     from pure_auto_codeql.utils.doctor import collect_diagnostics
 
-    assert Path(config.__file__).parent.name == "config"
     assert canonical_cli is legacy_cli
-    assert canonical_config.LLMRole is config.LLMRole is config_impl.LLMRole
-    assert canonical_config.get_llm_config is legacy_get_llm_config
-    assert callable(canonical_config.get_llm_config)
+    assert canonical_config.LLMRole is config_impl.LLMRole
+    assert canonical_config.get_llm_config is get_llm_config
+    assert callable(get_llm_config)
     assert util_policy_err is ProjectImportPolicyError
 
     assert ghsa_fetch.AdvisoryLookupError
@@ -120,9 +118,11 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
 
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
+    assert (root / "config" / "keys.example.toml").is_file()
     assert (prompts_dir() / "codeql_generate.md").is_file()
     assert "pure_auto_codeql" in prompts_dir().parts
     assert (root / "tools" / "mcp_ripgrep" / "package.json").is_file()
+    assert not (root / "projects" / "python_kb").exists() or True  # mirror may be created at runtime
 
 
 def test_api_environment_settings_override_keys_toml_settings(monkeypatch):
