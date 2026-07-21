@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
-from pure_auto_codeql.paths import get_repo_root, prompts_dir
+from pure_auto_codeql.paths import prompts_dir
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -26,8 +26,6 @@ class TemplateRefinementAgent:
     ) -> None:
         self.analyzer = analyzer
         self.language = language or "java"
-
-        self._project_root = get_repo_root()
         self.prompt_file = prompt_file or (prompts_dir() / "template_refinement.md")
 
     def _load_prompt(self) -> str:
@@ -57,8 +55,7 @@ class TemplateRefinementAgent:
         }
 
         filename = mapping.get(lang) or mapping["java"]
-        prompts_dir = self._project_root / "prompts"
-        return (prompts_dir / filename).resolve()
+        return (prompts_dir() / filename).resolve()
 
     def build_prompt(
         self,

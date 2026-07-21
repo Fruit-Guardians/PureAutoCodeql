@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
-from pure_auto_codeql.paths import get_repo_root
+from pure_auto_codeql.paths import prompts_dir
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -26,8 +26,6 @@ class SourceSinkFallbackAgent:
     ) -> None:
         self.analyzer = analyzer
         self.language = language or "java"
-
-        self._project_root = get_repo_root()
         self.prompt_file = prompt_file
 
     def _resolve_prompt_path(self, language: Optional[str] = None) -> Path:
@@ -43,8 +41,7 @@ class SourceSinkFallbackAgent:
         }
 
         filename = mapping.get(lang) or mapping["java"]
-        prompts_dir = self._project_root / "prompts"
-        return (prompts_dir / filename).resolve()
+        return (prompts_dir() / filename).resolve()
 
     def _load_prompt(self, language: Optional[str] = None) -> str:
         try:

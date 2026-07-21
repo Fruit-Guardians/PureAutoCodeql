@@ -112,6 +112,12 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert canonical_ghsa.AdvisoryLookupError is legacy_ghsa.AdvisoryLookupError
     assert canonical_nvd.CveLookupError is legacy_nvd.CveLookupError
 
+    import Information.ghsa_fetch as dotted_ghsa
+    import pure_auto_codeql.information.ghsa_fetch as dotted_canonical_ghsa
+
+    assert dotted_ghsa is dotted_canonical_ghsa
+    assert dotted_ghsa is canonical_ghsa
+
     # Repo root helper resolves real asset layout
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
