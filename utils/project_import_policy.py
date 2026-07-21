@@ -1,13 +1,6 @@
-"""Compatibility wrapper for project import policy checks."""
+"""Legacy re-export of `pure_auto_codeql.utils.project_import_policy`."""
 
-from pure_auto_codeql.application.project_import_policy import (
-    ProjectImportPolicy,
-    ProjectImportPolicyError,
-    validate_project_import_policy,
-)
+from importlib import import_module
+import sys as _sys
 
-__all__ = [
-    "ProjectImportPolicy",
-    "ProjectImportPolicyError",
-    "validate_project_import_policy",
-]
+_sys.modules[__name__] = import_module("pure_auto_codeql.utils.project_import_policy")

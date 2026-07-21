@@ -15,10 +15,10 @@ migration window.
 | repo path helpers | `pure_auto_codeql.paths` | Introduced (`get_repo_root`, `prompts_dir`) |
 | `Information` | `pure_auto_codeql.information` | Migrated (top-level re-export shim kept) |
 | `prompts` | `pure_auto_codeql.prompts` | Migrated (top-level re-export shim kept; `.md` assets co-located) |
+| `utils` | `pure_auto_codeql.utils` | Migrated (top-level re-export shim kept) |
 | `api` | `pure_auto_codeql.api` | Planned staged migration |
 | `core` | `pure_auto_codeql.core` | Planned staged migration |
 | `services` | `pure_auto_codeql.services` | Planned staged migration |
-| `utils` | `pure_auto_codeql.utils` | Planned staged migration |
 | `tools` | `pure_auto_codeql.tools` | Planned staged migration |
 
 ## Compatibility Surface

@@ -130,6 +130,17 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert legacy_codeql_prompts is canonical_codeql_prompts
     assert legacy_prompts.build_path_analysis_prompt is canonical_prompts.build_path_analysis_prompt
 
+    # utils package migration shims
+    import utils.case as legacy_case
+    import pure_auto_codeql.utils.case as canonical_case
+    from utils import execute_codeql_query as legacy_exec
+    from pure_auto_codeql.utils import execute_codeql_query as canonical_exec
+    from utils.doctor import collect_diagnostics
+
+    assert legacy_case is canonical_case
+    assert legacy_exec is canonical_exec
+    assert collect_diagnostics()  # uses get_repo_root under the hood
+
     # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()
