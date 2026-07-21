@@ -1,10 +1,6 @@
-"""Language knowledge base providers."""
+"""Legacy re-export of `pure_auto_codeql.services.knowledge_base`."""
 
-from .base import KnowledgeBaseFactory, LanguageKnowledgeBase
-from .python import PythonKnowledgeBase  # noqa: F401 - register side-effect
+from importlib import import_module
+import sys as _sys
 
-__all__ = [
-    "KnowledgeBaseFactory",
-    "LanguageKnowledgeBase",
-    "PythonKnowledgeBase",
-]
+_sys.modules[__name__] = import_module("pure_auto_codeql.services.knowledge_base")

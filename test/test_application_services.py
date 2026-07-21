@@ -150,6 +150,15 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert legacy_compose is canonical_compose
     assert legacy_lsp_codeql is canonical_lsp_codeql
 
+    # services package migration shims
+    from services import MultiAgentAnalyzer as legacy_analyzer
+    from pure_auto_codeql.services import MultiAgentAnalyzer as canonical_analyzer
+    import services.path_selection.selector as legacy_selector
+    import pure_auto_codeql.services.path_selection.selector as canonical_selector
+
+    assert legacy_analyzer is canonical_analyzer
+    assert legacy_selector is canonical_selector
+
     # Repo root helper + prompts assets
     root = get_repo_root()
     assert (root / "pyproject.toml").is_file()

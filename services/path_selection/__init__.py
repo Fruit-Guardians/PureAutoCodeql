@@ -1,10 +1,6 @@
-"""路径选择与验证服务
+"""Legacy re-export of `pure_auto_codeql.services.path_selection`."""
 
-从CodeQL查询结果中智能选择最匹配CVE的路径
-"""
+from importlib import import_module
+import sys as _sys
 
-from .selector import PathSelectionService, PathSelectionResult
-
-__all__ = ["PathSelectionService", "PathSelectionResult"]
-
-
+_sys.modules[__name__] = import_module("pure_auto_codeql.services.path_selection")

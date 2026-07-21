@@ -1,17 +1,21 @@
-"""服务层模块
+"""Legacy services package.
 
-提供各种业务服务，包括LLM服务、LSP服务、分析服务等。
+Implementation lives under ``pure_auto_codeql.services``. This top-level package
+re-exports the public API for compatibility.
 """
 
-from .lsp_service import CodeQLLSPService
-from .codeql_prompt import build_placeholder_map, apply_placeholders
-from .codeql_syntax import CodeQLSyntaxSession
-from .codeql_execution import CodeQLExecutionService, CodeQLExecutionResult
-from .llm_service import MultiAgentAnalyzer, AgentResult
-from .language_detector import LanguageDetector
-from .knowledge_base import (
+from pure_auto_codeql.services import (
+    AgentResult,
+    CodeQLExecutionResult,
+    CodeQLExecutionService,
+    CodeQLLSPService,
+    CodeQLSyntaxSession,
     KnowledgeBaseFactory,
+    LanguageDetector,
+    MultiAgentAnalyzer,
     PythonKnowledgeBase,
+    apply_placeholders,
+    build_placeholder_map,
 )
 
 __all__ = [
@@ -25,5 +29,5 @@ __all__ = [
     "CodeQLExecutionResult",
     "MultiAgentAnalyzer",
     "AgentResult",
-    "LanguageDetector"
+    "LanguageDetector",
 ]

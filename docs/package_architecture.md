@@ -17,9 +17,9 @@ migration window.
 | `prompts` | `pure_auto_codeql.prompts` | Migrated (top-level re-export shim kept; `.md` assets co-located) |
 | `utils` | `pure_auto_codeql.utils` | Migrated (top-level re-export shim kept) |
 | `tools` | `pure_auto_codeql.tools` | Migrated Python modules (top-level re-export shim kept; `tools/mcp_ripgrep` stays at repo root) |
+| `services` | `pure_auto_codeql.services` | Migrated (top-level re-export shim kept) |
 | `api` | `pure_auto_codeql.api` | Planned staged migration |
 | `core` | `pure_auto_codeql.core` | Planned staged migration |
-| `services` | `pure_auto_codeql.services` | Planned staged migration |
 
 ## Compatibility Surface
 
