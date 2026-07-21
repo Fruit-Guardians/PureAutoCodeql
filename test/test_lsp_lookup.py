@@ -13,9 +13,9 @@ import pytest
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tools.lsp_codeql import HotCodeQL
-from utils.lsp_definition import LSPDefinitionLookup
-from tools.lsp_lookup_tool import LSPFunctionLookupTool
+from pure_auto_codeql.tools.lsp_codeql import HotCodeQL
+from pure_auto_codeql.utils.lsp_definition import LSPDefinitionLookup
+from pure_auto_codeql.tools.lsp_lookup_tool import LSPFunctionLookupTool
 
 
 def test_lsp_definition_lookup():

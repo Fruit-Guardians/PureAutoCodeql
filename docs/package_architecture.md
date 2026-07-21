@@ -93,3 +93,14 @@ cd tools/mcp_ripgrep
 npm audit --audit-level=high
 npm run build
 ```
+
+## Shim Removal Readiness
+
+Runtime code under `pure_auto_codeql/` no longer imports the top-level shim
+packages. Top-level shims can be removed only after:
+
+1. External consumers and docs stop using `from utils/services/api/...`
+2. Tests that intentionally assert legacy identity are retired or updated
+3. `pyproject.toml` package includes and README entry points are updated
+
+Until then, keep the thin re-export packages at the repository root.

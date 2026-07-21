@@ -21,7 +21,7 @@ import time
 from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
-from services.llm_service import (
+from pure_auto_codeql.services.llm_service import (
     APIErrorClassifier,
     llm_retry_decorator,
     AgentRetryTracker,

@@ -8,7 +8,7 @@ from pure_auto_codeql.cli.app import (
     dispatch_command,
     parse_arguments,
 )
-from utils.project_import_policy import (
+from pure_auto_codeql.utils.project_import_policy import (
     ProjectImportPolicy,
     ProjectImportPolicyError,
     validate_project_import_policy,

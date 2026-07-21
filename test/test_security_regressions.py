@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from api.models import ProjectImportRequest, TaskStatus
-from api.projects_routes import _ensure_api_import_allowed
-from api.task_manager import TaskManager
-from core.context import AnalysisResult as CoreAnalysisResult
-from services.llm_service import AgentResult
-from utils.case import resolve_case
-from utils.project_importer import import_project
-from utils.project_import_policy import ProjectImportPolicyError
+from pure_auto_codeql.api.models import ProjectImportRequest, TaskStatus
+from pure_auto_codeql.api.projects_routes import _ensure_api_import_allowed
+from pure_auto_codeql.api.task_manager import TaskManager
+from pure_auto_codeql.core.context import AnalysisResult as CoreAnalysisResult
+from pure_auto_codeql.services.llm_service import AgentResult
+from pure_auto_codeql.utils.case import resolve_case
+from pure_auto_codeql.utils.project_importer import import_project
+from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError
 
 
 def test_resolve_case_rejects_path_escape(tmp_path):
@@ -28,7 +28,7 @@ def test_resolve_case_rejects_path_escape(tmp_path):
 
 
 def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
 
     allowed = tmp_path / "imports"
     allowed.mkdir()
@@ -57,7 +57,7 @@ def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypat
 
 
 def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
     import api.server as server_module
 
     allowed = tmp_path / "imports"
@@ -95,7 +95,7 @@ def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
 
 
 def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
     import api.server as server_module
 
     monkeypatch.setattr(api_config.config, "auth_token", "")
@@ -109,7 +109,7 @@ def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
 
 
 def test_auth_token_protects_api_routes(monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
     import api.server as server_module
 
     monkeypatch.setattr(api_config.config, "auth_token", "secret-token")
@@ -130,8 +130,8 @@ def test_auth_token_protects_api_routes(monkeypatch):
 
 
 def test_project_files_skips_symlinks_outside_source_root(tmp_path, monkeypatch):
-    from api import config as api_config
-    from api.projects_routes import get_project_files
+    from pure_auto_codeql.api import config as api_config
+    from pure_auto_codeql.api.projects_routes import get_project_files
 
     projects = tmp_path / "projects"
     source = projects / "CASE-1" / "source_code"
@@ -153,7 +153,7 @@ def test_project_files_skips_symlinks_outside_source_root(tmp_path, monkeypatch)
 
 
 def test_import_project_skips_external_symlink(tmp_path, monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
 
     projects = tmp_path / "projects"
     source_root = tmp_path / "incoming"
@@ -174,7 +174,7 @@ def test_import_project_skips_external_symlink(tmp_path, monkeypatch):
 
 
 def test_import_project_rejects_zip_symlink(tmp_path, monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
 
     projects = tmp_path / "projects"
     source_root = tmp_path / "incoming"
@@ -194,7 +194,7 @@ def test_import_project_rejects_zip_symlink(tmp_path, monkeypatch):
 
 
 def test_import_project_skips_external_metadata_symlink(tmp_path, monkeypatch):
-    from api import config as api_config
+    from pure_auto_codeql.api import config as api_config
 
     projects = tmp_path / "projects"
     source_root = tmp_path / "incoming"
@@ -234,7 +234,7 @@ async def test_task_manager_rejects_duplicate_start_and_preserves_language(monke
             output_directory="output/run",
         )
 
-    from core.orchestrator import AnalysisOrchestrator
+    from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
 
     monkeypatch.setattr(AnalysisOrchestrator, "analyze_case", fake_analyze_case)
 
