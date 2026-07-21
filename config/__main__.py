@@ -1,9 +1,6 @@
-"""
-使 config 模块可以通过 python -m config 直接运行
-"""
+"""python -m config entry point."""
 
-from .cli import main
+from pure_auto_codeql.config.cli import main
 
 if __name__ == "__main__":
     main()
-

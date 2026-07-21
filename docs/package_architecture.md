@@ -20,6 +20,8 @@ migration window.
 | `services` | `pure_auto_codeql.services` | Migrated (top-level re-export shim kept) |
 | `core` | `pure_auto_codeql.core` | Migrated (top-level re-export shim kept) |
 | `api` | `pure_auto_codeql.api` | Migrated (top-level re-export shim kept) |
+| `config` (LLM provider impl) | `pure_auto_codeql.config` | Migrated (top-level re-export shim kept; user keys stay at repo-root `config/keys.toml`) |
+| `pure_auto_codeql.configuration` | facade over `pure_auto_codeql.config` | Canonical import for app code |
 
 ## Compatibility Surface
 
@@ -63,8 +65,9 @@ from pure_auto_codeql.configuration import get_llm_config, LLMRole
 
 The `config/` package remains a compatibility surface for older scripts that
 use `from config import ...`. The root-level `config.py` file is only a legacy
-script shim for `python config.py ...`; normal `import config` resolves to the
-`config/` package in this repository.
+script shim for `python config.py ...`. User-facing secrets and
+`keys.example.toml` stay at repository-root `config/`; implementation code
+lives under `pure_auto_codeql.config`.
 
 
 ## Internal Import Convention

@@ -103,6 +103,8 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert canonical_cli is legacy_cli
     assert canonical_config.LLMRole is config.LLMRole
     assert canonical_config.get_llm_config is legacy_get_llm_config
+    import pure_auto_codeql.config as config_impl
+    assert config_impl.LLMRole is config.LLMRole
     assert callable(canonical_config.get_llm_config)
     assert legacy_policy.ProjectImportPolicyError is ProjectImportPolicyError
 

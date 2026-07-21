@@ -2,10 +2,11 @@
 
 This module is the preferred namespace for application code that needs LLM
 configuration helpers. The root-level `config.py` and `config/` package remain
-available as legacy compatibility surfaces during the migration window.
+available as legacy compatibility surfaces. User keys stay at
+`config/keys.toml` under the repository root.
 """
 
-from config import (  # noqa: F401
+from pure_auto_codeql.config import (  # noqa: F401
     CHAT_CONFIG,
     THINK_CONFIG,
     LLMConfig,
