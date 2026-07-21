@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.paths import prompts_dir
+
 if TYPE_CHECKING:
     from dataclasses import dataclass
 
@@ -24,7 +26,7 @@ class CodeQLGenAgent:
     def __init__(self, analyzer: "MultiAgentAnalyzer", prompt_file: Optional[Path] = None):
         self.analyzer = analyzer
         # Default prompt path: prompts/codeql_generate.md
-        self.prompt_file = prompt_file or (Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_generate.md")
+        self.prompt_file = prompt_file or (prompts_dir() / "codeql_generate.md")
 
     def _load_prompt(self) -> str:
         """Load prompt template content from markdown file."""

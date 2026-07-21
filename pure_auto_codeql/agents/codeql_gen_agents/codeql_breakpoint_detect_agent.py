@@ -4,6 +4,8 @@ import json
 import re
 import os
 
+from pure_auto_codeql.paths import prompts_dir
+
 if TYPE_CHECKING:
     from utils.io import AgentResult
 from services.llm_service import MultiAgentAnalyzer
@@ -15,8 +17,8 @@ class CodeQLBreakpointAgent:
     """
 
     def __init__(
-        self, 
-        analyzer: "MultiAgentAnalyzer", 
+        self,
+        analyzer: "MultiAgentAnalyzer",
         prompt_file: Optional[Path] = None,
         source_root: str = "projects",
         project_name: str = None
@@ -24,7 +26,7 @@ class CodeQLBreakpointAgent:
         self.analyzer = analyzer
         self.source_root = source_root
         self.project_name = project_name
-        self.prompts_dir = Path(__file__).resolve().parent.parent.parent / "prompts"
+        self.prompts_dir = prompts_dir()
         
         # 默认使用通用提示词
         self.analysis_prompt_file = self.prompts_dir / "codeql_breakpoint_analysis.md"

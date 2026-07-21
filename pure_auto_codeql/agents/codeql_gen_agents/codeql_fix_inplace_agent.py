@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.paths import prompts_dir
+
 if TYPE_CHECKING:
     from dataclasses import dataclass
 
@@ -16,21 +18,19 @@ if TYPE_CHECKING:
 
 class CodeQLFixInplaceAgent:
     """Fix CodeQL errors by modifying existing query files in-place using MCP tools.
-    
+
     This agent receives error analysis suggestions and uses MCP filesystem tools
     to apply the fixes directly to the .ql file.
     """
 
     def __init__(
-        self, 
-        analyzer: "MultiAgentAnalyzer", 
+        self,
+        analyzer: "MultiAgentAnalyzer",
         prompt_file: Optional[Path] = None
     ):
         self.analyzer = analyzer
         # Always use in-place fix prompt
-        self.prompt_file = prompt_file or (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_fix_inplace.md"
-        )
+        self.prompt_file = prompt_file or (prompts_dir() / "codeql_fix_inplace.md")
 
     def _load_prompt(self) -> str:
         """Load prompt template content from markdown file."""

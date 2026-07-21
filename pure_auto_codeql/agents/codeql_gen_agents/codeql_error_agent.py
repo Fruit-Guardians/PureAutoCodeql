@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.paths import prompts_dir
+
 if TYPE_CHECKING:
     from dataclasses import dataclass
 
@@ -16,21 +18,19 @@ if TYPE_CHECKING:
 
 class CodeQLErrorAgent:
     """Analyze and diagnose CodeQL compilation/runtime errors.
-    
+
     This agent analyzes errors and provides structured fix suggestions,
     but does NOT generate or modify code directly.
     """
 
     def __init__(
-        self, 
-        analyzer: "MultiAgentAnalyzer", 
+        self,
+        analyzer: "MultiAgentAnalyzer",
         prompt_file: Optional[Path] = None
     ):
         self.analyzer = analyzer
         # Always use error analysis prompt
-        self.prompt_file = prompt_file or (
-            Path(__file__).resolve().parent.parent.parent / "prompts" / "codeql_erroranalyze.md"
-        )
+        self.prompt_file = prompt_file or (prompts_dir() / "codeql_erroranalyze.md")
 
     def _load_prompt(self) -> str:
         """Load prompt template content from markdown file."""

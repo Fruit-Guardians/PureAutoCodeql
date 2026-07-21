@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.paths import get_repo_root
+
 if TYPE_CHECKING:
     from dataclasses import dataclass
 
@@ -25,8 +27,7 @@ class SourceSinkFallbackAgent:
         self.analyzer = analyzer
         self.language = language or "java"
 
-        project_root = Path(__file__).resolve().parent.parent.parent
-        self._project_root = project_root
+        self._project_root = get_repo_root()
         self.prompt_file = prompt_file
 
     def _resolve_prompt_path(self, language: Optional[str] = None) -> Path:

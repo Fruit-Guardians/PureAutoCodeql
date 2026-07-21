@@ -91,6 +91,11 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     from config import get_llm_config as legacy_get_llm_config
     from pure_auto_codeql.application import ProjectImportPolicyError
     from pure_auto_codeql.cli.app import cli as canonical_cli
+    from pure_auto_codeql.information import ghsa_fetch as canonical_ghsa
+    from pure_auto_codeql.information import nvd_info_fetch as canonical_nvd
+    from pure_auto_codeql.paths import get_repo_root, prompts_dir
+    from Information import ghsa_fetch as legacy_ghsa
+    from Information import nvd_info_fetch as legacy_nvd
 
     config_path = Path(config.__file__)
     assert config_path.name == "__init__.py"
@@ -100,6 +105,17 @@ def test_canonical_and_legacy_import_surfaces_remain_available():
     assert canonical_config.get_llm_config is legacy_get_llm_config
     assert callable(canonical_config.get_llm_config)
     assert legacy_policy.ProjectImportPolicyError is ProjectImportPolicyError
+
+    # Information package migration shims
+    assert legacy_ghsa is canonical_ghsa
+    assert legacy_nvd is canonical_nvd
+    assert canonical_ghsa.AdvisoryLookupError is legacy_ghsa.AdvisoryLookupError
+    assert canonical_nvd.CveLookupError is legacy_nvd.CveLookupError
+
+    # Repo root helper resolves real asset layout
+    root = get_repo_root()
+    assert (root / "pyproject.toml").is_file()
+    assert (prompts_dir() / "codeql_generate.md").is_file()
 
 
 def test_api_environment_settings_override_keys_toml_settings(monkeypatch):
