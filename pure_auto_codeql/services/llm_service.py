@@ -11,18 +11,19 @@ import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, List, Optional
 
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_mcp_adapters.sessions import create_session
+from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 
-from pure_auto_codeql.configuration import get_chat_config, LLMConfig, get_resilient_llm_config, LLMRole
+from pure_auto_codeql.configuration import LLMConfig, LLMRole, get_resilient_llm_config
 from pure_auto_codeql.utils.logger import get_logger
-from .agent_mcp_config import AgentMCPConfigService
 from pure_auto_codeql.utils.mcp_schema_fixer import fix_mcp_tools_schemas
+
+from .agent_mcp_config import AgentMCPConfigService
 
 
 class APIErrorClassifier:
@@ -273,14 +274,10 @@ class RetryableChatOpenAI:
 
             # 使用装饰器包装的函数
             async def retry_wrapper():
-                last_error = None
-
                 for attempt in range(self.config.max_retries + 1):
                     try:
                         return await tracked_astream()
                     except Exception as error:
-                        last_error = error
-
                         # 检查是否可重试
                         if not APIErrorClassifier.is_retryable_error(error):
                             self.retry_tracker.end_retry_session(session_id, False)
@@ -590,7 +587,6 @@ def _format_tool_output(tool_name: str, output: Any) -> str:
 
 def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
     """打印工具输出的详细内容。"""
-    import json
     import re
 
     # 如果输出为 None 或空字符串，跳过详细显示（空列表会显示"空目录"）
@@ -680,7 +676,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                 print_tree(dir_data)
             else:
                 print(f"   完整输出: {output}")
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
+        except (json.JSONDecodeError, TypeError, ValueError):
             # 如果所有解析都失败，尝试按行显示原始内容
             output_str = str(output)
             # 提取 content='...' 中的内容（处理转义的单引号）
@@ -999,8 +995,6 @@ class MultiAgentAnalyzer:
             content_parts = []
 
             # 跟踪工具执行状态
-            current_tool = None
-            tool_start_time = {}
             output_started = False
             ai_streaming = False  # 跟踪AI是否正在流式输出
 
@@ -1055,7 +1049,6 @@ class MultiAgentAnalyzer:
                     elif event_name == "on_tool_start":
                         # 工具开始执行
                         tool_name = event.get("name", "")
-                        current_tool = tool_name
                         tool_input = event.get("data", {}).get("input", {})
 
                         # 如果AI正在流式输出，先换行
@@ -1066,7 +1059,7 @@ class MultiAgentAnalyzer:
                         # 打印工具输入参数
                         print(f"🔧 {tool_name}")
                         print(f"   📥 请求参数: {tool_input}")
-                        print(f"   ⏳ 执行中 → ", end="", flush=True)
+                        print("   ⏳ 执行中 → ", end="", flush=True)
 
                     elif event_name == "on_tool_end":
                         # 工具执行完成，在同一行显示结果
@@ -1091,7 +1084,6 @@ class MultiAgentAnalyzer:
 
                         # 显示详细内容（针对特定工具）
                         _print_detailed_tool_output(tool_name, output)
-                        current_tool = None
 
                 if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")

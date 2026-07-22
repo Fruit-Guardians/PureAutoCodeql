@@ -1,46 +1,26 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.agents.codeql_gen_agents.base import BasePromptAgent
 from pure_auto_codeql.paths import prompts_dir
+from pure_auto_codeql.services.llm_service import AgentResult
 
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
-    class MultiAgentAnalyzer:
-        async def run_agent(self, prompt: str, show_thinking: bool = False, event_callback=None) -> "AgentResult":  # type: ignore[override]
-            ...
+    from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
 
 
-class TemplateRefinementAgent:
+class TemplateRefinementAgent(BasePromptAgent):
+    default_agent_name = "Template Refinement Agent"
+    default_agent_type = "template_refinement"
+
     def __init__(
         self,
         analyzer: "MultiAgentAnalyzer",
         language: Optional[str] = None,
         prompt_file: Optional[Path] = None,
     ) -> None:
-        self.analyzer = analyzer
+        super().__init__(analyzer, prompt_file or (prompts_dir() / "template_refinement.md"))
         self.language = language or "java"
-        self.prompt_file = prompt_file or (prompts_dir() / "template_refinement.md")
-
-    def _load_prompt(self) -> str:
-        try:
-            return self.prompt_file.read_text(encoding="utf-8")
-        except Exception as e:  # pragma: no cover - 防御性分支
-            return f"Error loading prompt file: {e}"
-
-    @staticmethod
-    def _fill_placeholders(template: str, values: Dict[str, Optional[str]]) -> str:
-        result = template
-        for k, v in (values or {}).items():
-            token = f"[[{k}]]"
-            result = result.replace(token, v or "")
-        return result
 
     def _resolve_template_path(self, language: Optional[str] = None) -> Path:
         lang = (language or self.language or "java").lower()
@@ -83,22 +63,12 @@ class TemplateRefinementAgent:
         agent_type: Optional[str] = None,
     ) -> "AgentResult":
         try:
-            _agent_name = agent_name or "Template Refinement Agent"
-            _agent_type = agent_type or "template_refinement"
-
-            if event_callback:
-                from datetime import datetime
-
-                await event_callback(
-                    {
-                        "type": "agent_start",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": "开始模板优化（Template Refinement）",
-                        "data": {"language": language or self.language},
-                    }
-                )
+            await self._emit_event(
+                event_callback, "agent_start",
+                "开始模板优化（Template Refinement）",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"language": language or self.language},
+            )
 
             prompt = self.build_prompt(
                 error_tidy_doc=error_tidy_doc,
@@ -111,45 +81,20 @@ class TemplateRefinementAgent:
                 event_callback=event_callback,
             )
 
-            if event_callback:
-                from datetime import datetime
-
-                await event_callback(
-                    {
-                        "type": "agent_complete",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": "模板优化完成（Template Refinement 完成）",
-                        "data": {"success": getattr(result, "success", False)},
-                    }
-                )
+            await self._emit_event(
+                event_callback, "agent_complete",
+                "模板优化完成（Template Refinement 完成）",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"success": getattr(result, "success", False)},
+            )
 
             return result
 
         except Exception as e:  # pragma: no cover - 防御性分支
-            if event_callback:
-                from datetime import datetime
-
-                _agent_name = agent_name or "Template Refinement Agent"
-                _agent_type = agent_type or "template_refinement"
-                await event_callback(
-                    {
-                        "type": "error",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": f"模板优化失败: {str(e)}",
-                        "data": {"error": str(e)},
-                    }
-                )
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:  # type: ignore[redefinition]
-                content: str
-                success: bool
-                error: str = None
-
+            await self._emit_event(
+                event_callback, "error",
+                f"模板优化失败: {str(e)}",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"error": str(e)},
+            )
             return AgentResult(content="", success=False, error=str(e))

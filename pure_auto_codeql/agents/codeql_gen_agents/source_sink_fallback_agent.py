@@ -1,32 +1,26 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
+from pure_auto_codeql.agents.codeql_gen_agents.base import BasePromptAgent
 from pure_auto_codeql.paths import prompts_dir
+from pure_auto_codeql.services.llm_service import AgentResult
 
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
-    class MultiAgentAnalyzer:
-        async def run_agent(self, prompt: str, show_thinking: bool = False, event_callback=None) -> "AgentResult":  # type: ignore[override]
-            ...
+    from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
 
 
-class SourceSinkFallbackAgent:
+class SourceSinkFallbackAgent(BasePromptAgent):
+    default_agent_name = "Source-Sink Fallback Agent"
+    default_agent_type = "source_sink_fallback"
+
     def __init__(
         self,
         analyzer: "MultiAgentAnalyzer",
         language: Optional[str] = None,
         prompt_file: Optional[Path] = None,
     ) -> None:
-        self.analyzer = analyzer
+        super().__init__(analyzer, prompt_file)
         self.language = language or "java"
-        self.prompt_file = prompt_file
 
     def _resolve_prompt_path(self, language: Optional[str] = None) -> Path:
         lang = (language or self.language or "java").lower()
@@ -43,21 +37,6 @@ class SourceSinkFallbackAgent:
         filename = mapping.get(lang) or mapping["java"]
         return (prompts_dir() / filename).resolve()
 
-    def _load_prompt(self, language: Optional[str] = None) -> str:
-        try:
-            prompt_path = self.prompt_file or self._resolve_prompt_path(language)
-            return prompt_path.read_text(encoding="utf-8")
-        except Exception as e:  # pragma: no cover - 防御性分支
-            return f"Error loading prompt file: {e}"
-
-    @staticmethod
-    def _fill_placeholders(template: str, values: Dict[str, Optional[str]]) -> str:
-        result = template
-        for k, v in (values or {}).items():
-            token = f"[[{k}]]"
-            result = result.replace(token, v or "")
-        return result
-
     def build_prompt(
         self,
         language: str,
@@ -66,7 +45,7 @@ class SourceSinkFallbackAgent:
         sink_analysis_report: str,
         previous_attempts_context: Optional[str] = None,
     ) -> str:
-        template = self._load_prompt(language=language)
+        template = self._load_prompt(self.prompt_file or self._resolve_prompt_path(language))
         lang = language or self.language or "java"
 
         values = {
@@ -91,24 +70,12 @@ class SourceSinkFallbackAgent:
         agent_type: Optional[str] = None,
     ) -> "AgentResult":
         try:
-            _agent_name = agent_name or "Source-Sink Fallback Agent"
-            _agent_type = agent_type or "source_sink_fallback"
-
-            if event_callback:
-                from datetime import datetime
-
-                await event_callback(
-                    {
-                        "type": "agent_start",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": f"开始 Source-Sink 回退查询生成（{language}）",
-                        "data": {
-                            "language": language,
-                        },
-                    }
-                )
+            await self._emit_event(
+                event_callback, "agent_start",
+                f"开始 Source-Sink 回退查询生成（{language}）",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"language": language},
+            )
 
             prompt = self.build_prompt(
                 language=language,
@@ -124,45 +91,20 @@ class SourceSinkFallbackAgent:
                 event_callback=event_callback,
             )
 
-            if event_callback:
-                from datetime import datetime
-
-                await event_callback(
-                    {
-                        "type": "agent_end",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": f"Source-Sink 回退查询生成完成（{language}）",
-                        "data": {"success": getattr(result, "success", False)},
-                    }
-                )
+            await self._emit_event(
+                event_callback, "agent_complete",
+                f"Source-Sink 回退查询生成完成（{language}）",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"success": getattr(result, "success", False)},
+            )
 
             return result
 
         except Exception as e:  # pragma: no cover - 防御性分支
-            if event_callback:
-                from datetime import datetime
-
-                _agent_name = agent_name or "Source-Sink Fallback Agent"
-                _agent_type = agent_type or "source_sink_fallback"
-                await event_callback(
-                    {
-                        "type": "agent_error",
-                        "timestamp": datetime.now().isoformat(),
-                        "agent_name": _agent_name,
-                        "agent_type": _agent_type,
-                        "message": f"Source-Sink 回退查询生成失败: {str(e)}",
-                        "data": {"error": str(e)},
-                    }
-                )
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:  # type: ignore[redefinition]
-                content: str
-                success: bool
-                error: str = None
-
+            await self._emit_event(
+                event_callback, "error",
+                f"Source-Sink 回退查询生成失败: {str(e)}",
+                agent_name=agent_name, agent_type=agent_type,
+                data={"error": str(e)},
+            )
             return AgentResult(content="", success=False, error=str(e))
