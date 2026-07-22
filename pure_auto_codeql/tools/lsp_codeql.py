@@ -20,7 +20,18 @@
 #   - 之后每次 /check 只是 didChange + 等待 publishDiagnostics，延迟很低。
 #   - 默认使用 CodeQL 的“默认搜索路径”，无需 --search-path。
 
-import argparse, json, os, sys, subprocess, threading, queue, time, pathlib, urllib.parse, http.server, socketserver
+import argparse
+import http.server
+import json
+import os
+import pathlib
+import queue
+import socketserver
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
 
 Path = pathlib.Path
 
@@ -57,7 +68,8 @@ def reader(stream, q: queue.Queue):
             content_len = 0
             for h in headers:
                 if h.lower().startswith("content-length:"):
-                    content_len = int(h.split(":",1)[1].strip()); break
+                    content_len = int(h.split(":",1)[1].strip())
+                    break
         except Exception:
             return
         body = stream.read(content_len)
@@ -82,10 +94,14 @@ def summarize(diags):
     s = {"errors":0, "warnings":0, "information":0, "hints":0}
     for d in diags:
         sev = d.get("severity", 1) or 1
-        if   sev == 1: s["errors"] += 1
-        elif sev == 2: s["warnings"] += 1
-        elif sev == 3: s["information"] += 1
-        elif sev == 4: s["hints"] += 1
+        if sev == 1:
+            s["errors"] += 1
+        elif sev == 2:
+            s["warnings"] += 1
+        elif sev == 3:
+            s["information"] += 1
+        elif sev == 4:
+            s["hints"] += 1
     return s
 
 # ---------------- Hot LSP Engine ----------------
@@ -105,7 +121,7 @@ class HotCodeQL:
 
         self.lock = threading.Lock()
 
-        
+
 
 
 
@@ -130,7 +146,8 @@ class HotCodeQL:
         env = os.environ.copy()
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
 
-        t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True); t_out.start()
+        t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True)
+        t_out.start()
         if not self.quiet_logs:
             def _stderr_printer():
                 while True:
@@ -141,7 +158,8 @@ class HotCodeQL:
                         sys.stderr.write("[server] " + line.decode('utf-8', errors='replace'))
                     except Exception:
                         pass
-            t_err = threading.Thread(target=_stderr_printer, daemon=True); t_err.start()
+            t_err = threading.Thread(target=_stderr_printer, daemon=True)
+            t_err.start()
 
         # attempt initialize with workspace root first
         root_uri = to_uri(self.pack_root)
@@ -189,7 +207,8 @@ class HotCodeQL:
             except Exception:
                 pass
             self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-            t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True); t_out.start()
+            t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True)
+            t_out.start()
             if not self.quiet_logs:
                 def _stderr_printer():
                     while True:
@@ -200,7 +219,8 @@ class HotCodeQL:
                             sys.stderr.write("[server] " + line.decode('utf-8', errors='replace'))
                         except Exception:
                             pass
-                t_err = threading.Thread(target=_stderr_printer, daemon=True); t_err.start()
+                t_err = threading.Thread(target=_stderr_printer, daemon=True)
+                t_err.start()
             initialized_ok = _try_initialize(None, [])
             if not initialized_ok:
                 raise RuntimeError("No response to initialize()")
@@ -250,7 +270,7 @@ class HotCodeQL:
                     elif os.name != "nt" and incoming_uri != self.uri:
                         continue
                 if expected_version is not None and "version" in params and params["version"] != expected_version:
-                    continue 
+                    continue
                 diags = params.get("diagnostics", [])
                 deadline = time.time() + 0.6  # 滑动窗口，收集同一波后续更新
 
@@ -385,9 +405,11 @@ def main():
     query_file = Path(args.query_file).resolve()
 
     if not pack_root.exists():
-        print(f"[ERR] pack root not found: {pack_root}", file=sys.stderr); sys.exit(1)
+        print(f"[ERR] pack root not found: {pack_root}", file=sys.stderr)
+        sys.exit(1)
     if not ((pack_root / "codeql-pack.yml").exists() or (pack_root / "qlpack.yml").exists()):
-        print(f"[ERR] pack root missing codeql-pack.yml/qlpack.yml: {pack_root}", file=sys.stderr); sys.exit(1)
+        print(f"[ERR] pack root missing codeql-pack.yml/qlpack.yml: {pack_root}", file=sys.stderr)
+        sys.exit(1)
 
     # start engine
     engine = HotCodeQL(codeql=args.codeql, pack_root=pack_root, synchronous=args.synchronous,
@@ -395,7 +417,8 @@ def main():
     try:
         engine.start()
     except Exception as e:
-        print(f"[ERR] failed to start LSP: {e}", file=sys.stderr); sys.exit(1)
+        print(f"[ERR] failed to start LSP: {e}", file=sys.stderr)
+        sys.exit(1)
 
     Handler.engine = engine
     with socketserver.ThreadingTCPServer(("127.0.0.1", args.port), Handler) as httpd:

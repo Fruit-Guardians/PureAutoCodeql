@@ -2,29 +2,30 @@
 提供分析步骤的定义和流水线执行功能。
 """
 
-import logging
-import time
 import json
+import logging
 import re
 import shutil
-from datetime import datetime
+import time
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
-from .context import AnalysisContext, AnalysisConfig, AnalysisResult
 from pure_auto_codeql.services.llm_service import AgentResult, MultiAgentAnalyzer
-from pure_auto_codeql.services.path_selection import PathSelectionService, PathSelectionResult
+from pure_auto_codeql.services.path_selection import PathSelectionResult, PathSelectionService
+
+from .context import AnalysisConfig, AnalysisContext, AnalysisResult
 
 
 def _get_llm_config_from_context(context: AnalysisContext, role) -> Any:
     """从上下文中获取LLM配置，支持配置中的模型、API Key和Base URL"""
     config = getattr(context, '_config', None)
     if not config:
-        from pure_auto_codeql.configuration import get_resilient_llm_config, LLMRole
+        from pure_auto_codeql.configuration import LLMRole, get_resilient_llm_config
         return get_resilient_llm_config(role)
 
-    from pure_auto_codeql.configuration import get_llm_config, LLMRole
+    from pure_auto_codeql.configuration import LLMRole, get_llm_config
     # 从配置中获取参数
     provider = config.llm_provider
     model_name = config.think_model if role == LLMRole.THINK else config.chat_model
@@ -44,11 +45,11 @@ logger = logging.getLogger(__name__)
 
 # 导入现有的Agent和工具
 from pure_auto_codeql.agents.cve_analysis_agent import CVEAnalysisAgent
-from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent
-from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from pure_auto_codeql.agents.path_analysis_agent import PathAnalysisAgent
 from pure_auto_codeql.agents.sink_verification_agent import SinkVerificationAgent
 from pure_auto_codeql.agents.source_verification_agent import SourceVerificationAgent
+from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent
+from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
 
 
@@ -98,7 +99,7 @@ class CVEAnalysisStep(AnalysisStep):
             )
 
             if not result.success:
-                print(f"CVE analysis failed: {result.error}")
+                logger.error("CVE analysis failed: %s", result.error)
             elif not context.show_thinking:
                 # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
                 print(result.content)
@@ -141,7 +142,7 @@ class SinkAnalysisStep(AnalysisStep):
             )
 
             if not result.success:
-                print(f"{context.language.title()} sink analysis failed: {result.error}")
+                logger.error("%s sink analysis failed: %s", context.language.title(), result.error)
             elif not context.show_thinking:
                 # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
                 print(result.content)
@@ -150,7 +151,7 @@ class SinkAnalysisStep(AnalysisStep):
             config = getattr(context, '_config', None)
             if config and getattr(config, 'enable_sink_source_verification', False) and result.success:
                 logger.info("开始验证 Sink 分析结果...")
-                
+
                 # 初始化验证 Agent
                 verification_agent = SinkVerificationAgent(
                     analyzer=analyzer,
@@ -158,7 +159,7 @@ class SinkAnalysisStep(AnalysisStep):
                     language=context.language,
                     workspace_path=str(context.case_paths.source_code),
                 )
-                
+
                 # 执行验证
                 is_valid, error_message, verification_query = await verification_agent.verify_analysis_result(
                     analysis_result=result.content,
@@ -169,7 +170,7 @@ class SinkAnalysisStep(AnalysisStep):
                     agent_name="Sink Verification Agent",
                     agent_type="sink_verification",
                 )
-                
+
                 if not is_valid:
                     # 验证失败，记录警告并标记结果为无效
                     logger.warning(f"❌ Sink 分析验证失败: {error_message}")
@@ -225,7 +226,7 @@ class SourceAnalysisStep(AnalysisStep):
             )
 
             if not result.success:
-                print(f"{context.language.title()} source analysis failed: {result.error}")
+                logger.error("%s source analysis failed: %s", context.language.title(), result.error)
             elif not context.show_thinking:
                 # 只在未开启思考过程时打印结果（开启时已在流式输出中显示）
                 print(result.content)
@@ -234,7 +235,7 @@ class SourceAnalysisStep(AnalysisStep):
             config = getattr(context, '_config', None)
             if config and getattr(config, 'enable_sink_source_verification', False) and result.success:
                 logger.info("开始验证 Source 分析结果...")
-                
+
                 # 初始化验证 Agent
                 verification_agent = SourceVerificationAgent(
                     analyzer=analyzer,
@@ -242,7 +243,7 @@ class SourceAnalysisStep(AnalysisStep):
                     language=context.language,
                     workspace_path=str(context.case_paths.source_code),
                 )
-                
+
                 # 执行验证
                 is_valid, error_message, verification_query = await verification_agent.verify_analysis_result(
                     analysis_result=result.content,
@@ -253,7 +254,7 @@ class SourceAnalysisStep(AnalysisStep):
                     agent_name="Source Verification Agent",
                     agent_type="source_verification",
                 )
-                
+
                 if not is_valid:
                     # 验证失败，记录警告并标记结果为无效
                     logger.warning(f"❌ Source 分析验证失败: {error_message}")
@@ -282,34 +283,34 @@ class PathAnalysisStep(AnalysisStep):
     async def execute(self, context: AnalysisContext) -> Any:
         """执行Path分析。"""
         from pure_auto_codeql.configuration import LLMRole
-        
+
         # 检查是否有 Source 分析结果
         if not context.has_result("source_analysis"):
             logger.warning("跳过 Path 分析：缺少 Source 分析结果")
             return AgentResult(content="", success=False, error="Missing source analysis result")
-            
+
         source_result = context.get_result("source_analysis")
         if not source_result.success or not source_result.content:
             logger.warning("跳过 Path 分析：Source 分析失败或结果为空")
             return AgentResult(content="", success=False, error="Source analysis failed or empty")
-            
+
         # 解析 Source 分析结果中的路径数据
         try:
             source_data = json.loads(source_result.content)
             source_to_sink_paths = source_data.get("source_to_sink_paths", [])
-            
+
             if not source_to_sink_paths:
                 logger.info("跳过 Path 分析：未发现 Source 到 Sink 的路径")
                 return AgentResult(
-                    content=json.dumps({"total_paths": 0, "flow_steps": []}), 
+                    content=json.dumps({"total_paths": 0, "flow_steps": []}),
                     success=True
                 )
-                
+
             logger.info(f"准备分析 {len(source_to_sink_paths)} 条路径")
         except json.JSONDecodeError:
             logger.error("Source 分析结果 JSON 解析失败")
             return AgentResult(content="", success=False, error="Invalid source analysis JSON")
-            
+
         llm_config = _get_llm_config_from_context(context, LLMRole.CHAT)
         analyzer = MultiAgentAnalyzer(llm_config)
 
@@ -432,13 +433,13 @@ class CodeQLGenerationStep(AnalysisStep):
             # 获取验证查询（如果有）
             sink_verification_query = context.data.get("sink_verification_query")
             source_verification_query = context.data.get("source_verification_query")
-            
+
             # 记录验证查询的使用情况
             if sink_verification_query:
                 logger.info("✅ 使用 Sink 验证查询作为参考")
             if source_verification_query:
                 logger.info("✅ 使用 Source 验证查询作为参考")
-            
+
             print("=== CodeQL Query Generation ===")
             print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
             compose_output = await codeql_tool._arun(
@@ -811,7 +812,7 @@ class AnalysisPipeline:
             try:
                 cve_id = getattr(context.cve_assets, "cve_id", None) if context.cve_assets else None
                 target_id = cve_id or context.case_id or "UNKNOWN"
-                
+
                 if target_id and target_id != "UNKNOWN":
                     # 确保目录名合法
                     target_id_clean = self._sanitize_tag(target_id)
@@ -847,7 +848,7 @@ class AnalysisPipeline:
                     with open(path_json_path, "w", encoding=config.output_encoding) as handler:
                         json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
                     logger.info("   ✅ [Root Export] Path JSON: %s", path_json_path)
-            
+
             except Exception as e:
                 logger.warning(f"根目录 results 额外输出失败: {e}")
 

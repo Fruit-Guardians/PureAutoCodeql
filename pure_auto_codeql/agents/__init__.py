@@ -11,8 +11,8 @@ This package contains specialized agents for different aspects of vulnerability 
 - SinkVerificationAgent: Verifies identified Sink points using CodeQL queries
 - SourceVerificationAgent: Verifies identified Source points using CodeQL queries
 
-NOTE: The UnifiedSinkPathAgent and UnifiedSourceAnalysisAgent are the recommended agents 
-for all sink and source path analysis tasks. They support Java, Python, and C/C++ with 
+NOTE: The UnifiedSinkPathAgent and UnifiedSourceAnalysisAgent are the recommended agents
+for all sink and source path analysis tasks. They support Java, Python, and C/C++ with
 consistent logic and improved efficiency.
 """
 

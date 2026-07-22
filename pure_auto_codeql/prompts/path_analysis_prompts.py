@@ -4,8 +4,7 @@
 用于 PathAnalysisAgent 分析源点到汇点的路径，识别 isAdditionalFlowStep 点。
 """
 
-import json
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 
 def build_path_analysis_prompt(
@@ -16,39 +15,39 @@ def build_path_analysis_prompt(
 ) -> str:
     """
     构建路径分析提示词。
-    
+
     Args:
         language: 目标语言 (java, python, cpp)
         path_data: 路径数据，包含 source_function, sink_function, call_chain, transformations
         language_patterns: 特定语言的流步骤检测模式
         source_root: 源码根目录绝对路径
-        
+
     Returns:
         str: 完整的提示词
     """
-    
+
     source_func = path_data.get("source_function", {})
     sink_func = path_data.get("sink_function", {})
     call_chain = path_data.get("call_chain", [])
     transformations = path_data.get("transformations", [])
-    
+
     # 格式化调用链
     call_chain_str = "\n".join([
         f"  {i+1}. {call.get('function', 'unknown')} at {call.get('file_path', 'unknown')}:{call.get('line_number', '?')}"
         for i, call in enumerate(call_chain)
     ])
-    
+
     # 格式化转换点
     transformations_str = "\n".join([
         f"  - {t.get('type', 'unknown')}: {t.get('description', 'N/A')}"
         for t in transformations
     ]) if transformations else "  (无已知转换点)"
-    
+
     # 格式化语言特定模式
     patterns_str = ""
     for step_type, patterns in language_patterns.items():
         patterns_str += f"\n  **{step_type}**: {', '.join(patterns)}"
-    
+
     # 注册项目的指令
     register_instruction = ""
     if source_root:
@@ -166,7 +165,7 @@ def build_path_analysis_prompt(
 
 开始分析！
 """
-    
+
     return prompt
 
 
@@ -178,34 +177,34 @@ def build_batch_path_analysis_prompt(
 ) -> str:
     """
     构建批量路径分析提示词（用于一次性分析多条路径）。
-    
+
     Args:
         language: 目标语言
         paths: 路径数据列表
         language_patterns: 特定语言的流步骤检测模式
         source_root: 源码根目录绝对路径
-        
+
     Returns:
         str: 完整的提示词
     """
-    
+
     # 格式化所有路径
     paths_str = ""
     for i, path_data in enumerate(paths):
         source_func = path_data.get("source_function", {})
         sink_func = path_data.get("sink_function", {})
         call_chain = path_data.get("call_chain", [])
-        
+
         paths_str += f"\n### 路径 {i+1}\n"
         paths_str += f"- **源点**: {source_func.get('name', 'unknown')} at {source_func.get('file_path', 'unknown')}:{source_func.get('line_number', '?')}\n"
         paths_str += f"- **汇点**: {sink_func.get('name', 'unknown')} at {sink_func.get('file_path', 'unknown')}:{sink_func.get('line_number', '?')}\n"
         paths_str += f"- **调用链长度**: {len(call_chain)}\n"
-    
+
     # 格式化语言特定模式
     patterns_str = ""
     for step_type, patterns in language_patterns.items():
         patterns_str += f"\n  **{step_type}**: {', '.join(patterns)}"
-    
+
     # 注册项目的指令
     register_instruction = ""
     if source_root:
@@ -237,7 +236,7 @@ def build_batch_path_analysis_prompt(
 1. **复杂的数据结构操作** (custom_container)
    - 自定义的容器操作
    - 复杂的对象字段访问
-   
+
 2. **反序列化与解析** (deserialization)
    - 字节流转对象
    - 协议解析
@@ -301,7 +300,7 @@ def build_batch_path_analysis_prompt(
 
 开始分析！
 """
-    
+
     return prompt
 
 

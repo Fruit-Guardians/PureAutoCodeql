@@ -1,26 +1,15 @@
 from pathlib import Path
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient  # noqa: F401  # 预留给未来可能的直接使用
 
+from pure_auto_codeql.paths import get_repo_root, prompts_dir
 from pure_auto_codeql.utils.logger import get_logger
+
 from .mcp_language_config import MCPLanguageConfigService
-from pure_auto_codeql.paths import prompts_dir
-from pure_auto_codeql.paths import get_repo_root
 
 if TYPE_CHECKING:
-    from pure_auto_codeql.agents.cve_analysis_agent import CVEAnalysisAgent as _CVEAnalysisAgent
-    from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent as _UnifiedSinkPathAgent
-    from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent as _UnifiedSourceAnalysisAgent
-    from pure_auto_codeql.agents.path_analysis_agent import PathAnalysisAgent as _PathAnalysisAgent
-    from pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent as _CodeQLGenAgent
-    from pure_auto_codeql.agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent as _CodeQLErrorAgent
-    from pure_auto_codeql.agents.codeql_gen_agents.codeql_fix_inplace_agent import (
-        CodeQLFixInplaceAgent as _CodeQLFixInplaceAgent,
-    )
-    from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent import (
-        CodeQLBreakpointAgent as _CodeQLBreakpointAgent,
-    )
+    pass
 
 
 logger = get_logger(__name__)

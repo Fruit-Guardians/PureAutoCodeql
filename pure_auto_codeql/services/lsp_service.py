@@ -3,13 +3,13 @@
 提供CodeQL语言服务器协议的封装，用于语法检查和验证。
 """
 
-import logging
-import requests
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict
+
+import requests
 
 from pure_auto_codeql.utils.logger import get_logger
 
@@ -20,7 +20,7 @@ class CodeQLLSPService:
     """CodeQL LSP语法检查服务管理器。"""
 
     def __init__(self, pack_root: Path = None, query_file: Path = None):
-        self.pack_root = pack_root 
+        self.pack_root = pack_root
         self.query_file = query_file
         self.process = None
         self.port = 8766
@@ -30,7 +30,7 @@ class CodeQLLSPService:
     def start(self) -> bool:
         """启动LSP服务。"""
 
-        
+
         try:
             # 启动LSP服务
             cmd = [
@@ -60,7 +60,7 @@ class CodeQLLSPService:
                         return True
                     else:
                         logger.debug(f"服务返回状态码 {response.status_code}，继续等待...")
-                except Exception as e:
+                except Exception:
                     if i % 5 == 0:  # 每5秒显示一次等待状态
                         logger.debug(f"等待LSP服务启动... ({i+1}/{self.init_timeout}秒)")
                 time.sleep(1)
@@ -90,7 +90,7 @@ class CodeQLLSPService:
                 timeout=30
             )
 
-            
+
 
             if response.status_code == 200:
                 return response.json()
@@ -106,8 +106,8 @@ class CodeQLLSPService:
             try:
                 # 发送关闭请求
                 requests.post(f"{self.base_url}/shutdown", timeout=5)
-            except:
-                pass
+            except Exception:
+                logger.debug("发送 LSP shutdown 请求失败", exc_info=True)
 
             # 等待进程结束
             try:
@@ -124,9 +124,9 @@ class CodeQLLSPService:
             # 确保进程被清理
             if self.process.poll() is None:
                 self.process.kill()
-            
+
             self.process = None
-            
+
             # 强制清理可能的端口占用
             import socket
             try:
@@ -135,5 +135,5 @@ class CodeQLLSPService:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('127.0.0.1', self.port))
                 s.close()
-            except:
-                pass
+            except Exception:
+                logger.debug("释放 LSP 端口 %s 失败", self.port, exc_info=True)

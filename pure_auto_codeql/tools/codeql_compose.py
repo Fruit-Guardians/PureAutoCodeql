@@ -2,51 +2,49 @@
 
 from __future__ import annotations
 
-import re
+import asyncio
 import json
 import logging
-import asyncio
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, Callable
+from typing import Any, Dict, Optional, Type
 
 # 配置日志记录器（仅用于调试）
 logger = logging.getLogger(__name__)
 
 # Service
-from pure_auto_codeql.services.lsp_service import CodeQLLSPService
-from pure_auto_codeql.services.knowledge_base.base import LanguageKnowledgeBase
-
-
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
 from pure_auto_codeql.agents.codeql_gen_agents.codeql_error_agent import CodeQLErrorAgent
 from pure_auto_codeql.agents.codeql_gen_agents.codeql_fix_inplace_agent import CodeQLFixInplaceAgent
-from pure_auto_codeql.agents.codeql_gen_agents.codeql_breakpoint_detect_agent import CodeQLBreakpointAgent
-from pure_auto_codeql.agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
+from pure_auto_codeql.agents.codeql_gen_agents.codeql_gen_agent import CodeQLGenAgent
 from pure_auto_codeql.agents.codeql_gen_agents.source_sink_fallback_agent import SourceSinkFallbackAgent
+from pure_auto_codeql.agents.codeql_gen_agents.template_refinement_agent import TemplateRefinementAgent
 from pure_auto_codeql.paths import get_repo_root
-from pure_auto_codeql.services import (
-    KnowledgeBaseFactory,
-    build_placeholder_map,
-    apply_placeholders,
-    CodeQLSyntaxSession,
-)
-from pure_auto_codeql.utils.codeql import (
-    create_temporary_qlpack,
-    execute_codeql_query,
-    run_query_and_decode_to_text,
-    validate_codeql_database,
-    resolve_codeql_database_root,
-    is_database_error,
-    save_query_to_persistent_dir,
-    is_empty_result,
-    count_dataflow_paths,
-)
 from pure_auto_codeql.prompts.codeql_prompts import (
     get_codeql_generation_prompt_suffix,
     get_retry_strategy_description,
+)
+from pure_auto_codeql.services import (
+    CodeQLSyntaxSession,
+    KnowledgeBaseFactory,
+    apply_placeholders,
+    build_placeholder_map,
+)
+from pure_auto_codeql.services.knowledge_base.base import LanguageKnowledgeBase
+from pure_auto_codeql.services.lsp_service import CodeQLLSPService
+from pure_auto_codeql.utils.codeql import (
+    count_dataflow_paths,
+    create_temporary_qlpack,
+    execute_codeql_query,
+    is_database_error,
+    is_empty_result,
+    resolve_codeql_database_root,
+    run_query_and_decode_to_text,
+    save_query_to_persistent_dir,
+    validate_codeql_database,
 )
 from pure_auto_codeql.utils.sarif_utils import sarif_to_all_paths
 
@@ -124,10 +122,10 @@ class CodeQLComposeTool(BaseTool):
         self._source_sink_fallback_agent_cls = source_sink_fallback_agent_cls
 
         self._kb_cache: Dict[str, LanguageKnowledgeBase] = {}
-    
+
     def _extract_project_name_from_db_path(self, db_path: str) -> str:
         """从数据库路径中提取项目名称。
-        
+
         例如：从 'projects/CVE-2021-21985/db' 提取 'CVE-2021-21985'
         """
         path = Path(db_path)
@@ -174,10 +172,10 @@ class CodeQLComposeTool(BaseTool):
         lsp_service: CodeQLLSPService,
     ) -> Dict[str, Any]:
         """Run LSP diagnostics and execute the query when syntax passes."""
-        print(f"🔍 [CodeQLComposeTool] 开始使用LSP进行语法检查并执行...")
+        print("🔍 [CodeQLComposeTool] 开始使用LSP进行语法检查并执行...")
 
         try:
-            print(f"🔍 [CodeQLComposeTool] 执行CodeQL语法检查...")
+            print("🔍 [CodeQLComposeTool] 执行CodeQL语法检查...")
             syntax_result = lsp_service.check_syntax(current_ql)
             print(syntax_result)
 
@@ -253,8 +251,8 @@ class CodeQLComposeTool(BaseTool):
                 import json
                 return {"success": False, "output": json.dumps(lsp_error_output, indent=2, ensure_ascii=False)}
 
-            print(f"✅ [CodeQLComposeTool] 语法检查通过")
-            print(f"🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
+            print("✅ [CodeQLComposeTool] 语法检查通过")
+            print("🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
 
             exec_result = execute_codeql_query(
                 current_ql,
@@ -268,9 +266,9 @@ class CodeQLComposeTool(BaseTool):
             if not exec_result.get("success", False):
                 error_output = exec_result.get("output", "")
                 if is_database_error(error_output):
-                    print(f"⚠️ [CodeQLComposeTool] 检测到数据库错误")
+                    print("⚠️ [CodeQLComposeTool] 检测到数据库错误")
 
-            print(f"🏁 [CodeQLComposeTool] CodeQL查询执行完成")
+            print("🏁 [CodeQLComposeTool] CodeQL查询执行完成")
             return exec_result
 
         except Exception as e:
@@ -511,22 +509,22 @@ class CodeQLComposeTool(BaseTool):
                 sarif_path = exec_result.get("sarif_path")
                 json_path = exec_result.get("json_path")
                 is_result_empty = is_empty_result(sarif_path)
-                
+
                 # 如果结果不为空且没有JSON路径，尝试转换SARIF为JSON
                 if not is_result_empty and not json_path and sarif_path and Path(sarif_path).exists():
                     try:
                         logger.info(f"[SourceSinkFallback] 转换 SARIF 到 JSON: {sarif_path}")
                         with open(sarif_path, 'r', encoding='utf-8') as f:
                             sarif_data = json.load(f)
-                        
+
                         # 使用现有的逻辑转换
                         json_data = sarif_to_all_paths(sarif_data)
-                        
+
                         # 生成JSON文件路径 (result_timestamp.json)
                         json_file = Path(sarif_path).with_suffix('.json')
                         with open(json_file, 'w', encoding='utf-8') as f:
                             json.dump(json_data, f, ensure_ascii=False, indent=2)
-                            
+
                         json_path = str(json_file)
                         logger.info(f"[SourceSinkFallback] JSON 文件已生成: {json_path}")
                     except Exception as e:
@@ -733,24 +731,24 @@ class CodeQLComposeTool(BaseTool):
 
     def _format_path_analysis_context(self, path_analysis_results: Optional[Dict[str, Any]]) -> str:
         """格式化路径分析结果为 CodeQL 生成上下文。
-        
+
         Args:
             path_analysis_results: 路径分析结果，包含 flow_steps 列表
-            
+
         Returns:
             格式化的上下文字符串，用于注入到 CodeQL 生成提示词中
         """
         if not path_analysis_results:
             return ""
-        
+
         flow_steps = path_analysis_results.get("flow_steps", [])
         if not flow_steps:
             return ""
-        
+
         lines = []
         lines.append("\n## 路径分析结果 - isAdditionalFlowStep 上下文\n")
         lines.append("以下是通过路径分析识别的关键流步骤点，这些点应该在 CodeQL 查询的 `isAdditionalFlowStep` 谓词中体现：\n")
-        
+
         # 按类型分组流步骤
         steps_by_type = {}
         for step in flow_steps:
@@ -758,7 +756,7 @@ class CodeQLComposeTool(BaseTool):
             if step_type not in steps_by_type:
                 steps_by_type[step_type] = []
             steps_by_type[step_type].append(step)
-        
+
         # 输出每种类型的流步骤
         for step_type, steps in steps_by_type.items():
             type_names = {
@@ -770,18 +768,18 @@ class CodeQLComposeTool(BaseTool):
             }
             type_name = type_names.get(step_type, step_type)
             lines.append(f"\n### {type_name} ({step_type})\n")
-            
+
             for i, step in enumerate(steps, 1):
                 confidence = step.get("confidence", "unknown")
                 location = step.get("location", "unknown")
                 description = step.get("description", "N/A")
                 pattern = step.get("pattern", "N/A")
-                
+
                 lines.append(f"{i}. **位置**: {location} (置信度: {confidence})")
                 lines.append(f"   - **描述**: {description}")
                 lines.append(f"   - **模式**: `{pattern}`")
                 lines.append("")
-        
+
         # 添加使用指南
         lines.append("\n### 使用指南\n")
         lines.append("在生成 CodeQL 查询时，请考虑以下几点：")
@@ -790,7 +788,7 @@ class CodeQLComposeTool(BaseTool):
         lines.append("3. 根据语言特性调整匹配模式")
         lines.append("4. 确保流步骤的源节点和目标节点正确对应")
         lines.append("5. 使用 `or` 连接多个流步骤条件\n")
-        
+
         return "\n".join(lines)
 
     def _load_ql_template(self, lang: str) -> str:
@@ -807,31 +805,31 @@ class CodeQLComposeTool(BaseTool):
                 # Python 特殊处理：拼接主模板 + 模式库 + 案例库
                 # 这样在维护时是分离的，但在注入 Prompt 时是完整的。
                 base_content = py_path.read_text(encoding="utf-8")
-                
+
                 patterns_path = prompts_root / "python_patterns.md"
                 cases_path = prompts_root / "python_cases.md"
-                
+
                 extra_content = []
                 if patterns_path.exists():
                     extra_content.append("\n\n" + patterns_path.read_text(encoding="utf-8"))
                 if cases_path.exists():
                     extra_content.append("\n\n" + cases_path.read_text(encoding="utf-8"))
-                
+
                 return base_content + "".join(extra_content)
 
             if target in {"c", "cpp"} and c_path.exists():
                 # C/CPP 特殊处理：拼接主模板 + 模式库 + 案例库
                 base_content = c_path.read_text(encoding="utf-8")
-                
+
                 patterns_path = prompts_root / "c_patterns.md"
                 cases_path = prompts_root / "c_cases.md"
-                
+
                 extra_content = []
                 if patterns_path.exists():
                     extra_content.append("\n\n" + patterns_path.read_text(encoding="utf-8"))
                 if cases_path.exists():
                     extra_content.append("\n\n" + cases_path.read_text(encoding="utf-8"))
-                
+
                 return base_content + "".join(extra_content)
             return java_path.read_text(encoding="utf-8") if java_path.exists() else ""
         except Exception:
@@ -890,8 +888,8 @@ class CodeQLComposeTool(BaseTool):
         max_iterations = self.default_max_rounds
 
         # 生成任务ID用于工作区管理和持久化
-        from datetime import datetime
         import uuid
+        from datetime import datetime
         task_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         print(f"[CodeQLComposeTool] 任务ID: {task_id}")
 
@@ -914,7 +912,7 @@ class CodeQLComposeTool(BaseTool):
 
         # 从数据库路径提取项目名称
         project_name = self._extract_project_name_from_db_path(self.default_database_path)
-        
+
         gen_agent = self._gen_agent_cls(self.analyzer)
         error_agent = self._error_agent_cls(self.analyzer)
         fix_inplace_agent = self._fix_inplace_agent_cls(self.analyzer)
@@ -930,7 +928,7 @@ class CodeQLComposeTool(BaseTool):
         prev_original_ql = None
         prev_fix_suggestions = None
         is_first_round = True  # Track if this is the first generation
-        
+
         # 重试机制相关变量
         retry_count = 0  # 当前重试次数
         max_retries = 5  # 最大重试次数
@@ -944,7 +942,7 @@ class CodeQLComposeTool(BaseTool):
 
         # 启动LSP服务（仅用于语法检查）
         print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
-        print(f"   [CodeQLComposeTool] 初始化LSP服务")
+        print("   [CodeQLComposeTool] 初始化LSP服务")
         lsp_service = CodeQLLSPService(pack_root, query_file)
 
         # 添加详细的进度指示
@@ -952,13 +950,13 @@ class CodeQLComposeTool(BaseTool):
         start_time = time.time()
         final_result = None
         is_success = False
-        print(f"   [CodeQLComposeTool] 启动LSP服务")
+        print("   [CodeQLComposeTool] 启动LSP服务")
 
         # 调用start_server方法，它内部已经有30秒的重试机制
         if not lsp_service.start():
             print("❌ [CodeQLComposeTool] LSP服务启动失败")
-            return f"Error: Failed to start LSP service for syntax checking"
-        
+            return "Error: Failed to start LSP service for syntax checking"
+
         elapsed_time = time.time() - start_time
         print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
 
@@ -1014,11 +1012,11 @@ class CodeQLComposeTool(BaseTool):
                     # 根据重试次数选择prompt策略
                     strategy_suffix = get_codeql_generation_prompt_suffix(retry_count)
                     strategy_desc = get_retry_strategy_description(retry_count)
-                    
+
                     # 记录重试策略到日志（静默）
                     if retry_count > 0:
                         logger.info(f"[重试 {retry_count}/{max_retries}] 使用策略: {strategy_desc}")
-                    
+
                     gen_prompt_base = gen_agent.build_prompt(
                         language=target_language,
                         requirement=requirement,
@@ -1026,16 +1024,16 @@ class CodeQLComposeTool(BaseTool):
                         prev_original_ql=prev_original_ql,
                         prev_fix_suggestions=prev_fix_suggestions,
                     )
-                    
+
                     # 将策略后缀添加到prompt中
                     gen_prompt_base = gen_prompt_base + "\n\n" + strategy_suffix
-                    
+
                     # 添加路径分析上下文（如果有）
                     path_analysis_context = self._format_path_analysis_context(path_analysis_results)
                     if path_analysis_context:
                         gen_prompt_base = gen_prompt_base + "\n\n" + path_analysis_context
                         logger.info(f"[CodeQLComposeTool] 已添加路径分析上下文，包含 {len(path_analysis_results.get('flow_steps', []))} 个流步骤")
-                    
+
                     gen_values = build_placeholder_map(
                         language=target_language,
                         requirement=requirement,
@@ -1051,7 +1049,7 @@ class CodeQLComposeTool(BaseTool):
                         sink_verification_query=sink_verification_query,
                         source_verification_query=source_verification_query,
                     )
-                    
+
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
                     gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
 
@@ -1061,7 +1059,7 @@ class CodeQLComposeTool(BaseTool):
                         return final_result
 
                     current_ql = self._extract_codeql_from_response(gen_result.content)
-                    
+
                     if not current_ql:
                         is_success = False
                         final_result = f"Error: Could not extract CodeQL code from generation result (Round {round_index})"
@@ -1110,27 +1108,27 @@ class CodeQLComposeTool(BaseTool):
                     # 检查结果是否为空
                     sarif_path = exec_result.get('sarif_path')
                     json_path = exec_result.get('json_path')
-                    
+
                     is_result_empty = is_empty_result(sarif_path)
                     paths_count = count_dataflow_paths(sarif_path, json_path)
 
                     #断流点查找（支持Java/Python/C++）
                     # 仅在启用参数为True时执行
                     should_recover_breakpoint = enable_breakpoint_recovery or self.enable_breakpoint_recovery
-                    
+
                     if should_recover_breakpoint and is_result_empty and target_language in ["java", "python", "cpp"]:
                         print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，且已开启断流点恢复，进行断流点查找...")
-                        from .extract_ql import extract_ql_predicate, Get_Breakpoint, extract_predicate_body_and_params
-                        
+                        from .extract_ql import Get_Breakpoint, extract_predicate_body_and_params, extract_ql_predicate
+
                         # 初始化断流点添加计数器
                         breakpoint_add_count = 0
                         max_breakpoint_attempts = 3
                         original_ql = current_ql  # 保存原始查询
-                        
+
                         while breakpoint_add_count < max_breakpoint_attempts and is_result_empty:
                             breakpoint_add_count += 1
                             print(f"🔍 [CodeQLComposeTool] 断流点条件添加尝试 {breakpoint_add_count}/{max_breakpoint_attempts}")
-                            
+
                             #组装断流点查询语句
                             ql_predicates = extract_ql_predicate(current_ql)
                             breakpoint_current_ql = Get_Breakpoint(ql_predicates, language=target_language)
@@ -1146,13 +1144,13 @@ class CodeQLComposeTool(BaseTool):
                                     output_dir=query_file.parent / "results",
                                 )
                             self.last_execution_result = exec_result
-                            
+
                             #借助agent开始分析断流点并且生成断流条件
                             print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{breakpoint_add_count}次尝试）")
-                            
+
                             # 提取CodeQL查询结果
                             codeql_output = exec_result.get('output', '')
-                            
+
                             # 如果有解析后的结果，使用解析后的结果；否则使用原始输出
                             if exec_result.get('results') and len(exec_result.get('results')) > 0:
                                 # 如果results是解析后的JSON，将其转换为字符串
@@ -1163,9 +1161,9 @@ class CodeQLComposeTool(BaseTool):
                             else:
                                 # 如果没有解析后的结果，使用原始输出
                                 codeql_results = codeql_output
-                            
+
                             # 使用断点检测代理分析结果 - 第一步：分析断流点基本信息
-                            print(f"🔍 [CodeQLComposeTool] 第一步：分析断流点基本信息")
+                            print("🔍 [CodeQLComposeTool] 第一步：分析断流点基本信息")
                             breakpoint_analysis_result = await breakpoint_detect_agent.analyze_breakpoints(
                                 codeql_results=codeql_results,
                                 language=target_language,
@@ -1174,17 +1172,17 @@ class CodeQLComposeTool(BaseTool):
                                 agent_name=f"CodeQLComposeTool_BreakpointAnalysis_{breakpoint_add_count}",
                                 agent_type="codeql_compose_breakpoint_analysis"
                             )
-                            
+
                             if not breakpoint_analysis_result.success:
                                 print(f"❌ [CodeQLComposeTool] 断流点分析失败: {breakpoint_analysis_result.error}")
                                 # 继续执行，不中断整个流程
                                 break
                             else:
-                                print(f"✅ [CodeQLComposeTool] 断流点分析完成")
+                                print("✅ [CodeQLComposeTool] 断流点分析完成")
                                 print(f"📄 [CodeQLComposeTool] 断流点基本信息:\n{breakpoint_analysis_result.content}")
-                                
+
                                 # 第二步：生成isAdditionalFlowStep条件
-                                print(f"🔧 [CodeQLComposeTool] 第二步：生成isAdditionalFlowStep条件")
+                                print("🔧 [CodeQLComposeTool] 第二步：生成isAdditionalFlowStep条件")
                                 flowstep_result = await breakpoint_detect_agent.generate_flowstep(
                                     breakpoint_analysis=breakpoint_analysis_result.content,
                                     language=target_language,
@@ -1193,26 +1191,26 @@ class CodeQLComposeTool(BaseTool):
                                     agent_name=f"CodeQLComposeTool_FlowstepGeneration_{breakpoint_add_count}",
                                     agent_type="codeql_compose_flowstep_generation"
                                 )
-                                
+
                                 if not flowstep_result.success:
                                     print(f"❌ [CodeQLComposeTool] isAdditionalFlowStep条件生成失败: {flowstep_result.error}")
                                     break
                                 else:
-                                    print(f"✅ [CodeQLComposeTool] isAdditionalFlowStep条件生成完成")
+                                    print("✅ [CodeQLComposeTool] isAdditionalFlowStep条件生成完成")
                                     print(f"📄 [CodeQLComposeTool] 生成的条件:\n{flowstep_result.content}")
-                                    
+
                                     # 提取生成的isAdditionalFlowStep条件
                                     import re
                                     new_flowstep_condition = None
-                                    
+
                                     # 1. 尝试从响应中提取代码块
                                     generated_code = self._extract_codeql_from_response(flowstep_result.content)
                                     if not generated_code:
                                         generated_code = flowstep_result.content
-                                        
+
                                     # 2. 尝试解析完整的谓词定义
                                     step_body, step_params = extract_predicate_body_and_params(generated_code, "isAdditionalFlowStep")
-                                    
+
                                     if step_body:
                                         # 成功解析完整谓词，规范化参数
                                         if len(step_params) >= 2:
@@ -1227,23 +1225,23 @@ class CodeQLComposeTool(BaseTool):
                                         # 3. 无法解析完整谓词，尝试作为纯条件体处理
                                         # 简单的启发式参数替换 (node1 -> src, node2 -> dst)
                                         condition = generated_code.strip()
-                                        
+
                                         # 如果包含 predicate 定义头但解析失败（可能是格式问题），尝试去除头尾
                                         clean_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{(.*)\}"
                                         clean_match = re.search(clean_pattern, condition, re.DOTALL)
                                         if clean_match:
                                             condition = clean_match.group(1).strip()
-                                        
+
                                         if "node1" in condition and "src" not in condition:
                                              condition = re.sub(r'\bnode1\b', 'src', condition)
                                         if "node2" in condition and "dst" not in condition:
                                              condition = re.sub(r'\bnode2\b', 'dst', condition)
-                                             
+
                                         new_flowstep_condition = condition
-                                    
+
                                     if new_flowstep_condition:
                                         print(f"🔧 [CodeQLComposeTool] 提取的条件: {new_flowstep_condition}")
-                                        
+
                                         # 更新当前查询的isAdditionalFlowStep条件
                                         isadd_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{.*?\}"
                                         if re.search(isadd_pattern, current_ql, re.DOTALL):
@@ -1266,11 +1264,11 @@ class CodeQLComposeTool(BaseTool):
                                                 "predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {none()}",
                                                 f"predicate isAdditionalFlowStep(DataFlow::Node src, DataFlow::Node dst) {{{new_flowstep_condition}}}"
                                             )
-                                        
+
                                         # 保存更新后的查询到文件
                                         query_file.write_text(current_ql, encoding='utf-8')
                                         print(f"💾 [CodeQLComposeTool] 已更新查询文件，添加断流点条件（第{breakpoint_add_count}次）")
-                                        
+
                                         # 重新执行查询
                                         print(f"🔄 [CodeQLComposeTool] 重新执行查询，添加断流点条件后（第{breakpoint_add_count}次）")
                                         exec_result = self._lsp_and_execute(
@@ -1279,25 +1277,25 @@ class CodeQLComposeTool(BaseTool):
                                             query_file=query_file,
                                             lsp_service=lsp_service,
                                         )
-                                        
+
                                         # 检查执行结果
                                         if exec_result.get('success', False):
                                             # 更新结果状态
                                             is_result_empty = is_empty_result(exec_result.get('sarif_path'))
                                             paths_count = count_dataflow_paths(exec_result.get('sarif_path'), exec_result.get('json_path'))
-                                            
+
                                             if not is_result_empty:
                                                 print(f"✅ [CodeQLComposeTool] 添加断流点条件后查询成功，找到 {paths_count} 条路径")
                                                 break
                                             else:
-                                                print(f"⚠️ [CodeQLComposeTool] 添加断流点条件后查询结果仍为空，继续尝试")
+                                                print("⚠️ [CodeQLComposeTool] 添加断流点条件后查询结果仍为空，继续尝试")
                                         else:
-                                            print(f"❌ [CodeQLComposeTool] 添加断流点条件后查询执行失败")
+                                            print("❌ [CodeQLComposeTool] 添加断流点条件后查询执行失败")
                                             break
                                     else:
-                                        print(f"❌ [CodeQLComposeTool] 无法从生成结果中提取isAdditionalFlowStep条件")
+                                        print("❌ [CodeQLComposeTool] 无法从生成结果中提取isAdditionalFlowStep条件")
                                         break
-                                    
+
                                     # 保存完整的断流点分析结果到文件
                                     try:
                                         breakpoint_result_file = pack_root / f"breakpoint_analysis_{breakpoint_add_count}.md"
@@ -1311,13 +1309,13 @@ class CodeQLComposeTool(BaseTool):
                                         print(f"💾 [CodeQLComposeTool] 断流点分析结果已保存到: {breakpoint_result_file}")
                                     except Exception as save_error:
                                         print(f"⚠️ [CodeQLComposeTool] 保存断流点分析结果时出错: {save_error}")
-                        
+
                         # 如果达到最大尝试次数仍为空，进入CodeQL放宽流程
                         if is_result_empty and breakpoint_add_count >= max_breakpoint_attempts:
                             print(f"⚠️ [CodeQLComposeTool] 已尝试{max_breakpoint_attempts}次添加断流点条件，结果仍为空，将进入CodeQL放宽流程")
                             # 这里可以添加进入CodeQL放宽流程的逻辑
                             # 目前先继续执行原有流程
-                    
+
                     # 记录路径数量到日志
                     logger.info(f"[Round {round_index}] 查询执行成功，找到 {paths_count} 条路径")
 
@@ -1353,7 +1351,7 @@ class CodeQLComposeTool(BaseTool):
                         logger.warning(
                             f"[重试结束] 已尝试 {retry_count} 次重试仍为空，触发 Source-Sink Fallback 回退查询"
                         )
-                        
+
                         # 将最后一次失败的尝试也加入历史，以便回退 Agent 可以参考上次的 QL 代码
                         retry_history.append(
                             {
@@ -1457,7 +1455,7 @@ class CodeQLComposeTool(BaseTool):
                                     )
                         except Exception as tidy_error:
                             print(f"⚠️ [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
-                    
+
                     mode_now = (exec_mode or 'analyze').lower()
 
                     # 创建CodeQLExecutionResult对象
@@ -1607,7 +1605,7 @@ class CodeQLComposeTool(BaseTool):
                     return final_result
 
                 # Step 2: Use FixInplaceAgent to modify the file
-                print(f"🔧 [CodeQLComposeTool] 开始修复QL语句")
+                print("🔧 [CodeQLComposeTool] 开始修复QL语句")
                 ql_file_path_abs = str(query_file.resolve())
 
                 fix_result = await fix_inplace_agent.fix(
@@ -1628,7 +1626,7 @@ class CodeQLComposeTool(BaseTool):
                     )
                     return final_result
 
-                print(f"✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+                print("✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
 
                 # 记录当前轮次的错误信息，用于后续生成错误整理文档
                 error_rounds.append({

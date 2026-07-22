@@ -1,11 +1,11 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-    
+
     @dataclass
     class AgentResult:
         content: str
@@ -56,10 +56,10 @@ def write_analysis_output(
     try:
         # 确保输出目录存在
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # 确定语言显示名称
         language_display = language.title() if language else "Code"
-        
+
         sections = [
             "# Multi-Agent Analysis Output\n",
         ]
@@ -111,20 +111,20 @@ def write_analysis_output(
         sections.append("\n")
 
         output = "".join(sections)
-        
+
         # 写入文件
         output_path.write_text(output, encoding=encoding)
-        
+
         # 验证文件写入成功
         if not output_path.exists():
             raise OSError(f"文件写入失败: {output_path} 不存在")
-        
+
         file_size = output_path.stat().st_size
         if file_size == 0:
             raise ValueError(f"文件写入失败: {output_path} 大小为0")
-        
+
         logger.info(f"✅ 分析结果已写入: {output_path} (大小: {file_size} 字节)")
-        
+
     except PermissionError as e:
         error_msg = f"文件权限错误，无法写入 {output_path}: {e}"
         logger.error(error_msg)

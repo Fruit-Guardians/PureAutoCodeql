@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Tuple
 
 from .features import PathFeatures
-
 
 DEFAULT_WEIGHTS: Dict[str, float] = {
     "file": 0.25,

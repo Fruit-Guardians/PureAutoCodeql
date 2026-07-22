@@ -9,13 +9,12 @@
 """
 
 import os
-import sys
 from dataclasses import dataclass, field
-from typing import Optional, Any
 from enum import Enum
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
 from pathlib import Path
+from typing import Any, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from pure_auto_codeql.paths import get_repo_root
 
@@ -102,7 +101,7 @@ class ProviderConfig:
         """检查服务是否可达（基础网络检测）"""
         try:
             req = Request(self.get_base_url(), method="GET")
-            with urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            with urlopen(req, timeout=timeout):  # noqa: S310
                 return True
         except HTTPError:
             return True  # HTTP 错误说明服务可达
@@ -164,7 +163,7 @@ class ProviderConfig:
                         return False, "API Key无效"
                     else:
                         return False, f"无法验证: {str(e)}"
-            except:
+            except Exception:
                 # 最后兜底：如果都失败，说明可能网络问题或API不标准
                 return False, f"无法验证: {str(e)}"
 
@@ -206,7 +205,7 @@ class LLMConfig:
     max_tokens: Optional[int] = None
     max_retries: int = 3
     provider: Optional[str] = None
-    
+
     # 重试机制配置
     retry_base_delay: float = 1.0  # 基础延迟时间（秒）
     retry_backoff_factor: float = 2.0  # 退避因子

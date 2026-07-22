@@ -1,5 +1,9 @@
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+logger = logging.getLogger(__name__)
+
 
 # 运行时可用的AgentResult类定义
 class AgentResult:
@@ -39,7 +43,7 @@ class UnifiedSinkPathAgent:
         try:
             _agent_name = agent_name or "Sink Path Analysis Agent"
             _agent_type = agent_type or "sink_analysis"
-            
+
             if event_callback:
                 from datetime import datetime
                 await event_callback({
@@ -50,7 +54,7 @@ class UnifiedSinkPathAgent:
                     "message": f"开始{language}语言Sink路径分析",
                     "data": {"language": language, "diff_path": diff_path}
                 })
-            
+
             directory = Path(self.source_root).resolve()
 
             # MCP 根目录（server-filesystem允许的根）
@@ -84,7 +88,7 @@ class UnifiedSinkPathAgent:
                             if len(paths) >= 10:
                                 break
                 except Exception:
-                    pass
+                    logger.debug("解析 diff 文件路径失败", exc_info=True)
                 return paths
 
             def infer_source_root(base_dir: Path, relative_paths: list) -> Path:
@@ -120,11 +124,11 @@ class UnifiedSinkPathAgent:
             if not diff_prompt_path:
                 diff_prompt_path = "注意，diff文件并未给出，请根据CVE分析结果综合判断sink的类型"
 
-            print("diff_path_for_prompt:", diff_prompt_path)
+            logger.debug("diff_path_for_prompt: %s", diff_prompt_path)
 
             prompt = self.build_prompt(language, cve_analysis, source_prompt_path, diff_prompt_path)
             result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
-            
+
             if event_callback:
                 from datetime import datetime
                 await event_callback({
@@ -135,7 +139,7 @@ class UnifiedSinkPathAgent:
                     "message": f"{language}语言Sink路径分析完成",
                     "data": {"success": result.success}
                 })
-            
+
             return result
 
         except Exception as exc:
@@ -149,5 +153,5 @@ class UnifiedSinkPathAgent:
                     "message": f"Sink路径分析失败: {str(exc)}",
                     "data": {"error": str(exc)}
                 })
-            
+
             return AgentResult(content="", success=False, error=str(exc))

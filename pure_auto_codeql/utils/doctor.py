@@ -1,7 +1,6 @@
 """Environment diagnostics for PureAutoCodeQL."""
 
 from __future__ import annotations
-from pure_auto_codeql.paths import get_repo_root
 
 import os
 import platform
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Iterable
 
 from pure_auto_codeql.configuration import list_available_providers
+from pure_auto_codeql.paths import get_repo_root
 
 
 @dataclass

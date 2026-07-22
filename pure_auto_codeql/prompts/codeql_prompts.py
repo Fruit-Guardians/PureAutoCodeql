@@ -9,10 +9,10 @@ Each retry level progressively relaxes source/sink constraints to increase the c
 def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
     """
     根据重试次数返回不同严格程度的CodeQL生成提示词后缀。
-    
+
     Args:
         retry_count: 当前重试次数 (0=首次生成, 1-3=重试)
-    
+
     Returns:
         提示词后缀字符串，用于指导生成更宽松的source/sink定义
     """
@@ -30,7 +30,7 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
   - 对于其他场景：sink点应该是明确的危险操作点
 - 确保查询逻辑严谨，避免误报
 """
-    
+
     elif retry_count == 1:
         # 第一次重试 - 适度放宽
         return """
@@ -56,7 +56,7 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 
 - 保持数据流分析的基本逻辑，但降低匹配的严格程度
 """
-    
+
     elif retry_count == 2:
         # 第二次重试 - 进一步放宽
         return """
@@ -84,7 +84,7 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 - 适当放宽数据流的污点传播规则
 - 考虑更多的中间节点和传播路径
 """
-    
+
     elif retry_count >= 3:
         # 第三次重试 - 最宽松策略
         return """
@@ -118,7 +118,7 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 
 - 优先找到任何可能的数据流路径，即使可能包含误报
 """
-    
+
     else:
         # 默认返回标准prompt
         return get_codeql_generation_prompt_suffix(0)
@@ -127,10 +127,10 @@ def get_codeql_generation_prompt_suffix(retry_count: int = 0) -> str:
 def get_retry_strategy_description(retry_count: int) -> str:
     """
     获取当前重试策略的简短描述。
-    
+
     Args:
         retry_count: 当前重试次数
-    
+
     Returns:
         策略描述字符串
     """

@@ -3,7 +3,7 @@
 从CodeQL查询结果中智能选择最匹配CVE的路径
 """
 
-from .selector import PathSelectionService, PathSelectionResult
+from .selector import PathSelectionResult, PathSelectionService
 
 __all__ = ["PathSelectionService", "PathSelectionResult"]
 

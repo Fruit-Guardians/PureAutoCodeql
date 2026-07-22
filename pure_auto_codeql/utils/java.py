@@ -14,7 +14,7 @@ def find_path_from_java_file(java_file_path: str, source_root: str = "src/main/j
         规范路径字符串（例如"src/main/java/com/foo/Bar.java"），
         如果解析失败（文件未找到，或包/类未找到）则返回None。
     """
-    
+
     package_regex = re.compile(r"^\s*package\s+([a-zA-Z0-9_.]+);")
     class_regex = re.compile(
         r"^\s*(?:public\s+)?(?:class|interface|enum)\s+([a-zA-Z0-9_]+)"
@@ -36,7 +36,7 @@ def find_path_from_java_file(java_file_path: str, source_root: str = "src/main/j
                     class_match = class_regex.match(line)
                     if class_match:
                         current_class = class_match.group(1)
-                
+
                 if current_package and current_class:
                     break
     except (IOError, OSError):
@@ -45,5 +45,5 @@ def find_path_from_java_file(java_file_path: str, source_root: str = "src/main/j
     if current_package and current_class:
         package_path = current_package.replace('.', '/')
         return f"{source_root}/{package_path}/{current_class}.java"
-    
+
     return None

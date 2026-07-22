@@ -12,8 +12,8 @@ from pure_auto_codeql.api.task_manager import TaskManager
 from pure_auto_codeql.core.context import AnalysisResult as CoreAnalysisResult
 from pure_auto_codeql.services.llm_service import AgentResult
 from pure_auto_codeql.utils.case import resolve_case
-from pure_auto_codeql.utils.project_importer import import_project
 from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError
+from pure_auto_codeql.utils.project_importer import import_project
 
 
 def test_resolve_case_rejects_path_escape(tmp_path):
@@ -57,8 +57,8 @@ def test_api_import_guard_restricts_paths_and_build_commands(tmp_path, monkeypat
 
 
 def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
-    from pure_auto_codeql.api import config as api_config
     import pure_auto_codeql.api.server as server_module
+    from pure_auto_codeql.api import config as api_config
 
     allowed = tmp_path / "imports"
     outside = tmp_path / "outside"
@@ -95,8 +95,8 @@ def test_projects_import_endpoint_enforces_shared_policy(tmp_path, monkeypatch):
 
 
 def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
-    from pure_auto_codeql.api import config as api_config
     import pure_auto_codeql.api.server as server_module
+    from pure_auto_codeql.api import config as api_config
 
     monkeypatch.setattr(api_config.config, "auth_token", "")
     monkeypatch.setattr(api_config.config, "projects_dir", tmp_path / "projects")
@@ -109,8 +109,8 @@ def test_analysis_start_endpoint_rejects_unsafe_case_id(monkeypatch, tmp_path):
 
 
 def test_auth_token_protects_api_routes(monkeypatch):
-    from pure_auto_codeql.api import config as api_config
     import pure_auto_codeql.api.server as server_module
+    from pure_auto_codeql.api import config as api_config
 
     monkeypatch.setattr(api_config.config, "auth_token", "secret-token")
     reloaded = importlib.reload(server_module)

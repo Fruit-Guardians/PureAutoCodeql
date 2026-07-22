@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from pure_auto_codeql.utils.case import CasePaths, resolve_case
 

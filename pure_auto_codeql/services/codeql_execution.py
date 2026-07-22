@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
 from pure_auto_codeql.utils.sarif_config import get_sarif2json_config
 from pure_auto_codeql.utils.sarif_utils import write_paths_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,14 +22,14 @@ class CodeQLExecutionResult:
     paths_count: Optional[int] = None
     result_file: Optional[str] = None
     preview: Optional[str] = None
-    
+
     @property
     def has_results(self) -> bool:
         """检测查询结果是否为空。"""
         # 检查paths_count（analyze模式）
         if self.paths_count is not None:
             return self.paths_count > 0
-        
+
         # 检查output内容（run模式）
         if self.output and self.output.strip():
             # 检查常见的空结果模式
@@ -38,21 +41,21 @@ class CodeQLExecutionResult:
                 '查询结果为空',
                 '未找到结果'
             ]
-            
+
             output_lower = self.output.lower()
             for indicator in empty_indicators:
                 if indicator.lower() in output_lower:
                     return False
-            
+
             # 检查是否有实际的数据行（非表头、非空行）
             lines = [line.strip() for line in self.output.splitlines() if line.strip()]
             if len(lines) <= 2:  # 只有表头或很少的行
                 return False
-                
+
             # 检查是否有数据行（包含实际数据）
             data_lines = [line for line in lines if not line.startswith('|') or '---' not in line]
             return len(data_lines) > 1
-        
+
         return False
 
 
@@ -110,7 +113,8 @@ class CodeQLExecutionService:
                 )
                 json_path = str(json_file)
             except Exception:
-                # SARIF 转换失败时继续返回原结果
+                # SARIF 转换失败时继续返回原结果，但记录日志以便排查
+                logger.warning("SARIF -> JSON 转换失败: %s", sarif_path, exc_info=True)
                 json_path = None
                 paths_count = None
 
@@ -121,10 +125,10 @@ class CodeQLExecutionService:
             json_path=json_path,
             paths_count=paths_count,
         )
-        
+
         # 检测空结果并添加提示
         result = self._handle_empty_results(result)
-        
+
         return result
 
     def _handle_empty_results(self, result: CodeQLExecutionResult) -> CodeQLExecutionResult:
@@ -158,10 +162,10 @@ class CodeQLExecutionService:
             result_file=result_file,
             preview=preview if preview else None,
         )
-        
+
         # 检测空结果并添加提示
         result = self._handle_empty_results(result)
-        
+
         return result
 
 

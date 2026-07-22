@@ -3,14 +3,8 @@ import asyncio
 import sys
 from pathlib import Path
 from typing import Optional, Sequence
-from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
-from pure_auto_codeql.core.context import AnalysisConfig
-from pure_auto_codeql.services.language_detector import LanguageDetector
-from pure_auto_codeql.utils.case import resolve_case, discover_cve_assets
-from pure_auto_codeql.utils.logger import setup_logging, get_logger, print_user_success, print_user_error, print_user_warning, print_user_info
-from pure_auto_codeql.configuration import list_available_providers, get_llm_config_by_provider, LLMRole, list_siliconflow_models, get_llm_config
-from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
-from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
+
+from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
 from pure_auto_codeql.application import (
     AnalysisValidationError,
     ProjectImportRequest,
@@ -18,8 +12,27 @@ from pure_auto_codeql.application import (
     import_project_for_workflow,
     validate_analysis_case,
 )
-from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from pure_auto_codeql.configuration import (
+    LLMRole,
+    get_llm_config,
+    list_available_providers,
+    list_siliconflow_models,
+)
+from pure_auto_codeql.core.context import AnalysisConfig
+from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.services.language_detector import LanguageDetector
+from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
+from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
+from pure_auto_codeql.utils.case import discover_cve_assets, resolve_case
 from pure_auto_codeql.utils.doctor import run_doctor
+from pure_auto_codeql.utils.logger import (
+    get_logger,
+    print_user_error,
+    print_user_info,
+    print_user_success,
+    print_user_warning,
+    setup_logging,
+)
 
 # 初始化日志系统
 setup_logging(level="INFO")
@@ -113,7 +126,7 @@ async def run_case_analysis(
 
     # 显示结果摘要
     if result.success:
-        print_user_success(f"\n🎉 分析成功完成！")
+        print_user_success("\n🎉 分析成功完成！")
         print_user_info(f"📋 案例ID: {result.case_id}")
         print_user_info(f"💻 编程语言: {result.language}")
         if result.execution_time:
@@ -127,7 +140,7 @@ async def run_case_analysis(
         if config.output_file:
             print_user_info(f"📄 分析报告已保存到: {config.output_file}")
         else:
-            logger.info(f"分析结果已保存到时间戳目录")
+            logger.info("分析结果已保存到时间戳目录")
     else:
         print_user_error(f"\n❌ 分析失败: {result.error_message}")
         logger.error(f"案例分析失败: {result.error_message}")
@@ -243,7 +256,7 @@ async def run_md_direct_codeql(
     try:
         # 使用聊天模型配置作为主要配置
         analyzer = MultiAgentAnalyzer(config=chat_config)
-        print_user_info(f"🔧 成功创建AI分析器")
+        print_user_info("🔧 成功创建AI分析器")
     except Exception as e:
         print_user_error(f"❌ 创建AI分析器失败: {e}")
         logger.error(f"创建AI分析器失败: {e}", exc_info=True)
@@ -260,7 +273,7 @@ async def run_md_direct_codeql(
             enable_source_sink_fallback=enable_source_sink_fallback,
             fallback_empty_retry_max=fallback_empty_retry_max,
         )
-        print_user_info(f"🛠️  成功创建CodeQL生成工具")
+        print_user_info("🛠️  成功创建CodeQL生成工具")
         print_user_info(f"   📁 数据库路径: {database_path}")
         print_user_info(f"   💻 编程语言: {language}")
     except Exception as e:
@@ -270,7 +283,7 @@ async def run_md_direct_codeql(
 
     # 执行CodeQL生成
     try:
-        print_user_info(f"🚀 开始从MD文件生成CodeQL查询...")
+        print_user_info("🚀 开始从MD文件生成CodeQL查询...")
 
         # 使用MD文件内容作为需求描述
         requirement = f"根据以下漏洞描述生成CodeQL查询:\n\n{md_content}"
@@ -286,11 +299,11 @@ async def run_md_direct_codeql(
         )
 
         # 输出结果
-        print_user_success(f"\n🎉 CodeQL生成完成！")
-        print_user_info(f"📋 查询结果:")
+        print_user_success("\n🎉 CodeQL生成完成！")
+        print_user_info("📋 查询结果:")
         print(result)
 
-        logger.info(f"CodeQL生成成功完成")
+        logger.info("CodeQL生成成功完成")
 
     except Exception as e:
         print_user_error(f"❌ CodeQL生成失败: {e}")
@@ -400,7 +413,7 @@ async def run_md_source_analysis(
     # 创建MultiAgentAnalyzer
     try:
         analyzer = MultiAgentAnalyzer(config=chat_config)
-        print_user_info(f"🔧 成功创建AI分析器")
+        print_user_info("🔧 成功创建AI分析器")
     except Exception as e:
         print_user_error(f"❌ 创建AI分析器失败: {e}")
         logger.error(f"创建AI分析器失败: {e}", exc_info=True)
@@ -413,7 +426,7 @@ async def run_md_source_analysis(
             source_root=src_path,
             database_path=None  # 不需要CodeQL数据库
         )
-        print_user_info(f"🔍 成功创建Source点分析工具")
+        print_user_info("🔍 成功创建Source点分析工具")
         print_user_info(f"   📁 源代码路径: {src_path}")
         print_user_info(f"   💻 编程语言: {language}")
     except Exception as e:
@@ -423,7 +436,7 @@ async def run_md_source_analysis(
 
     # 执行Source点分析
     try:
-        print_user_info(f"🚀 开始从MD文件生成Source点分析报告...")
+        print_user_info("🚀 开始从MD文件生成Source点分析报告...")
 
         # 使用MD文件内容作为sink分析结果（模拟）
         sink_analysis = f"根据以下漏洞描述分析Source点:\n\n{md_content}"
@@ -434,7 +447,7 @@ async def run_md_source_analysis(
             show_thinking=stream
         )
         if result.success:
-            print_user_success(f"\n🎉 Source点分析完成！")
+            print_user_success("\n🎉 Source点分析完成！")
             report_content = f"""# Source点分析报告
 
 ## 分析配置
@@ -467,7 +480,7 @@ async def run_md_source_analysis(
                 print_user_error(f"❌ 保存报告失败: {e}")
                 logger.error(f"保存报告失败: {e}", exc_info=True)
                 # 即使保存失败，也显示结果到控制台
-                print_user_info(f"📋 分析结果:")
+                print_user_info("📋 分析结果:")
                 print(report_content)
         else:
             print_user_error(f"\n❌ Source点分析失败: {result.error}")
@@ -524,7 +537,7 @@ async def validate_case(case_id: str) -> bool:
             file_type = "Diff" if cve_assets.diff_path.suffix == ".diff" else "Patch"
             print_user_info(f"   🔄 {file_type}文件: {cve_assets.diff_path}")
         else:
-            print_user_warning(f"   ⚠️  没有Diff/Patch文件")
+            print_user_warning("   ⚠️  没有Diff/Patch文件")
 
         # 检测语言
         detector = LanguageDetector()
@@ -987,7 +1000,7 @@ def list_providers() -> None:
         print(f"   对话模型: {provider['chat_model']}")
         print(f"   Base URL: {provider['base_url']}")
         if not provider['has_api_key']:
-            print(f"   ⚠️  需要设置 API Key 环境变量")
+            print("   ⚠️  需要设置 API Key 环境变量")
 
     print("\n" + "=" * 80)
     print("💡 使用方式:")
@@ -1020,6 +1033,7 @@ def _handle_doctor() -> None:
 
 def _handle_serve(args: argparse.Namespace) -> None:
     import uvicorn
+
     from pure_auto_codeql.api.config import get_config
 
     api_config = get_config()
@@ -1046,7 +1060,7 @@ async def _handle_case_analysis(args: argparse.Namespace) -> None:
             logger.exception("自动导入失败")
             return
 
-    print(f"🚀 PureAutoCodeQL 启动")
+    print("🚀 PureAutoCodeQL 启动")
     print(f"🎯 分析案例: {effective_case_id}")
     print(f"💭 AI思考过程: {'开启' if args.stream else '关闭'}")
     print(f"🔄 刷新情报: {'是' if args.refresh_intel else '否'}")

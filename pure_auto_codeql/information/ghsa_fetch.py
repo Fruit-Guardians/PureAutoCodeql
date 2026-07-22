@@ -15,7 +15,6 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-
 API_URL = "https://api.github.com/advisories"
 USER_AGENT = "ghsa-info-fetcher/1.0 (+https://github.com/advisories)"
 

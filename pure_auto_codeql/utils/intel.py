@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pure_auto_codeql.information import ghsa_fetch, nvd_info_fetch
+
 from .case import CasePaths, CveAssets
 
 

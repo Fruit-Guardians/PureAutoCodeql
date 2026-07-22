@@ -5,7 +5,7 @@ import platform
 import shlex
 import tomllib
 from pathlib import Path
-from typing import Optional
+
 from pure_auto_codeql.paths import get_repo_root
 
 logger = logging.getLogger(__name__)
@@ -192,7 +192,7 @@ class MCPLanguageConfigService:
              logger.warning(f"配置的 JAVA_HOME 路径不存在: {java_home}")
 
         java_executable = self._get_java_executable(java_home)
-        
+
         # 确保 workspace_path 是原生格式
         workspace_path = str(Path(workspace_path).resolve())
 
@@ -238,7 +238,7 @@ class MCPLanguageConfigService:
             lsp_executable = self._normalize_path(lsp_executable)
             if not os.path.exists(lsp_executable):
                 logger.warning(f"Python LSP 可执行文件不存在: {lsp_executable}")
-        
+
         # 确保 workspace_path 是原生格式
         workspace_path = str(Path(workspace_path).resolve())
 

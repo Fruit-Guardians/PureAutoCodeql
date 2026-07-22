@@ -5,12 +5,10 @@ This module provides a centralized way to manage and retrieve
 prompt templates for different programming languages.
 """
 
-from pathlib import Path
-from typing import Optional
 
+from .cpp_sink_prompt import build_cpp_sink_prompt
 from .java_sink_prompt import build_java_sink_prompt
 from .python_sink_prompt import build_python_sink_prompt
-from .cpp_sink_prompt import build_cpp_sink_prompt
 
 
 class SinkPromptManager:

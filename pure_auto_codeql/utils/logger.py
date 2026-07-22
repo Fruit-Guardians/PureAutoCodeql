@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-
 # 全局日志配置标志，确保只配置一次
 _logging_configured = False
 

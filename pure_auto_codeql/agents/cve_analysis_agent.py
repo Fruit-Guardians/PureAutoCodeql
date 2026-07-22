@@ -1,15 +1,15 @@
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-    
+
     @dataclass
     class AgentResult:
         content: str
         success: bool
         error: str = None
-    
+
     class MultiAgentAnalyzer:
         pass
 
@@ -18,10 +18,10 @@ from pure_auto_codeql.utils.io import read_json_text
 
 class CVEAnalysisAgent:
     """用于分析CVE JSON文件的Agent。"""
-    
+
     def __init__(self, analyzer: "MultiAgentAnalyzer"):
         self.analyzer = analyzer
-    
+
     def build_prompt(self, json_text: str, intel_block: Optional[str] = None) -> str:
         """构建提示词将提供的CVE JSON转换为专注的Markdown格式。"""
         sections = [
@@ -75,7 +75,7 @@ class CVEAnalysisAgent:
         sections.append("**CVE JSON数据：**")
         sections.append(json_text)
         return "\n".join(sections)
-    
+
     async def analyze_cve(
         self,
         json_path: Path,
@@ -91,7 +91,7 @@ class CVEAnalysisAgent:
             # Phase 4.4: 使用传入的agent_name和agent_type，若无则使用默认值
             _agent_name = agent_name or "CVE Analysis Agent"
             _agent_type = agent_type or "cve_analysis"
-            
+
             # Phase 2.2: 推送 AGENT_START 事件
             if event_callback:
                 from datetime import datetime
@@ -103,11 +103,11 @@ class CVEAnalysisAgent:
                     "message": "开始CVE分析",
                     "data": {"json_path": str(json_path)}
                 })
-            
+
             json_text = read_json_text(json_path)
             prompt = self.build_prompt(json_text, intel_prompt)
             result = await self.analyzer.run_agent(prompt, show_thinking=show_thinking, event_callback=event_callback)
-            
+
             # Phase 2.3: 推送 AGENT_COMPLETE 事件
             if event_callback:
                 from datetime import datetime
@@ -119,7 +119,7 @@ class CVEAnalysisAgent:
                     "message": "CVE分析完成",
                     "data": {"success": result.success}
                 })
-            
+
             return result
         except Exception as e:
             # 推送错误事件
@@ -133,13 +133,13 @@ class CVEAnalysisAgent:
                     "message": f"CVE分析失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
-            
+
             from dataclasses import dataclass
-            
+
             @dataclass
             class AgentResult:
                 content: str
                 success: bool
                 error: str = None
-            
+
             return AgentResult(content="", success=False, error=str(e))

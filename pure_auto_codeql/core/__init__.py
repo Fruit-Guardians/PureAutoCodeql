@@ -4,8 +4,8 @@
 """
 
 from .context import AnalysisContext, AnalysisResult
-from .pipeline import AnalysisPipeline, AnalysisStep
 from .orchestrator import AnalysisOrchestrator
+from .pipeline import AnalysisPipeline, AnalysisStep
 
 __all__ = [
     "AnalysisContext",

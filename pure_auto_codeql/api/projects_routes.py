@@ -9,6 +9,21 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from pure_auto_codeql.application import (
+    ProjectImportPolicyError,
+    ProjectImportPolicySettings,
+    import_project_for_workflow,
+    validate_project_import_request,
+)
+from pure_auto_codeql.application import (
+    ProjectImportRequest as WorkflowProjectImportRequest,
+)
+from pure_auto_codeql.utils.case import (
+    CasePaths,
+    discover_cve_assets,
+    resolve_case,
+)
+
 from .config import get_config
 from .models import (
     FileInfo,
@@ -17,18 +32,6 @@ from .models import (
     ProjectImportRequest,
     ProjectImportResponse,
     ProjectInfo,
-)
-from pure_auto_codeql.application import (
-    ProjectImportPolicyError,
-    ProjectImportPolicySettings,
-    ProjectImportRequest as WorkflowProjectImportRequest,
-    import_project_for_workflow,
-    validate_project_import_request,
-)
-from pure_auto_codeql.utils.case import (
-    CasePaths,
-    discover_cve_assets,
-    resolve_case,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +66,7 @@ def _to_workflow_import_request(payload: ProjectImportRequest) -> WorkflowProjec
 def _detect_languages(case_paths: CasePaths) -> List[str]:
     """检测项目中的编程语言"""
     languages = set()
-    
+
     # 检查数据库目录
     if case_paths.db.exists():
         for item in case_paths.db.iterdir():
@@ -71,7 +74,7 @@ def _detect_languages(case_paths: CasePaths) -> List[str]:
                 lang = item.name.lower()
                 if lang in ["java", "python", "cpp"]:
                     languages.add(lang)
-    
+
     # 检查源代码目录
     if case_paths.source_code.exists():
         extensions_map = {
@@ -79,13 +82,13 @@ def _detect_languages(case_paths: CasePaths) -> List[str]:
             ".py": "python",
             ".cpp": "cpp",
         }
-        
+
         for file_path in case_paths.source_code.rglob("*"):
             if file_path.is_file():
                 ext = file_path.suffix.lower()
                 if ext in extensions_map:
                     languages.add(extensions_map[ext])
-    
+
     return sorted(list(languages))
 
 
@@ -159,35 +162,35 @@ async def list_projects(
 ) -> List[ProjectInfo]:
     """
     获取所有项目列表
-    
+
     返回projects目录下的所有项目基本信息
     """
     config = get_config()
     projects_dir = config.projects_dir
-    
+
     if not projects_dir.exists():
         logger.warning(f"Projects directory not found: {projects_dir}")
         return []
-    
+
     projects = []
-    
+
     for item in projects_dir.iterdir():
         if not item.is_dir():
             continue
-        
+
         # 跳过隐藏目录和特殊目录
         if item.name.startswith(".") or item.name in ["__pycache__", "node_modules"]:
             continue
-        
+
         case_id = item.name
-        
+
         try:
             # 尝试解析项目结构
             case_paths = resolve_case(case_id, base_dir=projects_dir)
-            
+
             # 检测语言
             languages = _detect_languages(case_paths)
-            
+
             # 读取描述（如果存在README.md）
             description = None
             readme_path = case_paths.root / "README.md"
@@ -202,7 +205,7 @@ async def list_projects(
                             description = first_line
                 except Exception:
                     pass
-            
+
             projects.append(
                 ProjectInfo(
                     case_id=case_id,
@@ -243,7 +246,7 @@ async def list_projects(
                         languages=[],
                     )
                 )
-    
+
     return projects
 
 
@@ -251,7 +254,7 @@ async def list_projects(
 async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImportResponse:
     """
     导入外部CVE项目。
-    
+
     自动整理目录结构并尝试创建CodeQL数据库。
     """
     config = get_config()
@@ -293,28 +296,28 @@ async def import_project_endpoint(payload: ProjectImportRequest) -> ProjectImpor
 async def get_project_detail(case_id: str) -> ProjectDetail:
     """
     获取项目详细信息
-    
+
     包含CVE信息、文件结构、语言检测结果等
     """
     config = get_config()
-    
+
     try:
         case_paths = resolve_case(case_id, base_dir=config.projects_dir)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Project not found: {str(e)}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     # 检测语言
     languages = _detect_languages(case_paths)
-    
+
     # 获取CVE信息
     cve_id = None
     cve_description = None
     try:
         cve_assets = discover_cve_assets(case_paths)
         cve_id = cve_assets.cve_id
-        
+
         # 读取CVE描述
         if cve_assets.json_path and cve_assets.json_path.exists():
             try:
@@ -331,16 +334,16 @@ async def get_project_detail(case_id: str) -> ProjectDetail:
                 logger.warning(f"Failed to read CVE description: {e}")
     except Exception as e:
         logger.debug(f"No CVE assets found for {case_id}: {e}")
-    
+
     # 统计文件数量
     file_count = _count_files(case_paths.source_code)
-    
+
     # 构建目录结构
     directory_structure = {
         "source_code": _build_directory_structure(case_paths.source_code, max_depth=2),
         "db": _build_directory_structure(case_paths.db, max_depth=1),
     }
-    
+
     # 读取描述
     description = None
     readme_path = case_paths.root / "README.md"
@@ -354,7 +357,7 @@ async def get_project_detail(case_id: str) -> ProjectDetail:
                     description = first_line
         except Exception:
             pass
-    
+
     return ProjectDetail(
         case_id=case_id,
         path=str(case_paths.root),
@@ -378,18 +381,18 @@ async def get_project_files(
 ) -> ProjectFilesResponse:
     """
     获取项目文件列表
-    
+
     返回项目的文件树结构，包含文件路径、大小、类型等信息
     """
     config = get_config()
-    
+
     try:
         case_paths = resolve_case(case_id, base_dir=config.projects_dir)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Project not found: {str(e)}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     # 确定要扫描的目录
     source_root = case_paths.source_code.resolve()
     if directory:
@@ -398,24 +401,24 @@ async def get_project_files(
             raise HTTPException(status_code=400, detail="Invalid directory path")
     else:
         scan_dir = source_root
-    
+
     if not scan_dir.exists():
         raise HTTPException(status_code=404, detail="Source code directory not found")
-    
+
     # 扫描文件
     files = []
     count = 0
-    
+
     for item in sorted(scan_dir.rglob("*")):
         if count >= max_files:
             break
-        
+
         try:
             resolved_item = item.resolve()
             if not resolved_item.is_relative_to(source_root):
                 continue
             relative_path = resolved_item.relative_to(source_root)
-            
+
             file_info = FileInfo(
                 path=str(relative_path),
                 name=item.name,
@@ -428,7 +431,7 @@ async def get_project_files(
         except Exception as e:
             logger.warning(f"Error processing file {item}: {e}")
             continue
-    
+
     return ProjectFilesResponse(
         case_id=case_id,
         files=files,

@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import pytest
 
@@ -85,21 +84,21 @@ def test_application_analysis_validation_maps_case_errors(tmp_path):
 
 def test_canonical_and_legacy_import_surfaces_remain_available():
     """Canonical package surfaces and key entry points stay wired."""
-    import pure_auto_codeql.configuration as canonical_config
     import pure_auto_codeql.config as config_impl
+    import pure_auto_codeql.configuration as canonical_config
     from Analyze import cli as legacy_cli
+    from pure_auto_codeql.api.config import get_config
     from pure_auto_codeql.application import ProjectImportPolicyError
     from pure_auto_codeql.cli.app import cli as canonical_cli
     from pure_auto_codeql.configuration import get_llm_config
-    from pure_auto_codeql.paths import get_repo_root, prompts_dir
-    from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError as util_policy_err
-    from pure_auto_codeql.information import ghsa_fetch, nvd_info_fetch
-    from pure_auto_codeql.prompts import build_sink_prompt
-    from pure_auto_codeql.tools import CodeQLComposeTool
-    from pure_auto_codeql.services import MultiAgentAnalyzer
     from pure_auto_codeql.core import AnalysisOrchestrator
-    from pure_auto_codeql.api.config import get_config
+    from pure_auto_codeql.information import ghsa_fetch, nvd_info_fetch
+    from pure_auto_codeql.paths import get_repo_root, prompts_dir
+    from pure_auto_codeql.prompts import build_sink_prompt
+    from pure_auto_codeql.services import MultiAgentAnalyzer
+    from pure_auto_codeql.tools import CodeQLComposeTool
     from pure_auto_codeql.utils.doctor import collect_diagnostics
+    from pure_auto_codeql.utils.project_import_policy import ProjectImportPolicyError as util_policy_err
 
     assert canonical_cli is legacy_cli
     assert canonical_config.LLMRole is config_impl.LLMRole

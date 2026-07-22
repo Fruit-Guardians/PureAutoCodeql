@@ -5,16 +5,17 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
-import zipfile
 import sys
+import zipfile
 from dataclasses import dataclass, field
-import shlex
 from pathlib import Path
 from typing import List, Optional, Set
 
 from pure_auto_codeql.api.config import get_config
+
 from .case import extract_cve_id
 from .dependency_installer import DependencyInstaller
 
@@ -28,20 +29,20 @@ SAFE_CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 def _safe_rmtree(path: Path) -> None:
     """
     Windows 兼容的目录删除函数，处理 CodeQL 创建的符号链接。
-    
+
     Args:
         path: 要删除的目录路径
     """
     if not path.exists():
         return
-    
+
     # Windows 上需要特殊处理符号链接
     if sys.platform == "win32":
         try:
             # 先尝试删除所有符号链接
             for root, dirs, files in os.walk(path, topdown=False):
                 root_path = Path(root)
-                
+
                 # 处理文件和目录中的符号链接
                 for name in dirs + files:
                     item_path = root_path / name
@@ -53,14 +54,14 @@ def _safe_rmtree(path: Path) -> None:
                             logger.warning(f"无法删除符号链接 {item_path}: {e}")
                             # 尝试使用 Windows 命令
                             if item_path.is_dir():
-                                subprocess.run(["cmd", "/c", "rmdir", str(item_path)], 
+                                subprocess.run(["cmd", "/c", "rmdir", str(item_path)],
                                              check=False, capture_output=True)
                             else:
-                                subprocess.run(["cmd", "/c", "del", "/f", str(item_path)], 
+                                subprocess.run(["cmd", "/c", "del", "/f", str(item_path)],
                                              check=False, capture_output=True)
         except Exception as e:
             logger.warning(f"清理符号链接时出错: {e}")
-    
+
     # 使用标准方法删除目录
     try:
         shutil.rmtree(path)
@@ -69,7 +70,7 @@ def _safe_rmtree(path: Path) -> None:
         # Windows 最后的杀手锏：使用 cmd 强制删除
         if sys.platform == "win32":
             try:
-                subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", str(path)], 
+                subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", str(path)],
                              check=True, capture_output=True)
                 logger.info(f"使用 Windows cmd 成功删除目录: {path}")
             except subprocess.CalledProcessError as cmd_error:
@@ -545,7 +546,7 @@ def _create_codeql_database(
     build_plan: Optional[BuildPlan],
 ) -> None:
     config = get_config()
-    
+
     # C/C++ 项目的智能构建策略
     if language == "cpp":
         # 策略1：优先本地两步走构建（如果启用）
@@ -553,21 +554,21 @@ def _create_codeql_database(
             logger.info("=" * 60)
             logger.info("策略1：尝试本地两步走构建（支持自动依赖安装）")
             logger.info("=" * 60)
-            
+
             # 创建依赖安装器（使用配置中的设置）
             dep_installer = DependencyInstaller(
                 auto_install=config.auto_install_dependencies,
                 max_retries=config.auto_install_max_retries
             )
             log_path = db_path.parent / "codeql.log"
-            
+
             def build_func():
                 """构建函数，供依赖安装器调用"""
                 # 清理旧数据库
                 if db_path.exists():
                     logger.info("清理旧数据库: %s", db_path)
                     _safe_rmtree(db_path)
-                
+
                 # 执行本地构建
                 cmd = [
                     "codeql",
@@ -578,10 +579,10 @@ def _create_codeql_database(
                     language,
                     "--overwrite",
                 ]
-                
+
                 if not build_plan:
                     raise ValueError("C/C++ 项目必须提供构建命令")
-                
+
                 if build_plan.mode == "autobuild":
                     cmd.append("--build-mode=autobuild")
                     cmd.extend(["--source-root", str(source_root)])
@@ -591,9 +592,9 @@ def _create_codeql_database(
                     cmd.extend(["--command", build_plan.command])
                     if build_plan.working_dir:
                         cmd.extend(["--working-dir", str(build_plan.working_dir)])
-                
+
                 _run_process(cmd, cwd=None, log_path=log_path)
-                
+
                 # 验证数据库
                 src_zip = db_path / "src.zip"
                 if src_zip.exists() and src_zip.stat().st_size > 1024:
@@ -601,14 +602,14 @@ def _create_codeql_database(
                 else:
                     logger.warning("本地构建完成，但 src.zip 太小或不存在")
                     raise RuntimeError("Local build produced invalid database")
-            
+
             try:
                 # 使用自动依赖安装功能进行构建
                 success, error = dep_installer.try_build_with_auto_deps(
                     build_func=build_func,
                     log_path=log_path,
                 )
-                
+
                 if success:
                     logger.info("=" * 60)
                     logger.info("✅ 本地两步走构建成功！")
@@ -618,22 +619,22 @@ def _create_codeql_database(
                     return
                 else:
                     raise RuntimeError(f"Local build failed after auto-installing dependencies: {error}")
-                    
+
             except Exception as e:
                 logger.warning("=" * 60)
                 logger.warning("⚠️  本地构建失败: %s", e)
                 logger.warning("=" * 60)
-                
+
                 # 策略2：尝试 --build-mode=none（不编译，仅分析源码）
                 logger.info("=" * 60)
                 logger.info("策略2：尝试 --build-mode=none（仅分析源码，不编译）")
                 logger.info("=" * 60)
-                
+
                 try:
                     # 清理失败的数据库
                     if db_path.exists():
                         _safe_rmtree(db_path)
-                    
+
                     # 使用 --build-mode=none 创建数据库
                     cmd = [
                         "codeql",
@@ -647,30 +648,30 @@ def _create_codeql_database(
                         "--source-root",
                         str(source_root),
                     ]
-                    
+
                     none_log_path = db_path.parent / "codeql_none_mode.log"
                     _run_process(cmd, cwd=None, log_path=none_log_path)
-                    
+
                     logger.info("=" * 60)
                     logger.info("✅ --build-mode=none 创建数据库成功！")
                     logger.info("⚠️  注意：未编译项目，分析结果可能不完整")
                     logger.info("=" * 60)
                     return
-                    
+
                 except Exception as none_error:
                     logger.warning("--build-mode=none 也失败了: %s", none_error)
-                    
+
                     # 策略3：如果配置了 Docker，回退到 Docker autobuild
                     if config.docker_builder_image:
                         logger.info("=" * 60)
                         logger.info("策略3：最后回退到 Docker autobuild")
                         logger.info("=" * 60)
-                        
+
                         try:
                             # 清理失败的数据库
                             if db_path.exists():
                                 _safe_rmtree(db_path)
-                            
+
                             _run_docker_build(
                                 source_root=source_root,
                                 db_path=db_path,
@@ -687,7 +688,7 @@ def _create_codeql_database(
                     else:
                         # 没有 Docker 配置
                         raise RuntimeError(f"Build failed. Local: {e}, None mode: {none_error}")
-        
+
         # 策略2：直接使用 Docker 构建（如果强制启用）
         elif config.use_docker_for_cpp:
             logger.info("Switching to Dockerized build for C/C++ project (Image: %s)...", config.docker_builder_image)
@@ -702,7 +703,7 @@ def _create_codeql_database(
             except Exception as e:
                 logger.error("Docker build failed: %s", e)
                 raise RuntimeError(f"Docker build failed: {e}")
-        
+
         # 策略3：纯本地构建（无 Docker 回退）
         else:
             logger.info("Using local build without Docker fallback")
@@ -715,10 +716,10 @@ def _create_codeql_database(
                 language,
                 "--overwrite",
             ]
-            
+
             if not build_plan:
                 raise ValueError("C/C++ 项目必须提供构建命令")
-            
+
             if build_plan.mode == "autobuild":
                 cmd.append("--build-mode=autobuild")
                 cmd.extend(["--source-root", str(source_root)])
@@ -728,12 +729,12 @@ def _create_codeql_database(
                 cmd.extend(["--command", build_plan.command])
                 if build_plan.working_dir:
                     cmd.extend(["--working-dir", str(build_plan.working_dir)])
-            
+
             log_path = db_path.parent / "codeql.log"
             _run_process(cmd, cwd=None, log_path=log_path)
             logger.info("CodeQL database created at %s", db_path)
             return
-    
+
     # 非 C/C++ 项目的常规处理
     cmd = [
         "codeql",
@@ -762,19 +763,19 @@ def _create_codeql_database(
 def _try_prepare_cpp_build(source_dir: Path, log_path: Path) -> bool:
     """
     尝试在CodeQL之外执行预备步骤（第一步：生成Makefile）
-    
+
     检测顺序：
     1. buildconf -> ./buildconf
     2. configure -> ./configure
     3. autogen.sh -> ./autogen.sh
     4. CMakeLists.txt -> cmake (在 _resolve_cpp_build_plan 中处理)
-    
+
     Returns:
         bool: 如果成功执行了预备步骤并生成了Makefile，返回True
     """
     config = get_config()
     timeout = config.local_build_prepare_timeout
-    
+
     # 检查 buildconf
     buildconf = source_dir / "buildconf"
     if buildconf.exists():
@@ -800,7 +801,7 @@ def _try_prepare_cpp_build(source_dir: Path, log_path: Path) -> bool:
         except Exception as e:
             logger.warning("buildconf 执行失败: %s", e)
             return False
-    
+
     # 检查 configure
     configure = source_dir / "configure"
     if configure.exists():
@@ -816,7 +817,7 @@ def _try_prepare_cpp_build(source_dir: Path, log_path: Path) -> bool:
         except Exception as e:
             logger.warning("configure 执行失败: %s", e)
             return False
-    
+
     # 检查 autogen.sh
     autogen = source_dir / "autogen.sh"
     if autogen.exists():
@@ -842,7 +843,7 @@ def _try_prepare_cpp_build(source_dir: Path, log_path: Path) -> bool:
         except Exception as e:
             logger.warning("autogen.sh 执行失败: %s", e)
             return False
-    
+
     return False
 
 
@@ -850,14 +851,14 @@ def _run_process_with_timeout(cmd: List[str], *, cwd: Optional[Path], log_path: 
     """运行进程并实时输出到控制台和日志文件（带超时）"""
     display = " ".join(cmd)
     logger.info("Running command with timeout=%ds: %s (cwd=%s)", timeout, display, cwd or os.getcwd())
-    
+
     # 打开日志文件
     log_file_handle = None
     if log_path:
         log_file_handle = open(log_path, "a", encoding="utf-8")
         log_file_handle.write(f"$ {display}\n")
         log_file_handle.flush()
-    
+
     try:
         # 使用 Popen 实时输出
         process = subprocess.Popen(
@@ -870,7 +871,7 @@ def _run_process_with_timeout(cmd: List[str], *, cwd: Optional[Path], log_path: 
             errors="replace",
             bufsize=1,  # 行缓冲
         )
-        
+
         # 实时读取并输出
         if process.stdout:
             for line in process.stdout:
@@ -880,7 +881,7 @@ def _run_process_with_timeout(cmd: List[str], *, cwd: Optional[Path], log_path: 
                 if log_file_handle:
                     log_file_handle.write(line)
                     log_file_handle.flush()
-        
+
         # 等待进程完成（带超时）
         try:
             return_code = process.wait(timeout=timeout)
@@ -888,12 +889,12 @@ def _run_process_with_timeout(cmd: List[str], *, cwd: Optional[Path], log_path: 
             process.kill()
             process.wait()
             raise RuntimeError(f"Command timed out after {timeout} seconds: {display}")
-        
+
         if return_code != 0:
             error_msg = f"Command failed with exit code {return_code}: {display}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
-            
+
     finally:
         if log_file_handle:
             log_file_handle.close()
@@ -938,10 +939,10 @@ def _resolve_cpp_build_plan(
     config = get_config()
     if config.prefer_local_cpp_build:
         logger.info("优先使用本地两步走构建策略...")
-        
+
         # 第一步：尝试预备步骤（configure/buildconf等）
         prepare_success = _try_prepare_cpp_build(source_dir, log_path)
-        
+
         if prepare_success:
             logger.info("✅ 预备步骤成功，Makefile已生成")
             # 第二步：返回 make 命令让 CodeQL 包裹
@@ -980,14 +981,14 @@ def _run_process(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path
     """运行进程并实时输出到控制台和日志文件"""
     display = " ".join(cmd)
     logger.info("Running command: %s (cwd=%s)", display, cwd or os.getcwd())
-    
+
     # 打开日志文件
     log_file_handle = None
     if log_path:
         log_file_handle = open(log_path, "a", encoding="utf-8")
         log_file_handle.write(f"$ {display}\n")
         log_file_handle.flush()
-    
+
     try:
         # 使用 Popen 实时输出
         process = subprocess.Popen(
@@ -1000,7 +1001,7 @@ def _run_process(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path
             errors="replace",
             bufsize=1,  # 行缓冲
         )
-        
+
         # 实时读取并输出
         if process.stdout:
             for line in process.stdout:
@@ -1010,40 +1011,40 @@ def _run_process(cmd: List[str], *, cwd: Optional[Path], log_path: Optional[Path
                 if log_file_handle:
                     log_file_handle.write(line)
                     log_file_handle.flush()
-        
+
         # 等待进程完成
         return_code = process.wait()
-        
+
         if return_code != 0:
             error_msg = f"Command failed with exit code {return_code}: {display}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
-            
+
     finally:
         if log_file_handle:
             log_file_handle.close()
 
 
 def _run_docker_build(
-    source_root: Path, 
-    db_path: Path, 
+    source_root: Path,
+    db_path: Path,
     image_name: str,
     build_plan: Optional[BuildPlan]
 ) -> None:
     """运行 Docker 容器进行构建"""
-    
+
     # 1. 路径准备
     # source_root: 源代码目录 -> 挂载为 /src
     # db_path: 数据库目录 (e.g. projects/CVE-xxx/db/cpp)
-    
+
     abs_source = source_root.resolve()
     abs_db_path = db_path.resolve()
-    
+
     # 清理旧的数据库目录（避免 Docker 内 CodeQL 检测到残留文件）
     if abs_db_path.exists():
         logger.info("清理旧数据库目录: %s", abs_db_path)
         _safe_rmtree(abs_db_path)
-    
+
     # 确保数据库目录的父目录存在
     abs_db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1062,20 +1063,20 @@ def _run_docker_build(
         # 环境变量
         "-e", "CODEQL_LANG=cpp",
     ]
-    
+
     # 传递用户指定的构建命令 (如果有)
     # 注意：如果是自动探测的 CMake/Make，我们不传命令，让容器内脚本自己探测
     # 只有当用户显式指定了 command (mode='manual' or 'user') 时才传递
     if build_plan and build_plan.mode in ("manual", "user") and build_plan.command:
         cmd.extend(["-e", f"BUILD_COMMAND={build_plan.command}"])
-        
+
     cmd.append(image_name)
-    
+
     logger.info("Executing Docker build command: %s", " ".join(cmd))
-    
+
     # 3. 执行
     log_path = db_path.parent / "docker_build.log"
-    
+
     with open(log_path, "w", encoding="utf-8") as log_file:
         try:
             # 使用 Popen 实时流式输出日志
@@ -1087,18 +1088,18 @@ def _run_docker_build(
                 encoding="utf-8",
                 errors="replace"
             )
-            
+
             # 实时打印并写入日志
             if process.stdout:
                 for line in process.stdout:
                     print(line, end="") # 打印到控制台
                     log_file.write(line) # 写入日志
-                
+
             return_code = process.wait()
-            
+
             if return_code != 0:
                 raise RuntimeError(f"Docker container exited with code {return_code}")
-                
+
         except Exception as e:
             raise RuntimeError(f"Docker execution failed: {e}")
 
@@ -1107,7 +1108,7 @@ def _run_docker_build(
     if not (db_path / "codeql-database.yml").exists():
          # 尝试检查子目录 (防止挂载错位)
          # 但根据 -v abs_db_path:/out/db，应该就在根下
-         raise RuntimeError("Docker finished but database was not found (codeql-database.yml missing). Check docker_build.log.") 
+         raise RuntimeError("Docker finished but database was not found (codeql-database.yml missing). Check docker_build.log.")
 
 
 def _format_command(parts: List[str]) -> str:

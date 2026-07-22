@@ -495,12 +495,12 @@ class LLMPathAnalyzer:
                 sys.stdout.flush()
                 self._stream_display_started = True
                 self._stream_buffer = []
-            
+
             # 缓存内容，不立即输出
             if not hasattr(self, "_stream_buffer"):
                 self._stream_buffer = []
             self._stream_buffer.append(text)
-            
+
             # 每收到一些内容就输出一个点表示进度
             if len(self._stream_buffer) % 10 == 0:
                 sys.stdout.write(".")
@@ -510,29 +510,29 @@ class LLMPathAnalyzer:
             full_text = "".join(getattr(self, "_stream_buffer", []) + [text])
             self._stream_display_started = False
             self._stream_buffer = []
-            
+
             # 尝试解析为 JSON 并美化输出
             try:
                 parsed = json.loads(full_text.strip())
                 sys.stdout.write("\n\n📊 LLM分析结果:\n")
                 sys.stdout.write("─" * 60 + "\n")
-                
+
                 # 只显示关键摘要信息
                 if isinstance(parsed, dict):
                     selected = parsed.get("selected_paths", [])
                     sys.stdout.write(f"✓ 选中路径数: {len(selected)}\n")
-                    
+
                     for idx, path in enumerate(selected, 1):
                         rank = path.get("candidate_rank", "?")
                         score = path.get("llm_alignment_score", 0)
                         reason = path.get("reason", "N/A")
                         sys.stdout.write(f"\n  路径 {idx} [候选#{rank}, 得分:{score:.2f}]\n")
                         sys.stdout.write(f"  └─ {reason}\n")
-                    
+
                     reasoning = parsed.get("overall_reasoning", "")
                     if reasoning:
                         sys.stdout.write(f"\n💡 总体理由: {reasoning[:150]}{'...' if len(reasoning) > 150 else ''}\n")
-                
+
                 sys.stdout.write("─" * 60 + "\n\n")
             except (json.JSONDecodeError, ValueError):
                 # 如果不是 JSON，直接输出文本（截断过长内容）
@@ -541,7 +541,7 @@ class LLMPathAnalyzer:
                     sys.stdout.write(full_text[:500] + "\n... (内容过长，已截断) ...\n\n")
                 else:
                     sys.stdout.write(full_text + "\n\n")
-            
+
             sys.stdout.flush()
 
     def _should_flush_stream(self, buffer: List[str], latest_text: str) -> bool:
@@ -621,13 +621,13 @@ class LLMPathAnalyzer:
     ) -> None:
         if not bundles or limit <= 0:
             return
-        
+
         meta = stream_meta or {}
-        
+
         for bundle in bundles[:limit]:
             score: PathScore = bundle["score"]
             feature = score.feature
-            
+
             # 准备数据
             data = {
                 "candidate_rank": bundle["rank"],
@@ -637,7 +637,7 @@ class LLMPathAnalyzer:
                 "matched_keywords": feature.matched_keywords,
                 "blocks": bundle["context_blocks"],
             }
-            
+
             # 如果有 event_callback，通过回调发送
             if event_callback:
                 payload = {
@@ -663,7 +663,7 @@ class LLMPathAnalyzer:
         flow_summary = data.get("flow_summary")
         dangerous_apis = data.get("dangerous_apis") or []
         blocks = data.get("blocks") or []
-        
+
         # 输出候选路径头部
         sys.stdout.write("\n")
         sys.stdout.write("─" * 60 + "\n")
@@ -672,15 +672,15 @@ class LLMPathAnalyzer:
             header += f" (得分: {det_score:.4f})"
         sys.stdout.write(header + "\n")
         sys.stdout.write("─" * 60 + "\n")
-        
+
         # 输出流程摘要
         if flow_summary:
             sys.stdout.write(f"  流程: {flow_summary}\n")
-        
+
         # 输出危险API
         if dangerous_apis:
             sys.stdout.write(f"  危险API: {', '.join(dangerous_apis)}\n")
-        
+
         # 输出代码块
         if blocks:
             sys.stdout.write("\n")
@@ -688,10 +688,10 @@ class LLMPathAnalyzer:
                 role = block.get("role", "unknown")
                 location = block.get("location", "N/A")
                 snippet = block.get("snippet") or "  _未获取代码片段_"
-                
+
                 # 输出块头部
                 sys.stdout.write(f"  ▸ {role.upper()} @ {location}\n")
-                
+
                 # 输出代码片段（添加行号和缩进）
                 for line in snippet.splitlines():
                     # 移除已有的行号前缀（如果有）
@@ -706,12 +706,12 @@ class LLMPathAnalyzer:
                             marker = ">>>" if ">>>" in line else "   "
                             sys.stdout.write(f"      {marker}  {line_num:>4} | {code}\n")
                             continue
-                    
+
                     # 没有行号格式，直接输出
                     sys.stdout.write(f"           {line}\n")
-                
+
                 sys.stdout.write("\n")
-        
+
         sys.stdout.flush()
 
     async def _dispatch_non_stream_output(

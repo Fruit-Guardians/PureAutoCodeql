@@ -3,9 +3,9 @@
 """
 
 from .base import LanguageAdapter
-from .python_adapter import PythonAdapter
-from .java_adapter import JavaAdapter
 from .c_adapter import CAdapter
+from .java_adapter import JavaAdapter
+from .python_adapter import PythonAdapter
 
 
 def get_language_adapter(language: str) -> LanguageAdapter:

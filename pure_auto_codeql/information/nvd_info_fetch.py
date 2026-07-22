@@ -15,7 +15,6 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 USER_AGENT = "nvd-cve-info-fetcher/1.0 (+https://nvd.nist.gov)"
 

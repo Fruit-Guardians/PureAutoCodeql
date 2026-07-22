@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Protocol, Tuple, Type
+from typing import Dict, Optional, Protocol, Type
 
 
 class LanguageKnowledgeBase(Protocol):
