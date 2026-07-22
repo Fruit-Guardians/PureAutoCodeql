@@ -5,20 +5,22 @@ LLM 精排、验证与报告输出。
 """
 
 from __future__ import annotations
+
 import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
+
 from langchain_openai import ChatOpenAI
+
 from .context_extractor import CVEContextExtractor
+from .llm_analyzer import LLMPathAnalyzer
 from .path_feature_extractor import PathFeatureExtractor
 from .path_ranker import PathRanker
-from .selection_formatter import score_to_payload
-from .llm_analyzer import LLMPathAnalyzer
 from .path_verifier import PathVerifier
-from .path_enricher import PathEnricher
+from .selection_formatter import score_to_payload
 
 logger = logging.getLogger(__name__)
 
@@ -183,13 +185,13 @@ class PathSelectionService:
 
     def __init__(self, llm_client, language: str):
         """初始化路径选择服务
-        
+
         Args:
             llm_client: 可以是 LLMConfig 配置对象或已实例化的 LLM 客户端
             language: 编程语言
         """
         self.language = (language or "").lower()
-        
+
         # 如果传入的是 LLMConfig，则创建 ChatOpenAI 实例
         if hasattr(llm_client, 'model') and hasattr(llm_client, 'api_key'):
             # 这是一个 LLMConfig 对象
@@ -201,13 +203,12 @@ class PathSelectionService:
                 max_tokens=getattr(llm_client, 'max_tokens', None),
                 streaming=getattr(llm_client, 'streaming', True),
             )
-        
+
         self.context_extractor = CVEContextExtractor()
         self.feature_extractor = PathFeatureExtractor(language=self.language)
         self.path_ranker = PathRanker(language=self.language)
         self.llm_analyzer = LLMPathAnalyzer(llm_client, language=self.language)
         self.path_verifier = PathVerifier(language=self.language)
-        self.path_enricher = PathEnricher(language=self.language)
 
         logger.info("PathSelectionService initialized, language=%s", self.language)
 
@@ -310,14 +311,14 @@ class PathSelectionService:
                 for path in selected_paths
             ]
         }
-        
+
         await self._emit_event(
             event_callback,
             event_type="info",
             message="LLM 精排结论",
             data=selection_data,
         )
-        
+
         # 如果没有 callback，直接打印到控制台
         if not event_callback:
             self._print_selection_summary(selection_data["selection"])
@@ -462,27 +463,27 @@ class PathSelectionService:
     def _print_selection_summary(self, selection: List[Dict[str, Any]]) -> None:
         """在控制台输出选择结果摘要。"""
         import sys
-        
+
         sys.stdout.write("\n")
         sys.stdout.write("=" * 60 + "\n")
         sys.stdout.write("📊 LLM 精排结论\n")
         sys.stdout.write("=" * 60 + "\n")
-        
+
         for item in selection:
             idx = item.get("index", "?")
             rank = item.get("candidate_rank", "?")
             confidence = item.get("confidence", "N/A")
             reason = item.get("reason", "N/A")
-            
+
             sys.stdout.write(f"\n  ✓ 路径 #{idx} [候选排名: {rank}, 置信度: {confidence}]\n")
             sys.stdout.write(f"    原因: {reason}\n")
-            
+
             steps = item.get("analysis_steps") or []
             if steps:
                 sys.stdout.write("    分析步骤:\n")
                 for step in steps:
                     sys.stdout.write(f"      · {step}\n")
-        
+
         sys.stdout.write("\n")
         sys.stdout.flush()
 

@@ -224,32 +224,6 @@ def build_source_analysis_prompt(
     )
 
 
-def build_source_analysis_with_codeql_prompt(
-    language: str,
-    cve_analysis: str,
-    source_paths: list,
-    current_dir: str,
-    codeql_query: str,
-    query_results: str,
-    file_extension: str = "ext"
-) -> str:
-    """构建包含CodeQL查询结果的source分析提示词。"""
-    language_upper = language.upper()
-    source_paths_str = "\n".join(source_paths)
-    language_focus = get_language_specific_focus(language)
-
-    return SOURCE_ANALYSIS_WITH_CODEQL_PROMPT.format(
-        language_upper=language_upper,
-        cve_analysis=cve_analysis,
-        source_paths_str=source_paths_str,
-        current_dir=current_dir,
-        codeql_query=codeql_query,
-        query_results=query_results,
-        language_focus=language_focus,
-        file_extension=file_extension
-    )
-
-
 def build_source_analysis_with_sink_prompt(
     language: str,
     cve_analysis: str,
