@@ -23,6 +23,49 @@ def _format_db_error(combined_error: str, database_path: str) -> str:
     )
 
 
+def _stream_subprocess(
+    cmd: List[str],
+    log_file: Path,
+    timeout: int,
+) -> Tuple[int, str, str]:
+    """执行子进程，实时将 stdout/stderr tee 到控制台与日志文件，返回 (returncode, stdout, stderr)。
+
+    多个 CodeQL 执行函数共用此逻辑（此前每处都内联了一份相同的读取线程）。
+    与原内联实现行为一致：subprocess.TimeoutExpired / FileNotFoundError 会向外传播，
+    由调用方的 try/except 处理。
+    """
+    import threading
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    stdout_lines: List[str] = []
+    stderr_lines: List[str] = []
+
+    def _pump(stream, sink: List[str], out) -> None:
+        for line in stream:
+            sink.append(line)
+            print(line, end='', file=out, flush=True)
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(line)
+
+    stdout_thread = threading.Thread(target=_pump, args=(process.stdout, stdout_lines, sys.stdout))
+    stderr_thread = threading.Thread(target=_pump, args=(process.stderr, stderr_lines, sys.stderr))
+    stdout_thread.start()
+    stderr_thread.start()
+
+    returncode = process.wait(timeout=timeout)
+    stdout_thread.join()
+    stderr_thread.join()
+
+    return returncode, ''.join(stdout_lines), ''.join(stderr_lines)
+
+
 # 功能：
 def detect_language_from_query(query_content: str) -> str:
     content = (query_content or '').lower()
@@ -487,50 +530,16 @@ def run_simple_query(
         start_time = time.time()
 
         # 使用`codeql query run`执行简单查询，添加实时日志输出
-        import threading
-        process = subprocess.Popen(
+        returncode, stdout, stderr = _stream_subprocess(
             [
                 'codeql', 'query', 'run',
                 str(query_file),
                 '--database', resolved_database_path,
                 f'--output={str(bqrs_path)}',
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            log_file,
+            timeout=600,
         )
-
-        stdout_lines = []
-        stderr_lines = []
-
-        # 实时读取并输出 stdout 和 stderr
-        def read_stdout():
-            for line in process.stdout:
-                stdout_lines.append(line)
-                print(line, end='', flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        def read_stderr():
-            for line in process.stderr:
-                stderr_lines.append(line)
-                print(line, end='', file=sys.stderr, flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        stdout_thread = threading.Thread(target=read_stdout)
-        stderr_thread = threading.Thread(target=read_stderr)
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # 等待进程完成
-        returncode = process.wait(timeout=600)
-        stdout_thread.join()
-        stderr_thread.join()
-
-        stdout = ''.join(stdout_lines)
-        stderr = ''.join(stderr_lines)
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
@@ -569,48 +578,15 @@ def run_simple_query(
             }
 
         # 解码BQRS文件为JSON格式，以便detect_breakpoints方法能够正确解析
-        decode_process = subprocess.Popen(
+        decode_returncode, decode_stdout, decode_stderr = _stream_subprocess(
             [
                 'codeql', 'bqrs', 'decode',
                 '--format=json',
                 str(bqrs_path),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            log_file,
+            timeout=300,
         )
-
-        decode_stdout_lines = []
-        decode_stderr_lines = []
-
-        # 实时读取并输出解码过程的 stdout 和 stderr
-        def read_decode_stdout():
-            for line in decode_process.stdout:
-                decode_stdout_lines.append(line)
-                print(line, end='', flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        def read_decode_stderr():
-            for line in decode_process.stderr:
-                decode_stderr_lines.append(line)
-                print(line, end='', file=sys.stderr, flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        decode_stdout_thread = threading.Thread(target=read_decode_stdout)
-        decode_stderr_thread = threading.Thread(target=read_decode_stderr)
-        decode_stdout_thread.start()
-        decode_stderr_thread.start()
-
-        # 等待解码进程完成
-        decode_returncode = decode_process.wait(timeout=300)
-        decode_stdout_thread.join()
-        decode_stderr_thread.join()
-
-        decode_stdout = ''.join(decode_stdout_lines)
-        decode_stderr = ''.join(decode_stderr_lines)
 
         if decode_returncode != 0:
             # 合并stderr和stdout以捕获所有错误信息
@@ -766,8 +742,7 @@ def execute_codeql_query(
             f.write(f"{'='*80}\n")
 
         # 使用`codeql database analyze`执行查询，并使用SARIF v2.1.0输出，添加 --verbose 参数
-        import threading
-        process = subprocess.Popen(
+        returncode, stdout, stderr = _stream_subprocess(
             [
                 'codeql', 'database', 'analyze',
                 '--verbose',
@@ -777,42 +752,9 @@ def execute_codeql_query(
                 '--format=sarifv2.1.0',
                 f'--output={str(sarif_path)}',
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            log_file,
+            timeout=600,
         )
-
-        stdout_lines = []
-        stderr_lines = []
-
-        # 实时读取并输出 stdout 和 stderr
-        def read_stdout():
-            for line in process.stdout:
-                stdout_lines.append(line)
-                print(line, end='', flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        def read_stderr():
-            for line in process.stderr:
-                stderr_lines.append(line)
-                print(line, end='', file=sys.stderr, flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        stdout_thread = threading.Thread(target=read_stdout)
-        stderr_thread = threading.Thread(target=read_stderr)
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # 等待进程完成
-        returncode = process.wait(timeout=600)
-        stdout_thread.join()
-        stderr_thread.join()
-
-        stdout = ''.join(stdout_lines)
-        stderr = ''.join(stderr_lines)
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
@@ -937,8 +879,7 @@ def run_query_and_decode_to_text(
             f.write(f"{'='*80}\n")
 
         # 执行 codeql query run，添加 --verbose 参数
-        import threading
-        process = subprocess.Popen(
+        returncode, stdout, stderr = _stream_subprocess(
             [
                 'codeql', 'query', 'run',
                 '--verbose',
@@ -946,42 +887,9 @@ def run_query_and_decode_to_text(
                 '--database', resolved_database_path,
                 f'--output={str(bqrs_path)}',
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            log_file,
+            timeout=600,
         )
-
-        stdout_lines = []
-        stderr_lines = []
-
-        # 实时读取并输出 stdout 和 stderr
-        def read_stdout():
-            for line in process.stdout:
-                stdout_lines.append(line)
-                print(line, end='', flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        def read_stderr():
-            for line in process.stderr:
-                stderr_lines.append(line)
-                print(line, end='', file=sys.stderr, flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        stdout_thread = threading.Thread(target=read_stdout)
-        stderr_thread = threading.Thread(target=read_stderr)
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # 等待进程完成
-        returncode = process.wait(timeout=600)
-        stdout_thread.join()
-        stderr_thread.join()
-
-        stdout = ''.join(stdout_lines)
-        stderr = ''.join(stderr_lines)
 
         if returncode != 0:
             parts: List[str] = []
@@ -1014,49 +922,16 @@ def run_query_and_decode_to_text(
             f.write(f"[{log_timestamp}] 执行 codeql bqrs decode\n")
             f.write(f"{'='*80}\n")
 
-        decode_process = subprocess.Popen(
+        decode_returncode, decode_stdout, decode_stderr = _stream_subprocess(
             [
                 'codeql', 'bqrs', 'decode',
                 '--verbose',
                 '--format=table',
                 str(bqrs_path),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            log_file,
+            timeout=300,
         )
-
-        decode_stdout_lines = []
-        decode_stderr_lines = []
-
-        # 实时读取并输出 stdout 和 stderr
-        def read_decode_stdout():
-            for line in decode_process.stdout:
-                decode_stdout_lines.append(line)
-                print(line, end='', flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        def read_decode_stderr():
-            for line in decode_process.stderr:
-                decode_stderr_lines.append(line)
-                print(line, end='', file=sys.stderr, flush=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
-
-        decode_stdout_thread = threading.Thread(target=read_decode_stdout)
-        decode_stderr_thread = threading.Thread(target=read_decode_stderr)
-        decode_stdout_thread.start()
-        decode_stderr_thread.start()
-
-        # 等待进程完成
-        decode_returncode = decode_process.wait(timeout=300)
-        decode_stdout_thread.join()
-        decode_stderr_thread.join()
-
-        decode_stdout = ''.join(decode_stdout_lines)
-        decode_stderr = ''.join(decode_stderr_lines)
 
         if decode_returncode != 0:
             parts: List[str] = []
