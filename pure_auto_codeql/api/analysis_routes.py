@@ -1,24 +1,18 @@
-from typing import Optional
 import asyncio
 import json
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
-from fastapi.responses import JSONResponse, StreamingResponse
+from typing import Optional
 
-from .models import (
-    AnalysisRequest,
-    AnalysisTaskInfo,
-    AnalysisResult,
-    TaskListResponse,
-    TaskStatus,
-    ErrorResponse
-)
-from .config import get_config
-from .task_manager import get_task_manager
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import StreamingResponse
+
 from pure_auto_codeql.application import (
     AnalysisValidationError,
     validate_analysis_case,
 )
 
+from .config import get_config
+from .models import AnalysisRequest, AnalysisResult, AnalysisTaskInfo, TaskListResponse, TaskStatus
+from .task_manager import get_task_manager
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -190,26 +184,26 @@ async def cleanup_old_tasks(
 async def stream_task_output(task_id: str):
     """
     通过 Server-Sent Events (SSE) 流式输出任务的实时事件
-    
+
     Args:
         task_id: 任务ID
-        
+
     Returns:
         StreamingResponse: SSE 格式的事件流
-        
+
     Raises:
         HTTPException 404: 任务不存在或事件队列未创建
         HTTPException 410: 任务已结束且事件队列已清理
     """
     task_manager = get_task_manager()
-    
+
     task_info = task_manager.get_task_status(task_id)
     if not task_info:
         raise HTTPException(
             status_code=404,
             detail=f"任务 '{task_id}' 不存在"
         )
-    
+
     if task_id not in task_manager._event_queues:
         if task_info.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
             raise HTTPException(
@@ -221,44 +215,62 @@ async def stream_task_output(task_id: str):
                 status_code=404,
                 detail="任务事件队列未创建，任务可能尚未启动"
             )
-    
+
+    def _format_sse(event: dict) -> tuple[str, dict]:
+        """把事件格式化为 (sse_text, normalized_event_data)。"""
+        event_type = event.get('type', 'message')
+        event_data = {
+            'type': str(event_type) if hasattr(event_type, 'value') else event_type,
+            'timestamp': event.get('timestamp'),
+            'step_name': event.get('step_name'),
+            'message': event.get('message'),
+            'data': event.get('data', {})
+        }
+        event_json = json.dumps(event_data, ensure_ascii=False)
+        return f"event: {event_data['type']}\ndata: {event_json}\n\n", event_data
+
+    def _is_terminal(event: dict, event_data: dict) -> bool:
+        return (
+            event_data['type'] in ['completed', 'error']
+            and event.get('data', {}).get('task_id') == task_id
+        )
+
     # 事件生成器
     async def event_generator():
-        """从队列读取事件并格式化为 SSE"""
+        """先回放历史事件，再从队列读取新事件并格式化为 SSE。"""
         queue = task_manager._event_queues.get(task_id)
-        if not queue:
+        if queue is None:
             return
-        
+
+        # 1) 回放已发生的历史事件，使中途连接的客户端不丢失前序进度
+        replayed = 0
+        for past_event in list(task_manager._task_events.get(task_id, [])):
+            sse_text, event_data = _format_sse(past_event)
+            yield sse_text
+            replayed += 1
+            if _is_terminal(past_event, event_data):
+                # 历史里已包含终止事件，无需再消费队列
+                return
+
         try:
+            # 2) 消费实时队列。跳过已回放过的、仍留在队列中的历史事件，避免重复。
             while True:
                 try:
-                    # 等待事件，超时时间 30 秒（发送心跳）
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
                 except asyncio.TimeoutError:
-                    # 超时时发送心跳
-                    yield f": heartbeat\n\n"
+                    yield ": heartbeat\n\n"
                     continue
 
-                # SSE 格式: event: <type>\ndata: <json>\n\n
-                event_type = event.get('type', 'message')
-                
-                event_data = {
-                    'type': str(event_type) if hasattr(event_type, 'value') else event_type,
-                    'timestamp': event.get('timestamp'),
-                    'step_name': event.get('step_name'),
-                    'message': event.get('message'),
-                    'data': event.get('data', {})
-                }
-                
-                event_json = json.dumps(event_data, ensure_ascii=False)
-                
-                yield f"event: {event_data['type']}\n"
-                yield f"data: {event_json}\n\n"
-                
-                if event_data['type'] in ['completed', 'error']:
-                    if event.get('data', {}).get('task_id') == task_id:
-                        break
-        
+                if replayed > 0:
+                    replayed -= 1
+                    continue
+
+                sse_text, event_data = _format_sse(event)
+                yield sse_text
+
+                if _is_terminal(event, event_data):
+                    break
+
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -270,9 +282,9 @@ async def stream_task_output(task_id: str):
                 'message': f'流式传输错误: {str(e)}',
                 'data': {'error': str(e)}
             }
-            yield f"event: error\n"
+            yield "event: error\n"
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",

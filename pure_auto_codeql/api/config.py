@@ -7,6 +7,7 @@ from typing import List
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from pure_auto_codeql.paths import get_repo_root
 
 try:
@@ -41,7 +42,10 @@ class APIConfig(BaseSettings):
         description="允许的跨域来源"
     )
     cors_allow_credentials: bool = Field(default=True, description="允许携带凭证")
-    cors_allow_methods: List[str] = Field(default=["*"], description="允许的HTTP方法")
+    cors_allow_methods: List[str] = Field(
+        default=["GET", "POST", "DELETE", "OPTIONS"],
+        description="允许的HTTP方法（收窄到 API 实际使用的方法）",
+    )
     cors_allow_headers: List[str] = Field(default=["*"], description="允许的HTTP头")
 
     # 项目路径配置
@@ -85,7 +89,7 @@ class APIConfig(BaseSettings):
     docker_builder_image: str = Field(default="pure-codeql-cpp:latest", description="Docker 构建镜像名称")
     prefer_local_cpp_build: bool = Field(default=True, description="C/C++ 项目优先尝试本地两步走构建，失败后再用Docker")
     local_build_prepare_timeout: int = Field(default=300, description="本地准备阶段（configure/cmake）超时时间(秒)")
-    
+
     # 自动依赖安装配置
     auto_install_dependencies: bool = Field(default=True, description="自动检测并安装缺失的C/C++构建依赖")
     auto_install_max_retries: int = Field(default=5, description="自动安装依赖后的最大重试次数")
@@ -97,10 +101,10 @@ class APIConfig(BaseSettings):
 def _load_keys_toml_settings() -> dict:
     """从 keys.toml 加载 [settings] 配置"""
     keys_toml_path = get_repo_root() / "config" / "keys.toml"
-    
+
     if not keys_toml_path.exists():
         return {}
-    
+
     try:
         with open(keys_toml_path, 'rb') as f:
             data = tomllib.load(f)

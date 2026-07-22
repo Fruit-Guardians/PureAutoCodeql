@@ -12,10 +12,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .analysis_routes import router as analysis_router
 from .config import get_config
 from .models import ErrorResponse, HealthResponse, VersionResponse
 from .projects_routes import router as projects_router
-from .analysis_routes import router as analysis_router
 
 # 配置日志
 logging.basicConfig(
@@ -25,12 +25,43 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _warn_on_insecure_posture(cfg) -> None:
+    """启动时对不安全配置发出醒目告警（不改变默认可用性，仅提示）。"""
+    is_loopback = cfg.host in _LOOPBACK_HOSTS
+
+    if not cfg.auth_token:
+        if is_loopback:
+            logger.warning(
+                "API 未设置 auth_token：当前仅监听回环地址 %s，风险较低。"
+                "如需对外暴露，请先设置 API_AUTH_TOKEN。",
+                cfg.host,
+            )
+        else:
+            logger.warning(
+                "⚠️  安全告警：API 绑定到非回环地址 %s 且未设置 auth_token，"
+                "所有接口（含项目导入、分析触发）将无鉴权暴露。"
+                "强烈建议设置 API_AUTH_TOKEN 后再对外提供服务。",
+                cfg.host,
+            )
+
+    if cfg.workers and cfg.workers > 1:
+        logger.warning(
+            "⚠️  workers=%d：任务状态保存在单进程内存中，多 worker 下同一 task_id "
+            "在其它进程不可见（会返回 404）。当前实现请使用 workers=1，或改用共享存储。",
+            cfg.workers,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("Starting PureAutoCodeql API Server...")
     logger.info(f"Projects directory: {config.projects_dir}")
     logger.info(f"Server will listen on {config.host}:{config.port}")
+    _warn_on_insecure_posture(config)
 
     yield
 

@@ -1,12 +1,16 @@
 import asyncio
 import uuid
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
+
+from pure_auto_codeql.core.context import AnalysisConfig
+from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.utils.logger import get_logger
 
 from .config import get_config
-from .models import TaskStatus, AnalysisTaskInfo, AnalysisResult
-from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
-from pure_auto_codeql.core.context import AnalysisConfig
+from .models import AnalysisResult, AnalysisTaskInfo, TaskStatus
+
+logger = get_logger(__name__)
 
 
 class TaskManager:
@@ -33,6 +37,10 @@ class TaskManager:
         )
 
         self._tasks[task_id] = task_info
+        # 提前创建事件队列与历史，使得任务在排队（尚未获得信号量运行）阶段
+        # 连接 SSE 也能拿到事件流，而不是收到 404。
+        self._event_queues.setdefault(task_id, asyncio.Queue())
+        self._task_events.setdefault(task_id, [])
         return task_id
 
     async def start_task(self, task_id: str, config: Optional[dict] = None) -> bool:
@@ -69,10 +77,10 @@ class TaskManager:
     async def _run_analysis(self, task_id: str, case_id: str, config: Optional[dict] = None):
         task_info = self._tasks[task_id]
 
-        # Phase 4.1 & 4.2: 创建事件队列和回调函数
-        event_queue = asyncio.Queue()
-        self._event_queues[task_id] = event_queue
-        self._task_events[task_id] = []
+        # Phase 4.1 & 4.2: 复用 create_task 时已建立的事件队列与历史
+        # （若因兼容路径缺失则惰性创建）
+        event_queue = self._event_queues.setdefault(task_id, asyncio.Queue())
+        self._task_events.setdefault(task_id, [])
 
         async def event_callback(event):
             """事件回调函数，将事件推送到队列和历史存储"""
@@ -148,8 +156,8 @@ class TaskManager:
                     "message": "任务已被取消",
                     "data": {"task_id": task_id, "cancelled": True}
                 })
-            except:
-                pass
+            except Exception:
+                logger.debug("推送任务取消事件失败", exc_info=True)
             raise
 
         except Exception as e:
@@ -166,8 +174,8 @@ class TaskManager:
                     "message": f"执行错误: {str(e)}",
                     "data": {"task_id": task_id, "error": str(e)}
                 })
-            except:
-                pass
+            except Exception:
+                logger.debug("推送任务错误事件失败", exc_info=True)
 
         finally:
             self._running_tasks.pop(task_id, None)
