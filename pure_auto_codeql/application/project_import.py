@@ -6,15 +6,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from pure_auto_codeql.utils.project_importer import (
-    ProjectImportResult,
-    import_project,
-)
 from pure_auto_codeql.application.project_import_policy import (
     ProjectImportPolicy,
     ProjectImportPolicyError,
     validate_project_import_policy,
 )
+from pure_auto_codeql.utils.project_importer import (
+    ProjectImportResult,
+    import_project,
+)
+
+# Public surface re-exported for CLI/API callers and tests. Kept explicit so the
+# lint import-pruner does not treat these pass-through names as unused.
+__all__ = [
+    "ProjectImportPolicy",
+    "ProjectImportPolicyError",
+    "ProjectImportPolicySettings",
+    "ProjectImportRequest",
+    "ProjectImportResult",
+    "import_project_for_workflow",
+    "validate_project_import_policy",
+    "validate_project_import_request",
+]
 
 
 @dataclass(frozen=True)

@@ -1,14 +1,26 @@
 import json
+import logging
 import subprocess
-import tempfile
-import os
-import shutil
+import sys
 import textwrap
 import time
-from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime
-import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+
+def _format_db_error(combined_error: str, database_path: str) -> str:
+    """构建带排查建议的数据库错误提示（多个执行函数共用）。"""
+    return (
+        f"数据库错误:\n"
+        f"{combined_error}\n\n"
+        f"建议:\n"
+        f"1. 检查数据库路径是否正确: {database_path}\n"
+        f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
+        f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
+    )
 
 
 # 功能：
@@ -43,7 +55,7 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
     如果给定路径本身包含 codeql-database.yml，则返回该路径。
     如果给定路径不包含，但其子目录（如 python/ 或 cpp/）包含，则返回子目录路径。
     如果指定了language，则优先查找名称匹配的子目录。
-    
+
     支持的格式：
     - {path}/codeql-database.yml (直接路径)
     - {path}/{language}/codeql-database.yml (例如: db/cpp, db/python, db/java)
@@ -52,15 +64,15 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
     """
     if not path:
         return path
-        
+
     db_path = Path(path)
     if not db_path.exists():
         return path
-        
+
     # 如果路径本身就是数据库根目录
     if (db_path / "codeql-database.yml").exists():
         return str(db_path)
-        
+
     # 检查子目录
     try:
         # 如果指定了语言，优先检查对应的子目录
@@ -73,7 +85,7 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
                 'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript'
             }
             target_lang = lang_map.get(lang_lower, lang_lower)
-            
+
             # 尝试查找精确匹配的子目录或 db-{lang} 格式
             # 优先级：直接子目录 > db-{lang} > db/{lang}
             candidates = [
@@ -81,11 +93,11 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
                 db_path / f"db-{target_lang}",  # 例如: db_path/db-cpp
                 db_path / "db" / target_lang,  # 例如: db_path/db/cpp
             ]
-            
+
             for candidate in candidates:
                 if candidate.is_dir() and (candidate / "codeql-database.yml").exists():
                     return str(candidate)
-            
+
             # 如果没找到，尝试在 db/{lang}/db-{lang} 这样的嵌套结构中查找
             nested_candidate = db_path / "db" / target_lang / f"db-{target_lang}"
             if nested_candidate.is_dir() and (nested_candidate / "codeql-database.yml").exists():
@@ -95,7 +107,7 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
         for subdir in db_path.iterdir():
             if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
                 return str(subdir)
-        
+
         # 尝试深入一层 (例如 db/python/codeql-database.yml 或 db/cpp/codeql-database.yml)
         db_subdir = db_path / "db"
         if db_subdir.is_dir():
@@ -103,17 +115,17 @@ def resolve_codeql_database_root(path: str, language: Optional[str] = None) -> s
             for subdir in db_subdir.iterdir():
                 if subdir.is_dir() and (subdir / "codeql-database.yml").exists():
                     return str(subdir)
-            
+
             # 再检查 db/{lang}/db-{lang} 这样的嵌套结构
             for lang_subdir in db_subdir.iterdir():
                 if lang_subdir.is_dir():
                     nested_db = lang_subdir / f"db-{lang_subdir.name}"
                     if nested_db.is_dir() and (nested_db / "codeql-database.yml").exists():
                         return str(nested_db)
-                    
+
     except Exception:
         pass
-            
+
     return path
 
 
@@ -330,7 +342,7 @@ compiled: false
         return java_yml
 
 def create_temporary_qlpack(query_content: str, language: Optional[str] = None, task_id: Optional[str] = None) -> Path:
-    print("创建被调用")
+    logger.debug("create_temporary_qlpack called")
     temp_base_dir = Path('./temp/codeql_temp')
     temp_base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -435,9 +447,17 @@ def run_simple_query(
             'sarif_path': None,  # 简单查询不生成SARIF文件，保持兼容性
         }
 
+    if query_file is None:
+        return {
+            'success': False,
+            'output': 'run_simple_query 需要提供 query_file 路径。',
+            'results': [],
+            'result_file': None,
+            'sarif_path': None,
+        }
     try:
-        open(query_file,'w').write(query_content)
-        
+        Path(query_file).write_text(query_content, encoding='utf-8')
+
         # 准备输出目录
         output_dir = Path(output_dir) if output_dir else Path('./output')
         try:
@@ -529,14 +549,7 @@ def run_simple_query(
 
             # 检查是否为数据库相关错误
             if is_database_error(combined_error):
-                enhanced_error = (
-                    f"数据库错误:\n"
-                    f"{combined_error}\n\n"
-                    f"建议:\n"
-                    f"1. 检查数据库路径是否正确: {database_path}\n"
-                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
-                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
-                )
+                enhanced_error = _format_db_error(combined_error, database_path)
                 print(f"CodeQL简单查询执行失败，数据库错误: \n {enhanced_error}")
                 return {
                     'success': False,
@@ -713,10 +726,17 @@ def execute_codeql_query(
     # 如果指定了alert参数，执行简单查询（使用解析后的路径）
     if alert == 'alert':
         return run_simple_query(query_content, resolved_database_path, language, query_file, output_dir)
-    
+
     sarif_path: Optional[Path] = None
+    if query_file is None:
+        return {
+            'success': False,
+            'output': 'execute_codeql_query 需要提供 query_file 路径。',
+            'results': [],
+            'sarif_path': None,
+        }
     try:
-        open(query_file,'w').write(query_content)
+        Path(query_file).write_text(query_content, encoding='utf-8')
         # 准备标准化的SARIF输出路径
         output_dir = Path(output_dir) if output_dir else Path('./output')
         try:
@@ -818,14 +838,7 @@ def execute_codeql_query(
 
             # 检查是否为数据库相关错误
             if is_database_error(combined_error):
-                enhanced_error = (
-                    f"数据库错误:\n"
-                    f"{combined_error}\n\n"
-                    f"建议:\n"
-                    f"1. 检查数据库路径是否正确: {database_path}\n"
-                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
-                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
-                )
+                enhanced_error = _format_db_error(combined_error, database_path)
                 print(f"CodeQL execution failed with database error: \n {enhanced_error}")
                 return {
                     'success': False,
@@ -868,13 +881,6 @@ def execute_codeql_query(
             'results': [],
             'sarif_path': str(sarif_path) if sarif_path else None,
         }
-    finally:
-        # 删除临时目录
-        # if pack_dir and pack_dir.exists():
-        #     try:
-        #         shutil.rmtree(pack_dir)
-        #     except Exception:
-                pass
 
 
 def run_query_and_decode_to_text(
@@ -988,14 +994,7 @@ def run_query_and_decode_to_text(
 
             # 检查是否为数据库相关错误
             if is_database_error(combined_error):
-                enhanced_error = (
-                    f"数据库错误:\n"
-                    f"{combined_error}\n\n"
-                    f"建议:\n"
-                    f"1. 检查数据库路径是否正确: {database_path}\n"
-                    f"2. 使用 'codeql database info {database_path}' 验证数据库\n"
-                    f"3. 如果数据库不存在或已损坏，请使用 'codeql database create' 重新创建"
-                )
+                enhanced_error = _format_db_error(combined_error, database_path)
                 return {
                     'success': False,
                     'output': enhanced_error,
@@ -1160,15 +1159,15 @@ def is_empty_result(sarif_path: Optional[str]) -> bool:
     """
     if not sarif_path:
         return True
-    
+
     sarif_file = Path(sarif_path)
     if not sarif_file.exists():
         return True
-    
+
     try:
         with open(sarif_file, 'r', encoding='utf-8') as f:
             sarif_data = json.load(f)
-        
+
         # 检查SARIF格式的结果
         if isinstance(sarif_data, dict) and 'runs' in sarif_data:
             for run in sarif_data.get('runs', []):
@@ -1176,7 +1175,7 @@ def is_empty_result(sarif_path: Optional[str]) -> bool:
                 if results and len(results) > 0:
                     return False
             return True
-        
+
         return True
     except Exception as e:
         print(f"⚠️  [is_empty_result] 解析SARIF文件失败: {e}")
@@ -1195,7 +1194,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
         数据流路径的数量
     """
     count = 0
-    
+
     # 优先检查SARIF文件
     if sarif_path:
         sarif_file = Path(sarif_path)
@@ -1203,7 +1202,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
             try:
                 with open(sarif_file, 'r', encoding='utf-8') as f:
                     sarif_data = json.load(f)
-                
+
                 if isinstance(sarif_data, dict) and 'runs' in sarif_data:
                     for run in sarif_data.get('runs', []):
                         results = run.get('results', [])
@@ -1211,7 +1210,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
                     return count
             except Exception as e:
                 print(f"⚠️  [count_dataflow_paths] 解析SARIF文件失败: {e}")
-    
+
     # 检查JSON路径文件
     if json_path:
         json_file = Path(json_path)
@@ -1219,7 +1218,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
             try:
                 with open(json_file, 'r', encoding='utf-8') as f:
                     json_data = json.load(f)
-                
+
                 if isinstance(json_data, list):
                     count += len(json_data)
                 elif isinstance(json_data, dict):
@@ -1229,7 +1228,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
                 return count
             except Exception as e:
                 print(f"⚠️  [count_dataflow_paths] 解析JSON文件失败: {e}")
-    
+
     return count
 
 

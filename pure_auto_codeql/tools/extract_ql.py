@@ -1,5 +1,6 @@
 import re
 
+
 def extract_predicate_body_and_params(code: str, name: str) -> tuple[str, list[str]]:
     """提取指定名称的谓词体及其参数名"""
     # 匹配 predicate name ( params ) {
@@ -7,7 +8,7 @@ def extract_predicate_body_and_params(code: str, name: str) -> tuple[str, list[s
     match = re.search(pattern, code, re.DOTALL)
     if not match:
         return "", []
-    
+
     param_str = match.group(1)
     start = match.end()
     count = 1
@@ -18,7 +19,7 @@ def extract_predicate_body_and_params(code: str, name: str) -> tuple[str, list[s
         elif code[i] == '}':
             count -= 1
         i += 1
-    
+
     if count == 0:
         body = code[start:i-1].strip()
         params = []
@@ -52,7 +53,7 @@ def extract_imports(code: str) -> str:
 def extract_ql_predicate(code: str) -> dict:
     """从CodeQL代码中提取关键谓词"""
     res = {}
-    
+
     # 提取imports
     res["imports"] = extract_imports(code)
 
@@ -64,12 +65,12 @@ def extract_ql_predicate(code: str) -> dict:
             p = source_params[0]
             if p != "this":
                 source_body = re.sub(r'\b' + re.escape(p) + r'\b', 'this', source_body)
-        
+
         # 兼容旧逻辑
         source_body = re.sub(r'\bsource\b', 'this', source_body)
         source_body = re.sub(r'\bsrc\b', 'this', source_body)
         res["isSource"] = source_body
-        
+
     # 提取isSink
     sink_body, sink_params = extract_predicate_body_and_params(code, "isSink")
     if sink_body:
@@ -82,7 +83,7 @@ def extract_ql_predicate(code: str) -> dict:
         # 兼容旧逻辑
         sink_body = re.sub(r'\bsink\b', 'this', sink_body)
         res["isSink"] = sink_body
-        
+
     # 提取isAdditionalFlowStep
     step_body, step_params = extract_predicate_body_and_params(code, "isAdditionalFlowStep")
     if step_body:
@@ -102,7 +103,7 @@ def extract_ql_predicate(code: str) -> dict:
     barrier_body, barrier_params = extract_predicate_body_and_params(code, "isBarrier")
     if not barrier_body:
         barrier_body, barrier_params = extract_predicate_body_and_params(code, "isSanitizer")
-    
+
     if barrier_body:
         # 规范化参数为 node
         if barrier_params:
@@ -118,7 +119,7 @@ def extract_ql_predicate(code: str) -> dict:
 def Get_Breakpoint(predicate: dict, language: str = "java") -> str:
     """组装断点查询语句"""
     lang = language.lower()
-    
+
     if lang == "python":
         imports = """import python
 import semmle.python.dataflow.new.DataFlow
@@ -165,11 +166,11 @@ import semmle.code.java.dataflow.TaintTracking
 
 /** ====== 与原查询相同的 Source/Sink 定义 ====== */
 class FixedSourceNode extends DataFlow::Node {
-  FixedSourceNode() {"""+predicate["isSource"]+"""}
+  FixedSourceNode() {"""+predicate.get("isSource", "none()")+"""}
 }
 
 class FixedSinkNode extends DataFlow::Node {
-  FixedSinkNode() {"""+predicate["isSink"]+"""}
+  FixedSinkNode() {"""+predicate.get("isSink", "none()")+"""}
 }
 
 /** 前向：fixed source -> ANY（如需补边在这里加） */

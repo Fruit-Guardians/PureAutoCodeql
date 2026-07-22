@@ -14,7 +14,6 @@ from pure_auto_codeql.cli.app import (
     discover_cve_assets,
     dispatch_command,
     get_llm_config,
-    get_llm_config_by_provider,
     list_available_cases,
     list_available_providers,
     list_providers,
@@ -29,6 +28,7 @@ from pure_auto_codeql.cli.app import (
     run_project_import,
     validate_case,
 )
+from pure_auto_codeql.configuration import get_llm_config_by_provider
 
 __all__ = [
     "AnalysisConfig",

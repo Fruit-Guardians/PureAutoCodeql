@@ -127,8 +127,8 @@ def validate_cve_data(data: Dict[str, Any]) -> bool:
         logger.error("Invalid CVE structure in vulnerability data")
         return False
 
-    # 检查CVE基本信息
-    cve_required_fields = ["id", "state", "published", "modified"]
+    # 检查CVE基本信息（NVD 2.0 API 字段命名）
+    cve_required_fields = ["id", "vulnStatus", "published", "lastModified"]
     for field in cve_required_fields:
         if field not in cve_data:
             logger.error(f"Missing required CVE field: {field}")

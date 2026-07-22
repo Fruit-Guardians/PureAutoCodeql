@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from .features import PathFeatures, PathNode
-from .language_adapters import get_language_adapter, LanguageAdapter
+from .language_adapters import LanguageAdapter, get_language_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class PathFeatureExtractor:
     ) -> PathNode:
         location = step.get("location") or {}
         file_path = location.get("file", "")
-        start_line = int(location.get("startLine") or location.get("start_column") or 0)
+        start_line = int(location.get("startLine") or 0)
         end_line = int(location.get("endLine") or start_line)
 
         code_snippet = await self._read_code_snippet(source_root, file_path, start_line)
