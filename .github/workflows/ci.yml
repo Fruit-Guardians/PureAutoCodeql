@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Lint (ruff)
+        run: uvx ruff check pure_auto_codeql Analyze.py config.py test
+
       - name: Run tests
         run: uv run pytest -q
 

@@ -72,3 +72,6 @@ openspec/
 
 # Local presentation / contest materials (not versioned)
 HnuSec材料/
+
+# Local agent working artifacts
+.claude/
