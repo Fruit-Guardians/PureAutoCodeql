@@ -2,25 +2,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from pure_auto_codeql.services.llm_service import AgentResult
+
 logger = logging.getLogger(__name__)
 
-
-# 运行时可用的AgentResult类定义
-class AgentResult:
-    def __init__(self, content: str, success: bool, error: str = None):
-        self.content = content
-        self.success = success
-        self.error = error
-
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
     class MultiAgentAnalyzer:
         pass
 

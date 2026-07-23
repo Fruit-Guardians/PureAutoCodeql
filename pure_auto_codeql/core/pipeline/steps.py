@@ -11,6 +11,7 @@ from pure_auto_codeql.agents.sink_verification_agent import SinkVerificationAgen
 from pure_auto_codeql.agents.source_verification_agent import SourceVerificationAgent
 from pure_auto_codeql.agents.unified_sink_path_agent import UnifiedSinkPathAgent
 from pure_auto_codeql.agents.unified_source_analysis_agent import UnifiedSourceAnalysisAgent
+from pure_auto_codeql.services.codeql_composition import RetryBudget
 from pure_auto_codeql.services.llm_service import AgentResult, MultiAgentAnalyzer
 from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
 
@@ -335,8 +336,9 @@ class CodeQLGenerationStep(AnalysisStep):
             else "Source分析失败"
         )
 
-        # 构建CodeQL生成需求（保持向后兼容的自然语言描述）
-        codeql_requirement = f"""
+        # 构建CodeQL生成需求；显式 requirement 优先，报告作为证据上下文。
+        configured_requirement = getattr(context._config, "requirement", None)
+        codeql_requirement = configured_requirement or f"""
         基于以下分析结果生成CodeQL查询：
         CVE路径分析结果：
         {cve_report}
@@ -376,12 +378,34 @@ class CodeQLGenerationStep(AnalysisStep):
                 analyzer=codeql_analyzer,
                 database_path=str(context.case_paths.db),
                 language=context.language,
+                max_rounds=getattr(context._config, "max_codeql_rounds", 5),
                 enable_error_tidy=getattr(context._config, "enable_error_tidy", False),
                 enable_source_sink_fallback=getattr(
                     context._config, "enable_source_sink_fallback", False
                 ),
                 fallback_empty_retry_max=getattr(
                     context._config, "fallback_empty_retry_max", 5
+                ),
+                enable_breakpoint_recovery=getattr(
+                    context._config, "enable_breakpoint_recovery", False
+                ),
+                enable_template_refinement=getattr(
+                    context._config, "enable_template_refinement", False
+                ),
+                retry_budget=RetryBudget(
+                    repair_attempts_per_generation=getattr(
+                        context._config, "max_codeql_rounds", 5
+                    ),
+                    fallback_attempts=max(
+                        1,
+                        getattr(context._config, "fallback_empty_retry_max", 5),
+                    ),
+                    max_total_llm_calls=getattr(
+                        context._config, "max_total_llm_calls", 20
+                    ),
+                    max_elapsed_seconds=getattr(
+                        context._config, "task_timeout", 3600
+                    ),
                 ),
             )
 
@@ -409,9 +433,13 @@ class CodeQLGenerationStep(AnalysisStep):
                 source_analysis_report=source_report,
                 sink_verification_query=sink_verification_query,  # 传递 Sink 验证查询
                 source_verification_query=source_verification_query,  # 传递 Source 验证查询
+                enable_breakpoint_recovery=getattr(
+                    context._config, "enable_breakpoint_recovery", False
+                ),
             )
             print(compose_output)
             context.data["codeql_execution_result"] = codeql_tool.last_execution_result
+            context.data["codeql_composition_summary"] = codeql_tool.last_run_summary
 
             # Normalize output into AgentResult for downstream consumers
             if isinstance(compose_output, AgentResult):
@@ -420,9 +448,18 @@ class CodeQLGenerationStep(AnalysisStep):
             if isinstance(compose_output, str):
                 normalized = compose_output.strip().lower()
                 if normalized.startswith("error") or normalized.startswith("failed"):
-                    return AgentResult(content="", success=False, error=compose_output)
+                    return AgentResult(
+                        content="",
+                        success=False,
+                        error=compose_output,
+                        metrics=codeql_tool.last_run_summary or {},
+                    )
 
-                return AgentResult(content=compose_output, success=True)
+                return AgentResult(
+                    content=compose_output,
+                    success=True,
+                    metrics=codeql_tool.last_run_summary or {},
+                )
 
             # Fallback: treat unexpected payload as failure with repr for debugging
             return AgentResult(

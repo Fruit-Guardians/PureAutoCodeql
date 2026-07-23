@@ -54,6 +54,8 @@ tmp/
 *.mdbak
 output/
 results/
+.coverage
+htmlcov/
 
 # 案例工作区：默认忽略，仅跟踪模板
 projects/*

@@ -2,13 +2,10 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pure_auto_codeql.paths import prompts_dir
-
-if TYPE_CHECKING:
-    from pure_auto_codeql.utils.io import AgentResult
-from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
+from pure_auto_codeql.services.llm_service import AgentResult, MultiAgentAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -452,14 +449,6 @@ class CodeQLBreakpointAgent:
                     "data": {"error": str(e)}
                 })
 
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
-
             return AgentResult(content="", success=False, error=str(e))
 
     async def generate_flowstep(
@@ -533,14 +522,6 @@ class CodeQLBreakpointAgent:
                     "message": f"isAdditionalFlowStep条件生成失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
 
             return AgentResult(content="", success=False, error=str(e))
 
@@ -633,13 +614,5 @@ class CodeQLBreakpointAgent:
                     "message": f"CodeQL断点检测分析失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
 
             return AgentResult(content="", success=False, error=str(e))

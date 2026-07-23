@@ -2,15 +2,17 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from pure_auto_codeql.application import (
     AnalysisValidationError,
     validate_analysis_case,
 )
+from pure_auto_codeql.core.context import AnalysisConfig
 
 from .config import get_config
+from .durable_task_manager import get_durable_task_manager
 from .models import AnalysisRequest, AnalysisResult, AnalysisTaskInfo, TaskListResponse, TaskStatus
 from .task_manager import get_task_manager
 
@@ -31,19 +33,35 @@ async def start_analysis(
             detail=str(e),
         ) from e
 
+    api_config = get_config()
+    config = AnalysisConfig(
+        language=request.language,
+        requirement=request.requirement,
+        max_codeql_rounds=request.max_rounds,
+        task_timeout=request.timeout_seconds or api_config.task_timeout,
+        enable_cve_analysis=request.enable_cve_analysis,
+        enable_sink_analysis=request.enable_sink_analysis,
+        enable_source_analysis=request.enable_source_analysis,
+        enable_path_analysis=request.enable_path_analysis,
+        enable_codeql_generation=request.enable_codeql_generation,
+        enable_path_selection=request.enable_path_selection,
+        enable_breakpoint_recovery=request.enable_breakpoint_recovery,
+        enable_source_sink_fallback=request.enable_source_sink_fallback,
+        show_thinking=False,
+        refresh_intel=False,
+    )
+    try:
+        config.validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    durable_manager = get_durable_task_manager()
+    if durable_manager:
+        return await durable_manager.create_task(request.case_id, config)
+
     task_manager = get_task_manager()
-    task_id = task_manager.create_task(request.case_id)
-
-    config = {
-        'language': request.language,
-        'max_rounds': request.max_rounds,
-        'enable_cve_analysis': request.enable_cve_analysis,
-        'enable_sink_analysis': request.enable_sink_analysis,
-        'show_thinking': False,
-        'refresh_intel': False
-    }
-
-    background_tasks.add_task(task_manager.start_task, task_id, config)
+    task_id = task_manager.create_task(request.case_id, config)
+    background_tasks.add_task(task_manager.start_task, task_id)
 
     task_info = task_manager.get_task_status(task_id)
     if not task_info:
@@ -57,6 +75,13 @@ async def start_analysis(
 
 @router.get("/{task_id}/status", response_model=AnalysisTaskInfo)
 async def get_task_status(task_id: str) -> AnalysisTaskInfo:
+    durable_manager = get_durable_task_manager()
+    if durable_manager:
+        task_info = await durable_manager.get_task_status(task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"任务 '{task_id}' 不存在")
+        return task_info
+
     task_manager = get_task_manager()
     task_info = task_manager.get_task_status(task_id)
 
@@ -71,16 +96,20 @@ async def get_task_status(task_id: str) -> AnalysisTaskInfo:
 
 @router.get("/{task_id}/result", response_model=AnalysisResult)
 async def get_task_result(task_id: str) -> AnalysisResult:
-    task_manager = get_task_manager()
-
-    task_info = task_manager.get_task_status(task_id)
+    durable_manager = get_durable_task_manager()
+    task_manager = None if durable_manager else get_task_manager()
+    task_info = (
+        await durable_manager.get_task_status(task_id)
+        if durable_manager
+        else task_manager.get_task_status(task_id)
+    )
     if not task_info:
         raise HTTPException(
             status_code=404,
             detail=f"任务 '{task_id}' 不存在"
         )
 
-    if task_info.status == TaskStatus.PENDING:
+    if task_info.status == TaskStatus.QUEUED:
         raise HTTPException(
             status_code=409,
             detail="任务尚未开始执行"
@@ -98,13 +127,23 @@ async def get_task_result(task_id: str) -> AnalysisResult:
             detail="任务已被取消"
         )
 
+    if task_info.status == TaskStatus.TIMED_OUT:
+        raise HTTPException(
+            status_code=504,
+            detail=f"任务执行超时: {task_info.error}",
+        )
+
     if task_info.status == TaskStatus.FAILED:
         raise HTTPException(
             status_code=500,
             detail=f"任务执行失败: {task_info.error}"
         )
 
-    result = task_manager.get_task_result(task_id)
+    result = (
+        await durable_manager.get_task_result(task_id)
+        if durable_manager
+        else task_manager.get_task_result(task_id)
+    )
     if not result:
         raise HTTPException(
             status_code=404,
@@ -116,22 +155,30 @@ async def get_task_result(task_id: str) -> AnalysisResult:
 
 @router.delete("/{task_id}", status_code=200)
 async def cancel_task(task_id: str) -> dict:
-    task_manager = get_task_manager()
-
-    task_info = task_manager.get_task_status(task_id)
+    durable_manager = get_durable_task_manager()
+    task_manager = None if durable_manager else get_task_manager()
+    task_info = (
+        await durable_manager.get_task_status(task_id)
+        if durable_manager
+        else task_manager.get_task_status(task_id)
+    )
     if not task_info:
         raise HTTPException(
             status_code=404,
             detail=f"任务 '{task_id}' 不存在"
         )
 
-    if task_info.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+    if task_info.status not in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
         raise HTTPException(
             status_code=400,
             detail=f"无法取消状态为 '{task_info.status.value}' 的任务"
         )
 
-    success = await task_manager.cancel_task(task_id)
+    success = await (
+        durable_manager.cancel_task(task_id)
+        if durable_manager
+        else task_manager.cancel_task(task_id)
+    )
     if not success:
         raise HTTPException(
             status_code=500,
@@ -150,15 +197,16 @@ async def list_tasks(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页大小")
 ) -> TaskListResponse:
-    task_manager = get_task_manager()
-
     offset = (page - 1) * page_size
-
-    tasks, total = task_manager.list_tasks(
-        status_filter=status,
-        limit=page_size,
-        offset=offset
-    )
+    durable_manager = get_durable_task_manager()
+    if durable_manager:
+        tasks, total = await durable_manager.list_tasks(status, page_size, offset)
+    else:
+        tasks, total = get_task_manager().list_tasks(
+            status_filter=status,
+            limit=page_size,
+            offset=offset
+        )
 
     return TaskListResponse(
         tasks=tasks,
@@ -172,6 +220,10 @@ async def list_tasks(
 async def cleanup_old_tasks(
     max_age_hours: int = Query(24, ge=1, le=168, description="最大保留时间（小时）")
 ) -> dict:
+    if get_durable_task_manager():
+        return {
+            "message": "持久化模式由数据库保留策略管理历史任务",
+        }
     task_manager = get_task_manager()
     task_manager.cleanup_old_tasks(max_age_hours)
 
@@ -181,7 +233,7 @@ async def cleanup_old_tasks(
 
 
 @router.get("/{task_id}/stream")
-async def stream_task_output(task_id: str):
+async def stream_task_output(task_id: str, request: Request):
     """
     通过 Server-Sent Events (SSE) 流式输出任务的实时事件
 
@@ -195,6 +247,32 @@ async def stream_task_output(task_id: str):
         HTTPException 404: 任务不存在或事件队列未创建
         HTTPException 410: 任务已结束且事件队列已清理
     """
+    durable_manager = get_durable_task_manager()
+    if durable_manager:
+        task_info = await durable_manager.get_task_status(task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"任务 '{task_id}' 不存在")
+        after_id = request.headers.get("Last-Event-ID", "0-0")
+
+        async def durable_event_generator():
+            async for event in durable_manager.events(task_id, after_id):
+                payload = event.model_dump(mode="json")
+                yield (
+                    f"id: {event.event_id}\n"
+                    f"event: {event.type}\n"
+                    f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                )
+
+        return StreamingResponse(
+            durable_event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     task_manager = get_task_manager()
 
     task_info = task_manager.get_task_status(task_id)
@@ -205,7 +283,7 @@ async def stream_task_output(task_id: str):
         )
 
     if task_id not in task_manager._event_queues:
-        if task_info.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+        if task_info.status not in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
             raise HTTPException(
                 status_code=410,
                 detail=f"任务已结束，事件流不再可用。请使用 /api/analysis/{task_id}/result 获取最终结果"

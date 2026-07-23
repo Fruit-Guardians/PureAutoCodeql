@@ -1,5 +1,6 @@
 """CLI run-* entry points for case, direct-CodeQL, and source analyses."""
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -9,6 +10,7 @@ from pure_auto_codeql.core.context import AnalysisConfig
 from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
 from pure_auto_codeql.services.language_detector import LanguageDetector
 from pure_auto_codeql.services.llm_service import MultiAgentAnalyzer
+from pure_auto_codeql.services.process_control import ProcessScope, bind_process_scope
 from pure_auto_codeql.tools.codeql_compose import CodeQLComposeTool
 from pure_auto_codeql.utils.logger import (
     get_logger,
@@ -37,6 +39,16 @@ async def run_case_analysis(
     enable_sink_source_verification: bool = False,
     verification_retry_max: int = 3,
     verification_timeout: int = 30,
+    requirement: Optional[str] = None,
+    max_codeql_rounds: int = 5,
+    task_timeout: int = 3600,
+    enable_cve_analysis: bool = True,
+    enable_sink_analysis: bool = True,
+    enable_source_analysis: bool = True,
+    enable_path_analysis: bool = True,
+    enable_codeql_generation: bool = True,
+    enable_path_selection: bool = True,
+    enable_breakpoint_recovery: bool = False,
 ) -> None:
     """
     运行完整的案例分析
@@ -69,7 +81,24 @@ async def run_case_analysis(
         enable_sink_source_verification=enable_sink_source_verification,
         verification_retry_max=verification_retry_max,
         verification_timeout=verification_timeout,
+        language=language,
+        requirement=requirement,
+        max_codeql_rounds=max_codeql_rounds,
+        task_timeout=task_timeout,
+        enable_cve_analysis=enable_cve_analysis,
+        enable_sink_analysis=enable_sink_analysis,
+        enable_source_analysis=enable_source_analysis,
+        enable_path_analysis=enable_path_analysis,
+        enable_codeql_generation=enable_codeql_generation,
+        enable_path_selection=enable_path_selection,
+        enable_breakpoint_recovery=enable_breakpoint_recovery,
     )
+    try:
+        config.validate()
+    except ValueError as exc:
+        print_user_error(f"❌ 无效的分析配置: {exc}")
+        logger.error("无效的分析配置: %s", exc)
+        return
 
     # 显示模型提供商信息
     try:
@@ -103,7 +132,19 @@ async def run_case_analysis(
 
     # 创建并运行编排器
     orchestrator = AnalysisOrchestrator(config)
-    result = await orchestrator.analyze_case(case_id, language=language)
+    process_scope = ProcessScope()
+    try:
+        with bind_process_scope(process_scope):
+            result = await asyncio.wait_for(
+                orchestrator.analyze_case(case_id, language=language),
+                timeout=config.task_timeout,
+            )
+    except asyncio.TimeoutError:
+        print_user_error(f"❌ 分析超过 {config.task_timeout} 秒，任务已终止")
+        logger.error("分析任务超时: %s 秒", config.task_timeout)
+        return
+    finally:
+        process_scope.terminate_all()
 
     # 显示结果摘要
     if result.success:

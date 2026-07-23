@@ -49,6 +49,7 @@ class TemplateRefinementAgent(BasePromptAgent):
         values = {
             "LANGUAGE": lang,
             "TEMPLATE_FILE_PATH": str(template_path),
+            "TEMPLATE_CONTENT": template_path.read_text(encoding="utf-8"),
             "ERROR_TIDY_DOC": error_tidy_doc or "",
         }
         return self._fill_placeholders(template, values)

@@ -2,19 +2,17 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List
 
+from pure_auto_codeql.services.llm_service import AgentResult
+
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
     class MultiAgentAnalyzer:
         pass
 
 from pure_auto_codeql.prompts.path_analysis_prompts import build_path_analysis_prompt
+from pure_auto_codeql.services.language_capabilities import (
+    get_language_capabilities,
+    normalize_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +30,7 @@ class PathAnalysisAgent:
             source_root: 源码根目录绝对路径
         """
         self.analyzer = analyzer
-        self.language = language
+        self.language = normalize_language(language)
         self.source_root = source_root
         self.flow_step_types = [
             "assignment",
@@ -209,19 +207,10 @@ class PathAnalysisAgent:
             _agent_name = agent_name or "Path Analysis Agent"
             _agent_type = agent_type or "path_analysis"
 
-            # 检查语言是否支持
-            if self.language.lower() != "java":
-                logger.info(f"当前语言 {self.language} 不支持路径分析，跳过")
-                from dataclasses import dataclass
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
-
-                return AgentResult(
-                    content=json.dumps({"flow_steps": []}),
-                    success=True
+            capabilities = get_language_capabilities(self.language)
+            if not capabilities.path_analysis:
+                return AgentResult.skipped(
+                    f"path analysis is not supported for {self.language}"
                 )
 
             # 推送 AGENT_START 事件
@@ -251,13 +240,6 @@ class PathAnalysisAgent:
                         "message": error_msg,
                         "data": {"error": error_msg}
                     })
-
-                from dataclasses import dataclass
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
 
                 return AgentResult(
                     content=json.dumps({"flow_steps": []}),
@@ -294,13 +276,6 @@ class PathAnalysisAgent:
                     "flow_steps": flow_steps
                 }
 
-                from dataclasses import dataclass
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
-
                 result = AgentResult(
                     content=json.dumps(structured_result, ensure_ascii=False, indent=2),
                     success=True
@@ -333,13 +308,6 @@ class PathAnalysisAgent:
                     "message": f"路径分析失败: {str(exc)}",
                     "data": {"error": str(exc)}
                 })
-
-            from dataclasses import dataclass
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
 
             return AgentResult(
                 content=json.dumps({"flow_steps": []}),

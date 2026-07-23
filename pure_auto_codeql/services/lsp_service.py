@@ -11,6 +11,12 @@ from typing import Any, Dict
 
 import requests
 
+from pure_auto_codeql.services.process_control import (
+    process_group_popen_kwargs,
+    register_process,
+    terminate_process_tree,
+    unregister_process,
+)
 from pure_auto_codeql.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -47,12 +53,17 @@ class CodeQLLSPService:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                **process_group_popen_kwargs(),
             )
+            register_process(self.process)
 
             # 等待服务启动
             logger.info(f"等待LSP服务启动... (超时时间: {self.init_timeout}秒)")
             for i in range(self.init_timeout):  # 最多等待指定秒数
+                if self.process.poll() is not None:
+                    logger.error("LSP进程在服务就绪前退出: %s", self.process.returncode)
+                    return False
                 try:
                     response = requests.get(f"{self.base_url}/health", timeout=1)
                     if response.status_code == 200:
@@ -115,16 +126,15 @@ class CodeQLLSPService:
             except subprocess.TimeoutExpired:
                 # 如果进程没有正常结束，强制终止
                 try:
-                    self.process.terminate()
-                    self.process.wait(timeout=2)
+                    terminate_process_tree(self.process)
                 except subprocess.TimeoutExpired:
-                    self.process.kill()
-                    self.process.wait(timeout=1)
+                    terminate_process_tree(self.process)
 
             # 确保进程被清理
             if self.process.poll() is None:
-                self.process.kill()
+                terminate_process_tree(self.process)
 
+            unregister_process(self.process)
             self.process = None
 
             # 强制清理可能的端口占用

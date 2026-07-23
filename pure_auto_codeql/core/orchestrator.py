@@ -77,7 +77,7 @@ class AnalysisOrchestrator:
             )
 
             # 创建并执行分析流水线（包含输出处理）
-            pipeline = AnalysisPipeline.create_default_pipeline()
+            pipeline = AnalysisPipeline.create_default_pipeline(self.config)
             result = await pipeline.execute(context, config=self.config)
 
             # 显示执行摘要

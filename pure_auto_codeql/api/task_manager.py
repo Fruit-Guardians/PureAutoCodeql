@@ -1,10 +1,15 @@
 import asyncio
+import json
 import uuid
+from dataclasses import asdict, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 
+from pure_auto_codeql.analysis_models import AnalysisOutcome
 from pure_auto_codeql.core.context import AnalysisConfig
 from pure_auto_codeql.core.orchestrator import AnalysisOrchestrator
+from pure_auto_codeql.services.process_control import ProcessScope, bind_process_scope
 from pure_auto_codeql.utils.logger import get_logger
 
 from .config import get_config
@@ -19,48 +24,73 @@ class TaskManager:
         self._tasks: Dict[str, AnalysisTaskInfo] = {}
         self._results: Dict[str, AnalysisResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._task_configs: Dict[str, AnalysisConfig] = {}
         self._max_concurrent_tasks = max(1, get_config().max_concurrent_tasks)
         self._semaphore = asyncio.Semaphore(self._max_concurrent_tasks)
         self._event_queues: Dict[str, asyncio.Queue] = {}
         self._task_events: Dict[str, List[Dict]] = {}
         self._max_events_per_task = 1000
 
-    def create_task(self, case_id: str, config: Optional[dict] = None) -> str:
+    def create_task(self, case_id: str, config: Optional[AnalysisConfig] = None) -> str:
         task_id = str(uuid.uuid4())
+        analysis_config = config or AnalysisConfig()
+        analysis_config.validate()
+        safe_config = asdict(analysis_config)
+        safe_config["api_key"] = "***" if safe_config.get("api_key") else None
+        safe_config["event_callback"] = None
 
         task_info = AnalysisTaskInfo(
             task_id=task_id,
+            run_id=task_id,
             case_id=case_id,
-            status=TaskStatus.PENDING,
+            status=TaskStatus.QUEUED,
             created_at=datetime.now(),
-            progress="任务已创建，等待执行"
+            progress="任务已创建，等待执行",
+            effective_config=safe_config,
+            event_url=f"/api/v1/analysis/{task_id}/stream",
         )
 
         self._tasks[task_id] = task_info
+        self._task_configs[task_id] = analysis_config
         # 提前创建事件队列与历史，使得任务在排队（尚未获得信号量运行）阶段
         # 连接 SSE 也能拿到事件流，而不是收到 404。
-        self._event_queues.setdefault(task_id, asyncio.Queue())
+        self._event_queues.setdefault(task_id, asyncio.Queue(maxsize=self._max_events_per_task))
         self._task_events.setdefault(task_id, [])
         return task_id
 
-    async def start_task(self, task_id: str, config: Optional[dict] = None) -> bool:
+    async def start_task(self, task_id: str, config: Optional[AnalysisConfig] = None) -> bool:
         if task_id not in self._tasks:
             return False
 
         task_info = self._tasks[task_id]
-        if task_info.status != TaskStatus.PENDING or task_id in self._running_tasks:
+        if task_info.status != TaskStatus.QUEUED or task_id in self._running_tasks:
             return False
 
         task_info.progress = "任务已排队，等待执行"
 
+        effective_config = self._coerce_config(
+            config or self._task_configs.get(task_id) or AnalysisConfig()
+        )
         background_task = asyncio.create_task(
-            self._run_queued_analysis(task_id, task_info.case_id, config)
+            self._run_queued_analysis(task_id, task_info.case_id, effective_config)
         )
         self._running_tasks[task_id] = background_task
 
         return True
 
-    async def _run_queued_analysis(self, task_id: str, case_id: str, config: Optional[dict] = None):
+    @staticmethod
+    def _coerce_config(config) -> AnalysisConfig:
+        """Accept the pre-v1 dictionary form during the compatibility window."""
+        if isinstance(config, AnalysisConfig):
+            return config
+        if isinstance(config, dict):
+            values = dict(config)
+            if "max_rounds" in values:
+                values["max_codeql_rounds"] = values.pop("max_rounds")
+            return AnalysisConfig(**values)
+        raise TypeError(f"Unsupported analysis config type: {type(config).__name__}")
+
+    async def _run_queued_analysis(self, task_id: str, case_id: str, config: AnalysisConfig):
         task_info = self._tasks[task_id]
         try:
             async with self._semaphore:
@@ -69,25 +99,49 @@ class TaskManager:
                 task_info.status = TaskStatus.RUNNING
                 task_info.started_at = datetime.now()
                 task_info.progress = "正在初始化分析环境..."
-                await self._run_analysis(task_id, case_id, config)
+                process_scope = ProcessScope()
+                with bind_process_scope(process_scope):
+                    try:
+                        await asyncio.wait_for(
+                            self._run_analysis(task_id, case_id, config),
+                            timeout=config.task_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        process_scope.terminate_all()
+                        task_info.status = TaskStatus.TIMED_OUT
+                        task_info.error = f"任务超过 {config.task_timeout} 秒超时"
+                        task_info.progress = "任务执行超时"
+                        task_info.completed_at = datetime.now()
+                        await self._record_event(
+                            task_id,
+                            {
+                                "type": "error",
+                                "timestamp": datetime.now().isoformat(),
+                                "step_name": "analysis",
+                                "message": task_info.error,
+                                "data": {"task_id": task_id, "timed_out": True},
+                            },
+                        )
+                    finally:
+                        process_scope.terminate_all()
         finally:
             self._running_tasks.pop(task_id, None)
 
 
-    async def _run_analysis(self, task_id: str, case_id: str, config: Optional[dict] = None):
+    async def _run_analysis(self, task_id: str, case_id: str, config: AnalysisConfig):
         task_info = self._tasks[task_id]
 
         # Phase 4.1 & 4.2: 复用 create_task 时已建立的事件队列与历史
         # （若因兼容路径缺失则惰性创建）
-        event_queue = self._event_queues.setdefault(task_id, asyncio.Queue())
+        self._event_queues.setdefault(
+            task_id,
+            asyncio.Queue(maxsize=self._max_events_per_task),
+        )
         self._task_events.setdefault(task_id, [])
 
         async def event_callback(event):
             """事件回调函数，将事件推送到队列和历史存储"""
-            await event_queue.put(event)
-            # 存储到事件历史（限制最大数量）
-            if len(self._task_events[task_id]) < self._max_events_per_task:
-                self._task_events[task_id].append(event)
+            await self._record_event(task_id, event)
 
         try:
             # Phase 4.3: 推送分析开始事件
@@ -100,25 +154,20 @@ class TaskManager:
                 "data": {"case_id": case_id, "task_id": task_id}
             })
 
-            analysis_config = AnalysisConfig(
-                show_thinking=config.get('show_thinking', False) if config else False,
-                refresh_intel=config.get('refresh_intel', False) if config else False,
-                output_file=None,
-                event_callback=event_callback
-            )
+            analysis_config = replace(config, output_file=None, event_callback=event_callback)
 
             orchestrator = AnalysisOrchestrator(analysis_config)
 
             task_info.progress = "正在执行CVE分析..."
             result = await orchestrator.analyze_case(
                 case_id,
-                language=config.get("language") if config else None,
+                language=config.language,
             )
 
             self._results[task_id] = self._convert_to_api_result(task_id, case_id, result)
 
-            if result.success:
-                task_info.status = TaskStatus.COMPLETED
+            task_info.status = self._status_from_outcome(result.outcome)
+            if task_info.status != TaskStatus.FAILED:
                 task_info.progress = "分析完成"
                 # Phase 4.4: 推送完成事件
                 await event_callback({
@@ -126,7 +175,11 @@ class TaskManager:
                     "timestamp": datetime.now().isoformat(),
                     "step_name": "analysis",
                     "message": "分析任务完成",
-                    "data": {"task_id": task_id, "success": True}
+                    "data": {
+                        "task_id": task_id,
+                        "success": result.success,
+                        "outcome": result.outcome.value,
+                    }
                 })
             else:
                 task_info.status = TaskStatus.FAILED
@@ -180,6 +233,33 @@ class TaskManager:
         finally:
             self._running_tasks.pop(task_id, None)
 
+    async def _record_event(self, task_id: str, event: dict) -> None:
+        queue = self._event_queues.setdefault(
+            task_id,
+            asyncio.Queue(maxsize=self._max_events_per_task),
+        )
+        history = self._task_events.setdefault(task_id, [])
+        if queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        queue.put_nowait(event)
+        history.append(event)
+        if len(history) > self._max_events_per_task:
+            del history[: len(history) - self._max_events_per_task]
+
+    @staticmethod
+    def _status_from_outcome(outcome: AnalysisOutcome) -> TaskStatus:
+        return {
+            AnalysisOutcome.COMPLETED_WITH_FINDINGS: TaskStatus.COMPLETED_WITH_FINDINGS,
+            AnalysisOutcome.COMPLETED_NO_FINDINGS: TaskStatus.COMPLETED_NO_FINDINGS,
+            AnalysisOutcome.PARTIAL: TaskStatus.PARTIAL,
+            AnalysisOutcome.CANCELLED: TaskStatus.CANCELLED,
+            AnalysisOutcome.TIMED_OUT: TaskStatus.TIMED_OUT,
+            AnalysisOutcome.FAILED: TaskStatus.FAILED,
+        }.get(outcome, TaskStatus.COMPLETED_NO_FINDINGS)
+
     def _convert_to_api_result(self, task_id: str, case_id: str, core_result) -> AnalysisResult:
         cve_analysis = None
         if hasattr(core_result, 'cve_result') and core_result.cve_result:
@@ -225,14 +305,34 @@ class TaskManager:
         return AnalysisResult(
             task_id=task_id,
             case_id=case_id,
-            status=TaskStatus.COMPLETED if core_result.success else TaskStatus.FAILED,
+            status=self._status_from_outcome(core_result.outcome),
             cve_analysis=cve_analysis,
             sink_analysis=sink_analysis,
             source_analysis=source_analysis,
             codeql_query=codeql_query,
             query_results=query_results,
-            output_dir=output_dir
+            output_dir=output_dir,
+            outcome=core_result.outcome.value,
+            steps={
+                name: step_result.to_dict()
+                for name, step_result in core_result.step_results.items()
+            },
+            manifest=self._read_manifest(output_dir),
+            artifacts=[
+                artifact.to_dict()
+                for artifact in getattr(core_result, "artifacts", [])
+            ],
         )
+
+    @staticmethod
+    def _read_manifest(output_dir: Optional[str]) -> Optional[dict]:
+        if not output_dir:
+            return None
+        try:
+            manifest_path = Path(output_dir) / "manifest.json"
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
 
     def get_task_status(self, task_id: str) -> Optional[AnalysisTaskInfo]:
         return self._tasks.get(task_id)
@@ -246,7 +346,7 @@ class TaskManager:
 
         task_info = self._tasks[task_id]
 
-        if task_info.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+        if task_info.status not in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
             return False
 
         if task_id in self._running_tasks:
@@ -260,12 +360,6 @@ class TaskManager:
         task_info.status = TaskStatus.CANCELLED
         task_info.progress = "任务已取消"
         task_info.completed_at = datetime.now()
-
-        # Phase 4.6: 清理事件队列
-        if task_id in self._event_queues:
-            del self._event_queues[task_id]
-        if task_id in self._task_events:
-            del self._task_events[task_id]
 
         return True
 
@@ -287,7 +381,7 @@ class TaskManager:
         to_remove = []
 
         for task_id, task_info in self._tasks.items():
-            if task_info.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            if task_info.status not in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
                 age = (now - task_info.created_at).total_seconds() / 3600
                 if age > max_age_hours:
                     to_remove.append(task_id)
@@ -296,6 +390,7 @@ class TaskManager:
             del self._tasks[task_id]
             if task_id in self._results:
                 del self._results[task_id]
+            self._task_configs.pop(task_id, None)
             # Phase 4.6: 清理事件队列和历史
             if task_id in self._event_queues:
                 del self._event_queues[task_id]

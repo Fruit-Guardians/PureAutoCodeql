@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -12,10 +11,17 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from pure_auto_codeql.observability import configure_telemetry
+
 from .analysis_routes import router as analysis_router
 from .config import get_config
+from .durable_task_manager import (
+    close_durable_task_manager,
+    get_durable_task_manager,
+)
 from .models import ErrorResponse, HealthResponse, VersionResponse
 from .projects_routes import router as projects_router
+from .security import SlidingWindowRateLimiter, TokenVerifier
 
 # 配置日志
 logging.basicConfig(
@@ -55,22 +61,36 @@ def _warn_on_insecure_posture(cfg) -> None:
         )
 
 
+def _enforce_security_posture(cfg) -> None:
+    if cfg.host not in _LOOPBACK_HOSTS and not cfg.auth_token:
+        raise RuntimeError(
+            "API refuses to bind a non-loopback address without API_AUTH_TOKEN"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
+    configure_telemetry("pure-auto-codeql-api")
     logger.info("Starting PureAutoCodeql API Server...")
     logger.info(f"Projects directory: {config.projects_dir}")
     logger.info(f"Server will listen on {config.host}:{config.port}")
     _warn_on_insecure_posture(config)
+    _enforce_security_posture(config)
+    durable_manager = get_durable_task_manager()
+    if durable_manager:
+        await durable_manager.initialize()
 
     yield
 
     # 关闭时执行
     logger.info("Shutting down PureAutoCodeql API Server...")
+    await close_durable_task_manager()
 
 
 # 获取配置
 config = get_config()
+rate_limiter = SlidingWindowRateLimiter(config.rate_limit_per_minute)
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -101,8 +121,13 @@ async def log_requests(request: Request, call_next):
 
     public_paths = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
     if config.auth_token and request.url.path not in public_paths:
-        expected = f"Bearer {config.auth_token}"
-        if not secrets.compare_digest(request.headers.get("Authorization", ""), expected):
+        if not TokenVerifier(config.auth_token).verify(request.headers.get("Authorization", "")):
+            logger.warning(
+                "audit auth_denied method=%s path=%s client=%s",
+                request.method,
+                request.url.path,
+                request.client.host if request.client else "unknown",
+            )
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content=ErrorResponse(
@@ -111,6 +136,17 @@ async def log_requests(request: Request, call_next):
                     timestamp=datetime.now(),
                 ).model_dump(mode="json"),
             )
+    identity = request.client.host if request.client else "unknown"
+    if not rate_limiter.allow(identity):
+        logger.warning("audit rate_limited path=%s client=%s", request.url.path, identity)
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=ErrorResponse(
+                error="RateLimited",
+                message="Request rate limit exceeded",
+                timestamp=datetime.now(),
+            ).model_dump(mode="json"),
+        )
 
     if config.log_requests:
         logger.info(f"[*] {request.method} {request.url.path}")
@@ -174,13 +210,21 @@ async def not_found_handler(request: Request, exc):
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check() -> HealthResponse:
+    durable_manager = get_durable_task_manager()
+    dependencies = await durable_manager.health() if durable_manager else {"mode": True}
     return HealthResponse(
-        status="healthy",
+        status="healthy" if all(dependencies.values()) else "unhealthy",
         version=config.api_version,
         timestamp=datetime.now(),
+        dependencies=dependencies,
     )
 
 
+@app.get(
+    f"{config.legacy_api_prefix}/version",
+    response_model=VersionResponse,
+    include_in_schema=False,
+)
 @app.get(f"{config.api_prefix}/version", response_model=VersionResponse, tags=["System"])
 async def get_version() -> VersionResponse:
     return VersionResponse(
@@ -208,6 +252,11 @@ logger.info("[*] Registered projects routes")
 # 集成分析任务路由
 app.include_router(analysis_router, prefix=config.api_prefix)
 logger.info("[*] Registered analysis routes")
+
+# Transitional compatibility surface. New clients should use /api/v1.
+if config.legacy_api_prefix and config.legacy_api_prefix != config.api_prefix:
+    app.include_router(projects_router, prefix=config.legacy_api_prefix, include_in_schema=False)
+    app.include_router(analysis_router, prefix=config.legacy_api_prefix, include_in_schema=False)
 
 
 def start_server(

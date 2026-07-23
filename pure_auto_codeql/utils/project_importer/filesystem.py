@@ -8,10 +8,44 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Set
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ImportLimits:
+    max_files: int = 50_000
+    max_total_bytes: int = 5 * 1024**3
+    max_compressed_bytes: int = 2 * 1024**3
+    max_single_file_bytes: int = 512 * 1024**2
+    max_compression_ratio: float = 200.0
+    max_path_depth: int = 40
+    max_nested_archives: int = 0
+
+
+DEFAULT_IMPORT_LIMITS = ImportLimits()
+
+
+def _validate_import_tree(source: Path, limits: ImportLimits = DEFAULT_IMPORT_LIMITS) -> None:
+    files = 0
+    total_bytes = 0
+    for entry in source.rglob("*"):
+        if entry.is_symlink() or not entry.is_file():
+            continue
+        files += 1
+        size = entry.stat().st_size
+        total_bytes += size
+        if files > limits.max_files:
+            raise ValueError(f"Import contains more than {limits.max_files} files")
+        if size > limits.max_single_file_bytes:
+            raise ValueError(f"Import file exceeds size limit: {entry}")
+        if total_bytes > limits.max_total_bytes:
+            raise ValueError("Import exceeds total uncompressed size limit")
+        if len(entry.relative_to(source).parts) > limits.max_path_depth:
+            raise ValueError(f"Import path nesting is too deep: {entry}")
 
 
 def _safe_rmtree(path: Path) -> None:
@@ -72,6 +106,7 @@ def _reset_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 def _copy_dir_contents(src: Path, dst: Path) -> None:
+    _validate_import_tree(src)
     _reset_directory(dst)
     source_root = src.resolve()
     for entry in src.iterdir():
@@ -130,13 +165,38 @@ def _copy_entry_safely(
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(entry, destination)
 
-def _safe_extract_zip(zip_path: Path, dst: Path) -> None:
+def _safe_extract_zip(
+    zip_path: Path,
+    dst: Path,
+    limits: ImportLimits = DEFAULT_IMPORT_LIMITS,
+) -> None:
+    if zip_path.stat().st_size > limits.max_compressed_bytes:
+        raise ValueError("Compressed archive exceeds size limit")
     _reset_directory(dst)
     with zipfile.ZipFile(zip_path, "r") as archive:
-        for member in archive.infolist():
+        members = archive.infolist()
+        if len(members) > limits.max_files:
+            raise ValueError(f"Archive contains more than {limits.max_files} entries")
+        total_size = sum(member.file_size for member in members)
+        compressed_size = sum(member.compress_size for member in members)
+        if total_size > limits.max_total_bytes:
+            raise ValueError("Archive exceeds total uncompressed size limit")
+        ratio = total_size / max(compressed_size, 1)
+        if ratio > limits.max_compression_ratio:
+            raise ValueError("Archive compression ratio exceeds safety limit")
+        nested_archives = 0
+        for member in members:
             member_path = Path(member.filename)
             if member_path.is_absolute() or ".." in member_path.parts:
                 raise ValueError(f"Unsafe path detected in zip archive: {member.filename}")
+            if len(member_path.parts) > limits.max_path_depth:
+                raise ValueError(f"Archive path nesting is too deep: {member.filename}")
+            if member.file_size > limits.max_single_file_bytes:
+                raise ValueError(f"Archive member exceeds size limit: {member.filename}")
+            if member_path.suffix.lower() in {".zip", ".jar", ".war", ".ear"}:
+                nested_archives += 1
+                if nested_archives > limits.max_nested_archives:
+                    raise ValueError(f"Nested archives are not allowed: {member.filename}")
             file_type = (member.external_attr >> 16) & 0o170000
             if file_type == 0o120000:
                 raise ValueError(f"Symlink entries are not allowed in zip archive: {member.filename}")

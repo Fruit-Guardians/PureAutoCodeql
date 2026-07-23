@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from pure_auto_codeql.analysis_models import StepResult
+
 from ..context import AnalysisContext
 
 
@@ -17,3 +19,15 @@ class AnalysisStep(ABC):
     async def execute(self, context: AnalysisContext) -> Any:
         """执行分析步骤。"""
         pass
+
+
+class SkippedAnalysisStep(AnalysisStep):
+    """A configured pipeline step that is intentionally not executed."""
+
+    def __init__(self, name: str, reason: str):
+        super().__init__(name)
+        self.reason = reason
+
+    async def execute(self, context: AnalysisContext) -> StepResult:
+        del context
+        return StepResult.skipped(self.reason)

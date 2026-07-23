@@ -67,7 +67,8 @@ class APIConfig(BaseSettings):
     )
 
     # API配置
-    api_prefix: str = Field(default="/api", description="API路径前缀")
+    api_prefix: str = Field(default="/api/v1", description="API路径前缀")
+    legacy_api_prefix: str = Field(default="/api", description="兼容API路径前缀")
     api_title: str = Field(default="PureAutoCodeql API", description="API标题")
     api_description: str = Field(
         default="CodeQL自动化漏洞分析系统HTTP API",
@@ -75,6 +76,7 @@ class APIConfig(BaseSettings):
     )
     api_version: str = Field(default="0.1.0", description="API版本")
     auth_token: str = Field(default="", description="API Bearer token；为空时不启用认证")
+    rate_limit_per_minute: int = Field(default=120, ge=1, description="每个客户端每分钟请求上限")
 
     # 日志配置
     log_level: str = Field(default="INFO", description="日志级别")

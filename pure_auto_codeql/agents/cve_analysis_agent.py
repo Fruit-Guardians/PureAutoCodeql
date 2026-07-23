@@ -1,15 +1,9 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from pure_auto_codeql.services.llm_service import AgentResult
+
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
     class MultiAgentAnalyzer:
         pass
 
@@ -133,13 +127,5 @@ class CVEAnalysisAgent:
                     "message": f"CVE分析失败: {str(e)}",
                     "data": {"error": str(e)}
                 })
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
 
             return AgentResult(content="", success=False, error=str(e))

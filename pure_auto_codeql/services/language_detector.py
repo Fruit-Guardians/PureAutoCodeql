@@ -6,6 +6,7 @@
 from pathlib import Path
 from typing import Dict, List
 
+from pure_auto_codeql.services.language_capabilities import LANGUAGE_CAPABILITIES
 from pure_auto_codeql.utils.case import CasePaths
 
 
@@ -75,7 +76,7 @@ class LanguageDetector:
 
     def get_supported_languages(self) -> List[str]:
         """获取支持的编程语言列表。"""
-        return list(self.language_extensions.keys())
+        return list(LANGUAGE_CAPABILITIES)
 
     def is_supported_language(self, language: str) -> bool:
         """检查是否支持指定的编程语言。"""

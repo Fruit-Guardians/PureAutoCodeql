@@ -5,15 +5,15 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
+from pydantic import ValidationError
+
+from pure_auto_codeql.analysis_schemas import (
+    SourceAnalysisOutput,
+    normalize_source_candidate,
+)
+from pure_auto_codeql.services.llm_service import AgentResult
+
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
-    @dataclass
-    class AgentResult:
-        content: str
-        success: bool
-        error: str = None
-
     class MultiAgentAnalyzer:
         pass
 
@@ -190,7 +190,17 @@ class UnifiedSourceAnalysisAgent:
 
         try:
             # 提取 candidates（源点候选项）
-            candidates = data.get("candidates", [])
+            candidates = []
+            for index, candidate in enumerate(data.get("candidates", [])):
+                try:
+                    candidates.append(
+                        normalize_source_candidate(
+                            candidate,
+                            Path(self.source_root),
+                        ).model_dump(mode="json")
+                    )
+                except (TypeError, ValidationError, ValueError) as exc:
+                    logger.warning("Source 候选 %s 不符合结构化契约，已跳过: %s", index + 1, exc)
             logger.info(f"提取到 {len(candidates)} 个源点候选项")
 
             # 提取 source_to_sink_paths（路径数据）
@@ -209,7 +219,19 @@ class UnifiedSourceAnalysisAgent:
             if len(valid_paths) < len(source_to_sink_paths):
                 logger.warning(f"共 {len(source_to_sink_paths)} 条路径，{len(valid_paths)} 条通过验证")
 
-            return candidates, valid_paths, data
+            validated = SourceAnalysisOutput.model_validate(
+                {
+                    **data,
+                    "candidates": candidates,
+                    "source_to_sink_paths": valid_paths,
+                }
+            )
+            normalized_data = validated.model_dump(mode="json")
+            return (
+                normalized_data["candidates"],
+                normalized_data["source_to_sink_paths"],
+                normalized_data,
+            )
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON 解析失败: {e}")
@@ -249,14 +271,6 @@ class UnifiedSourceAnalysisAgent:
             source_paths = self.find_source_files(language, directory)
 
             if not source_paths:
-                from dataclasses import dataclass
-
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
-
                 result = AgentResult(content=json.dumps({"candidates": [], "source_to_sink_paths": []}), success=True)
 
                 # 推送完成事件
@@ -303,14 +317,6 @@ class UnifiedSourceAnalysisAgent:
                 }
 
                 # 更新 result.content 为结构化的 JSON
-                from dataclasses import dataclass
-
-                @dataclass
-                class AgentResult:
-                    content: str
-                    success: bool
-                    error: str = None
-
                 result = AgentResult(
                     content=json.dumps(structured_result, ensure_ascii=False, indent=2),
                     success=True
@@ -342,14 +348,6 @@ class UnifiedSourceAnalysisAgent:
                     "message": f"Source点分析失败: {str(exc)}",
                     "data": {"error": str(exc)}
                 })
-
-            from dataclasses import dataclass
-
-            @dataclass
-            class AgentResult:
-                content: str
-                success: bool
-                error: str = None
 
             return AgentResult(
                 content="",

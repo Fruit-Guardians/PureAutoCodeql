@@ -3,7 +3,7 @@
 """
 
 from ._llm_config import _get_llm_config_from_context
-from .base import AnalysisStep
+from .base import AnalysisStep, SkippedAnalysisStep
 from .executor import AnalysisPipeline
 from .steps import (
     CodeQLGenerationStep,
@@ -16,6 +16,7 @@ from .tags import sanitize_tag
 
 __all__ = [
     "AnalysisStep",
+    "SkippedAnalysisStep",
     "AnalysisPipeline",
     "CVEAnalysisStep",
     "SinkAnalysisStep",

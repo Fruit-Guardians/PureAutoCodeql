@@ -4,16 +4,21 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import time
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
+from pure_auto_codeql.analysis_models import ErrorDetail, StepResult
+from pure_auto_codeql.observability import step_duration, step_span
+from pure_auto_codeql.services.artifacts import ArtifactRegistry
 from pure_auto_codeql.services.path_selection import PathSelectionResult, PathSelectionService
 
 from ..context import AnalysisConfig, AnalysisContext, AnalysisResult
 from ._llm_config import _get_llm_config_from_context
-from .base import AnalysisStep
+from .base import AnalysisStep, SkippedAnalysisStep
 from .steps import (
     CodeQLGenerationStep,
     CVEAnalysisStep,
@@ -33,14 +38,23 @@ class AnalysisPipeline:
         self.steps = steps
 
     @classmethod
-    def create_default_pipeline(cls) -> "AnalysisPipeline":
+    def create_default_pipeline(
+        cls,
+        config: Optional[AnalysisConfig] = None,
+    ) -> "AnalysisPipeline":
         """创建默认的分析流水线。"""
+        config = config or AnalysisConfig()
+        config.validate()
+        configured_steps = [
+            ("cve_analysis", config.enable_cve_analysis, CVEAnalysisStep),
+            ("sink_analysis", config.enable_sink_analysis, SinkAnalysisStep),
+            ("source_analysis", config.enable_source_analysis, SourceAnalysisStep),
+            ("path_analysis", config.enable_path_analysis, PathAnalysisStep),
+            ("codeql_generation", config.enable_codeql_generation, CodeQLGenerationStep),
+        ]
         steps = [
-            CVEAnalysisStep(),
-            SinkAnalysisStep(),
-            SourceAnalysisStep(),
-            PathAnalysisStep(),  # 添加路径分析步骤
-            CodeQLGenerationStep(),
+            step_cls() if enabled else SkippedAnalysisStep(name, "disabled by analysis configuration")
+            for name, enabled, step_cls in configured_steps
         ]
         return cls(steps)
 
@@ -52,6 +66,7 @@ class AnalysisPipeline:
             language=context.language
         )
         config = config or AnalysisConfig()
+        config.validate()
 
         # 将配置存储到上下文中，供步骤使用
         context._config = config
@@ -59,8 +74,21 @@ class AnalysisPipeline:
         try:
             for step in self.steps:
                 logger.info(f"开始执行步骤: {step.name}")
-                step_result = await step.execute(context)
+                step_started = time.monotonic()
+                with step_span(context.case_id, step.name):
+                    step_result = await step.execute(context)
+                step_duration.record(
+                    time.monotonic() - step_started,
+                    {"analysis.step": step.name, "analysis.language": context.language},
+                )
+                if not isinstance(step_result, StepResult):
+                    step_result = StepResult(
+                        content=getattr(step_result, "content", step_result),
+                        success=getattr(step_result, "success", True),
+                        error=getattr(step_result, "error", None),
+                    )
                 context.add_result(step.name, step_result)
+                result.step_results[step.name] = step_result
 
                 # 将结果映射到AnalysisResult
                 if step.name == "cve_analysis":
@@ -79,12 +107,22 @@ class AnalysisPipeline:
                 if hasattr(step_result, 'success') and not step_result.success:
                     result.success = False
                     result.error_message = f"步骤 {step.name} 失败: {step_result.error}"
+                    result.error_detail = step_result.error_detail or ErrorDetail(
+                        code="pipeline_step_failed",
+                        message=result.error_message,
+                        details={"step": step.name},
+                    )
                     logger.error(f"步骤 {step.name} 执行失败: {step_result.error}")
                     break
 
         except Exception as e:
             result.success = False
             result.error_message = str(e)
+            result.error_detail = ErrorDetail(
+                code="pipeline_exception",
+                message=str(e),
+                category="pipeline",
+            )
             logger.exception(f"分析流水线执行异常: {e}")
 
         finally:
@@ -92,6 +130,7 @@ class AnalysisPipeline:
 
             # 整合输出文件到统一文件夹
             await self._consolidate_output_files(context, result, config)
+            result.finalize_outcome()
 
         return result
 
@@ -158,7 +197,7 @@ class AnalysisPipeline:
                 execution_result=result.codeql_execution_result,
             )
 
-            if json_result_path:
+            if json_result_path and config.enable_path_selection:
                 path_selection_output = await self._run_path_selection(
                     context=context,
                     run_dir=run_dir,
@@ -170,8 +209,43 @@ class AnalysisPipeline:
                 if path_selection_output:
                     context.add_result("path_selection", path_selection_output)
                     result.path_selection_result = path_selection_output
+                    result.step_results["path_selection"] = StepResult(
+                        content={
+                            "selected_paths": len(
+                                getattr(path_selection_output, "selected_paths", []) or []
+                            )
+                        },
+                        metrics={
+                            "selected_paths": len(
+                                getattr(path_selection_output, "selected_paths", []) or []
+                            )
+                        },
+                    )
+                else:
+                    result.step_results["path_selection"] = StepResult.skipped(
+                        "path selection produced no result"
+                    )
             else:
-                logger.warning("路径选择模块跳过：未生成 dataFlowPath JSON")
+                reason = (
+                    "disabled by analysis configuration"
+                    if not config.enable_path_selection
+                    else "未生成 dataFlowPath JSON"
+                )
+                logger.warning("路径选择模块跳过：%s", reason)
+                result.step_results["path_selection"] = StepResult.skipped(reason)
+
+            result.finalize_outcome()
+            manifest_path = self._write_run_manifest(
+                context=context,
+                result=result,
+                config=config,
+                run_dir=run_dir,
+            )
+            if manifest_path:
+                registry = ArtifactRegistry(run_dir)
+                result.artifacts = registry.scan(exclude={"manifest.json"})
+                result.artifacts.append(registry.register(manifest_path))
+                logger.info("运行清单已写入: %s", manifest_path)
 
         except PermissionError as e:
             error_msg = f"文件权限错误，无法写入输出文件: {e}"
@@ -185,6 +259,69 @@ class AnalysisPipeline:
             error_msg = f"输出文件整合失败: {e}"
             logger.exception(error_msg)
             result.error_message = (result.error_message or "") + f"\n{error_msg}"
+
+    def _write_run_manifest(
+        self,
+        *,
+        context: AnalysisContext,
+        result: AnalysisResult,
+        config: AnalysisConfig,
+        run_dir: Path,
+    ) -> Optional[Path]:
+        """Write a reproducibility manifest after all run artifacts are finalized."""
+
+        try:
+            registry = ArtifactRegistry(run_dir)
+            artifacts = [artifact.to_dict() for artifact in registry.scan(exclude={"manifest.json"})]
+
+            effective_config = asdict(config)
+            effective_config["api_key"] = "***" if effective_config.get("api_key") else None
+            effective_config["event_callback"] = bool(config.event_callback)
+
+            manifest = {
+                "schema_version": 1,
+                "case_id": result.case_id,
+                "cve_id": getattr(context.cve_assets, "cve_id", None),
+                "language": result.language,
+                "outcome": result.outcome.value,
+                "success": result.success,
+                "execution_time_seconds": result.execution_time,
+                "git_commit": self._command_version(["git", "rev-parse", "HEAD"]),
+                "codeql_version": self._command_version(["codeql", "version", "--format=terse"]),
+                "effective_config": effective_config,
+                "steps": {
+                    name: step_result.to_dict()
+                    for name, step_result in result.step_results.items()
+                },
+                "warnings": result.warnings,
+                "error": result.error_detail.to_dict() if result.error_detail else None,
+                "artifacts": artifacts,
+            }
+            manifest_path = run_dir / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, default=str),
+                encoding=config.output_encoding,
+            )
+            return manifest_path
+        except Exception:
+            logger.warning("写入运行清单失败", exc_info=True)
+            return None
+
+    @staticmethod
+    def _command_version(command: list[str]) -> Optional[str]:
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if completed.returncode == 0:
+                return completed.stdout.strip() or completed.stderr.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return None
 
     async def _process_sarif_files(
         self,

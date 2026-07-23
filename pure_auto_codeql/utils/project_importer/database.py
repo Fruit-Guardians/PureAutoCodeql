@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -252,6 +253,7 @@ def _run_docker_build(
 
     abs_source = source_root.resolve()
     abs_db_path = db_path.resolve()
+    container_user = f"{getattr(os, 'getuid', lambda: 65534)()}:{getattr(os, 'getgid', lambda: 65534)()}"
 
     # 清理旧的数据库目录（避免 Docker 内 CodeQL 检测到残留文件）
     if abs_db_path.exists():
@@ -264,12 +266,19 @@ def _run_docker_build(
     # 2. 构造 Docker 命令
     cmd = [
         "docker", "run", "--rm",
-        # 资源限制：给予充足的内存和CPU
-        "--memory=8g",  # 8GB 内存
-        "--cpus=4",     # 4个CPU核心
-        "--shm-size=2g", # 共享内存
+        "--user", container_user,
+        "--read-only",
+        "--network=none",
+        "--security-opt=no-new-privileges",
+        "--cap-drop=ALL",
+        "--pids-limit=512",
+        "--memory=8g",
+        "--cpus=4",
+        "--shm-size=2g",
+        "--tmpfs=/tmp:rw,noexec,nosuid,size=1g",
+        "--tmpfs=/work:rw,nosuid,size=4g",
         # 挂载源码
-        "-v", f"{abs_source}:/src",
+        "-v", f"{abs_source}:/src:ro",
         # 挂载数据库目录：直接挂载到 /out/db
         # 这样容器内写入 /out/db/... 就会直接写入宿主机的 db_path/...
         "-v", f"{abs_db_path}:/out/db",

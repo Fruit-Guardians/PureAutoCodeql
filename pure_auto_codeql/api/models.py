@@ -78,11 +78,16 @@ class ProjectImportResponse(BaseModel):
 class TaskStatus(str, Enum):
     """任务状态枚举"""
 
-    PENDING = "pending"
+    QUEUED = "queued"
+    PENDING = "queued"  # compatibility alias
     RUNNING = "running"
-    COMPLETED = "completed"
+    COMPLETED_WITH_FINDINGS = "completed_with_findings"
+    COMPLETED_NO_FINDINGS = "completed_no_findings"
+    PARTIAL = "partial"
+    COMPLETED = "completed_no_findings"  # compatibility alias
     FAILED = "failed"
     CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class AnalysisRequest(BaseModel):
@@ -93,13 +98,21 @@ class AnalysisRequest(BaseModel):
     requirement: Optional[str] = Field(None, description="CodeQL查询需求描述")
     max_rounds: int = Field(5, ge=1, le=10, description="最大迭代轮数")
     enable_cve_analysis: bool = Field(True, description="是否启用CVE分析")
-    enable_sink_analysis: bool = Field(True, description="是否启用Sink/Source分析")
+    enable_sink_analysis: bool = Field(True, description="是否启用Sink分析")
+    enable_source_analysis: bool = Field(True, description="是否启用Source分析")
+    enable_path_analysis: bool = Field(True, description="是否启用路径流转分析")
+    enable_codeql_generation: bool = Field(True, description="是否启用CodeQL生成")
+    enable_path_selection: bool = Field(True, description="是否启用路径筛选")
+    enable_breakpoint_recovery: bool = Field(False, description="空结果时是否启用断流恢复")
+    enable_source_sink_fallback: bool = Field(False, description="是否启用Source/Sink回退查询")
+    timeout_seconds: Optional[int] = Field(None, ge=1, le=86400, description="任务超时秒数")
 
 
 class AnalysisTaskInfo(BaseModel):
     """分析任务信息"""
 
     task_id: str = Field(..., description="任务ID")
+    run_id: Optional[str] = Field(None, description="运行ID；当前与task_id一致")
     case_id: str = Field(..., description="项目案例ID")
     status: TaskStatus = Field(..., description="任务状态")
     created_at: datetime = Field(..., description="创建时间")
@@ -107,6 +120,8 @@ class AnalysisTaskInfo(BaseModel):
     completed_at: Optional[datetime] = Field(None, description="完成时间")
     progress: Optional[str] = Field(None, description="进度信息")
     error: Optional[str] = Field(None, description="错误信息")
+    effective_config: Optional[Dict[str, Any]] = Field(None, description="去敏后的有效配置")
+    event_url: Optional[str] = Field(None, description="SSE事件地址")
 
 
 class AnalysisResult(BaseModel):
@@ -121,6 +136,10 @@ class AnalysisResult(BaseModel):
     codeql_query: Optional[str] = Field(None, description="生成的CodeQL查询")
     query_results: Optional[Dict[str, Any]] = Field(None, description="查询执行结果")
     output_dir: Optional[str] = Field(None, description="输出目录路径")
+    outcome: Optional[str] = Field(None, description="结构化运行结局")
+    steps: Dict[str, Any] = Field(default_factory=dict, description="步骤结果")
+    manifest: Optional[Dict[str, Any]] = Field(None, description="运行清单")
+    artifacts: List[Dict[str, Any]] = Field(default_factory=list, description="产物列表")
 
 
 class TaskListResponse(BaseModel):
@@ -138,6 +157,7 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="服务状态")
     version: str = Field(..., description="API版本")
     timestamp: datetime = Field(..., description="当前时间")
+    dependencies: Dict[str, bool] = Field(default_factory=dict, description="依赖健康状态")
 
 
 class VersionResponse(BaseModel):
@@ -186,4 +206,3 @@ class StreamEvent(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="附加数据")
     agent_name: Optional[str] = Field(None, description="Agent名称")
     agent_type: Optional[str] = Field(None, description="Agent类型")
-

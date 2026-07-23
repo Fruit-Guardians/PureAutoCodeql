@@ -33,6 +33,13 @@ from pure_auto_codeql.services import (
     apply_placeholders,
     build_placeholder_map,
 )
+from pure_auto_codeql.services.codeql_composition import (
+    BudgetedAnalyzer,
+    CompositionController,
+    CompositionState,
+    RetryBudget,
+    RetryBudgetExceeded,
+)
 from pure_auto_codeql.services.knowledge_base.base import LanguageKnowledgeBase
 from pure_auto_codeql.services.lsp_service import CodeQLLSPService
 from pure_auto_codeql.utils.codeql import (
@@ -82,7 +89,10 @@ class CodeQLComposeTool(BaseTool):
     enable_source_sink_fallback: bool = False
     fallback_empty_retry_max: int = 5
     enable_breakpoint_recovery: bool = False
+    enable_template_refinement: bool = False
+    retry_budget: Optional[RetryBudget] = None
     last_execution_result: Optional[Dict[str, Any]] = None
+    last_run_summary: Optional[Dict[str, Any]] = None
 
     def __init__(
         self,
@@ -94,6 +104,8 @@ class CodeQLComposeTool(BaseTool):
         enable_source_sink_fallback: bool = False,
         fallback_empty_retry_max: int = 5,
         enable_breakpoint_recovery: bool = False,
+        enable_template_refinement: bool = False,
+        retry_budget: Optional[RetryBudget] = None,
         *,
         gen_agent_cls: Type[CodeQLGenAgent] = CodeQLGenAgent,
         error_agent_cls: Type[CodeQLErrorAgent] = CodeQLErrorAgent,
@@ -112,7 +124,13 @@ class CodeQLComposeTool(BaseTool):
         self.enable_source_sink_fallback = enable_source_sink_fallback
         self.fallback_empty_retry_max = fallback_empty_retry_max
         self.enable_breakpoint_recovery = enable_breakpoint_recovery
+        self.enable_template_refinement = enable_template_refinement
+        self.retry_budget = retry_budget or RetryBudget(
+            repair_attempts_per_generation=max_rounds,
+            fallback_attempts=max(1, fallback_empty_retry_max),
+        )
         self.last_execution_result = None
+        self.last_run_summary = None
 
         self._gen_agent_cls = gen_agent_cls
         self._error_agent_cls = error_agent_cls
@@ -164,7 +182,7 @@ class CodeQLComposeTool(BaseTool):
         except Exception:
             return {}
 
-    def _lsp_and_execute(
+    async def _lsp_and_execute(
         self,
         current_ql: str,
         target_language: str,
@@ -176,7 +194,10 @@ class CodeQLComposeTool(BaseTool):
 
         try:
             print("🔍 [CodeQLComposeTool] 执行CodeQL语法检查...")
-            syntax_result = lsp_service.check_syntax(current_ql)
+            syntax_result = await asyncio.to_thread(
+                lsp_service.check_syntax,
+                current_ql,
+            )
             print(syntax_result)
 
             if "error" in syntax_result:
@@ -254,7 +275,8 @@ class CodeQLComposeTool(BaseTool):
             print("✅ [CodeQLComposeTool] 语法检查通过")
             print("🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
 
-            exec_result = execute_codeql_query(
+            exec_result = await asyncio.to_thread(
+                execute_codeql_query,
                 current_ql,
                 self.default_database_path,
                 target_language,
@@ -435,7 +457,10 @@ class CodeQLComposeTool(BaseTool):
         prev_context = previous_attempts_context or ""
 
         # 空结果重试配置
-        empty_retry_max = self.fallback_empty_retry_max
+        empty_retry_max = min(
+            self.fallback_empty_retry_max,
+            self.retry_budget.fallback_attempts,
+        )
         infinite_empty_retry = empty_retry_max == -1
         if empty_retry_max is None or empty_retry_max < -1:
             empty_retry_max = 0
@@ -497,7 +522,7 @@ class CodeQLComposeTool(BaseTool):
             )
 
             # 3) 使用 LSP 进行语法检查并执行
-            exec_result = self._lsp_and_execute(
+            exec_result = await self._lsp_and_execute(
                 current_ql=fallback_ql,
                 target_language=target_language,
                 query_file=query_file,
@@ -639,7 +664,7 @@ class CodeQLComposeTool(BaseTool):
             )
             error_prompt = apply_placeholders(error_prompt_base, error_values)
 
-            error_analysis = await self.analyzer.run_agent(
+            error_analysis = await error_agent.analyzer.run_agent(
                 error_prompt,
                 show_thinking=show_thinking,
                 event_callback=event_callback,
@@ -868,7 +893,7 @@ class CodeQLComposeTool(BaseTool):
 
         # 初始化断流点添加计数器
         breakpoint_add_count = 0
-        max_breakpoint_attempts = 3
+        max_breakpoint_attempts = self.retry_budget.breakpoint_attempts
         original_ql = current_ql  # 保存原始查询
 
         while breakpoint_add_count < max_breakpoint_attempts and is_result_empty:
@@ -1017,7 +1042,7 @@ class CodeQLComposeTool(BaseTool):
 
                         # 重新执行查询
                         print(f"🔄 [CodeQLComposeTool] 重新执行查询，添加断流点条件后（第{breakpoint_add_count}次）")
-                        exec_result = self._lsp_and_execute(
+                        exec_result = await self._lsp_and_execute(
                             current_ql=current_ql,
                             target_language=target_language,
                             query_file=query_file,
@@ -1105,7 +1130,12 @@ class CodeQLComposeTool(BaseTool):
             print(f"⚠️  [CodeQLComposeTool] {validation_error}")
 
         target_language = self.default_language
-        max_iterations = self.default_max_rounds
+        max_iterations = min(
+            self.default_max_rounds,
+            self.retry_budget.repair_attempts_per_generation,
+        )
+        controller = CompositionController(self.retry_budget)
+        budgeted_analyzer = BudgetedAnalyzer(self.analyzer, controller)
 
         # 生成任务ID用于工作区管理和持久化
         import uuid
@@ -1133,14 +1163,14 @@ class CodeQLComposeTool(BaseTool):
         # 从数据库路径提取项目名称
         project_name = self._extract_project_name_from_db_path(self.default_database_path)
 
-        gen_agent = self._gen_agent_cls(self.analyzer)
-        error_agent = self._error_agent_cls(self.analyzer)
-        fix_inplace_agent = self._fix_inplace_agent_cls(self.analyzer)
+        gen_agent = self._gen_agent_cls(budgeted_analyzer)
+        error_agent = self._error_agent_cls(budgeted_analyzer)
+        fix_inplace_agent = self._fix_inplace_agent_cls(budgeted_analyzer)
         breakpoint_detect_agent = self._breakpoint_detect_agent_cls(
-            self.analyzer, source_root="projects", project_name=project_name
+            budgeted_analyzer, source_root="projects", project_name=project_name
         )
         fallback_agent = self._source_sink_fallback_agent_cls(
-            self.analyzer, language=target_language
+            budgeted_analyzer, language=target_language
         )
 
         ql_template = self._load_ql_template(target_language)
@@ -1151,7 +1181,7 @@ class CodeQLComposeTool(BaseTool):
 
         # 重试机制相关变量
         retry_count = 0  # 当前重试次数
-        max_retries = 5  # 最大重试次数
+        max_retries = self.retry_budget.generation_attempts - 1
         retry_history = []  # 记录重试历史（仅用于日志）
 
         # 错误整理文档所需的每轮错误信息
@@ -1173,7 +1203,7 @@ class CodeQLComposeTool(BaseTool):
         print("   [CodeQLComposeTool] 启动LSP服务")
 
         # 调用start_server方法，它内部已经有30秒的重试机制
-        if not lsp_service.start():
+        if not await asyncio.to_thread(lsp_service.start):
             print("❌ [CodeQLComposeTool] LSP服务启动失败")
             return "Error: Failed to start LSP service for syntax checking"
 
@@ -1221,14 +1251,19 @@ class CodeQLComposeTool(BaseTool):
                 )
                 return final_result
             finally:
+                self.last_run_summary = controller.summary()
                 print("🛑 [CodeQLComposeTool] 停止LSP服务...")
-                lsp_service.stop()
+                await asyncio.to_thread(lsp_service.stop)
 
 
         try:
             while round_index <= max_iterations:
                 # Only use GenAgent for the first round
                 if is_first_round:
+                    controller.transition(
+                        CompositionState.GENERATE if retry_count == 0 else CompositionState.REGENERATE,
+                        generation_attempt=retry_count + 1,
+                    )
                     # 根据重试次数选择prompt策略
                     strategy_suffix = get_codeql_generation_prompt_suffix(retry_count)
                     strategy_desc = get_retry_strategy_description(retry_count)
@@ -1271,7 +1306,12 @@ class CodeQLComposeTool(BaseTool):
                     )
 
                     gen_prompt = apply_placeholders(gen_prompt_base, gen_values)
-                    gen_result = await self.analyzer.run_agent(gen_prompt, show_thinking=show_thinking, event_callback=event_callback)
+                    gen_result = await budgeted_analyzer.run_agent(
+                        gen_prompt,
+                        show_thinking=show_thinking,
+                        event_callback=event_callback,
+                        _budget_purpose="codeql_generation",
+                    )
 
                     if not gen_result.success:
                         is_success = False
@@ -1315,8 +1355,25 @@ class CodeQLComposeTool(BaseTool):
                         final_result = f"Error reading query file: {e}"
                         return final_result
 
+                if not controller.register_query(current_ql):
+                    controller.transition(
+                        CompositionState.REGENERATE,
+                        reason="duplicate_query",
+                        round=round_index,
+                    )
+                    if retry_count >= max_retries:
+                        controller.transition(CompositionState.FAILED, reason="duplicate_query_budget_exhausted")
+                        return "Failed: generated CodeQL query duplicates a previous failed attempt."
+                    retry_count += 1
+                    round_index = 1
+                    is_first_round = True
+                    prev_original_ql = None
+                    prev_fix_suggestions = None
+                    continue
+
                 # 直接使用 LSP 进行语法检查和执行
-                exec_result = self._lsp_and_execute(
+                controller.transition(CompositionState.VALIDATE, round=round_index)
+                exec_result = await self._lsp_and_execute(
                     current_ql=current_ql,
                     target_language=target_language,
                     query_file=query_file,
@@ -1325,6 +1382,7 @@ class CodeQLComposeTool(BaseTool):
 
                 # Check execution result
                 if exec_result.get('success', False):
+                    controller.transition(CompositionState.EXECUTE, round=round_index)
                     # 检查结果是否为空
                     sarif_path = exec_result.get('sarif_path')
                     json_path = exec_result.get('json_path')
@@ -1337,6 +1395,7 @@ class CodeQLComposeTool(BaseTool):
                     should_recover_breakpoint = enable_breakpoint_recovery or self.enable_breakpoint_recovery
 
                     if should_recover_breakpoint and is_result_empty and target_language in ["java", "python", "cpp"]:
+                        controller.transition(CompositionState.BREAKPOINT, round=round_index)
                         current_ql, exec_result, is_result_empty, paths_count = await self._recover_breakpoints(
                             current_ql=current_ql,
                             exec_result=exec_result,
@@ -1383,6 +1442,7 @@ class CodeQLComposeTool(BaseTool):
 
                     # 如果结果为空且已达到最大重试次数，并且启用了回退机制，则触发 Source-Sink Fallback
                     if is_result_empty and retry_count >= max_retries and self.enable_source_sink_fallback:
+                        controller.transition(CompositionState.FALLBACK, reason="empty_result")
                         logger.warning(
                             f"[重试结束] 已尝试 {retry_count} 次重试仍为空，触发 Source-Sink Fallback 回退查询"
                         )
@@ -1459,34 +1519,46 @@ class CodeQLComposeTool(BaseTool):
                             tidy_file.write_text(tidy_markdown, encoding="utf-8")
                             print(f"💾 [CodeQLComposeTool] 错误整理文档已保存到: {tidy_file}")
 
-                            # 在不阻塞主流程的前提下异步触发 Template Refinement Agent
-                            if self.analyzer is not None:
-
-                                async def _run_template_refinement() -> None:
-                                    try:
-                                        agent = TemplateRefinementAgent(self.analyzer, language=target_language)
-                                        await agent.refine_template(
-                                            error_tidy_doc=tidy_markdown,
-                                            language=target_language,
-                                            show_thinking=False,
-                                            event_callback=event_callback,
-                                            agent_name="Template Refinement Agent",
-                                            agent_type="template_refinement",
-                                        )
-                                    except Exception as e:
-                                        # 仅记录日志，不影响主流程
-                                        logger.warning(
-                                            f"⚠️ [CodeQLComposeTool] Template Refinement Agent 执行失败: {e}"
-                                        )
-
-                                # 使用 asyncio.create_task 确保异步执行且不阻塞当前工具流程
+                            # Never borrow an analyzer in a fire-and-forget task: the
+                            # enclosing step closes its MCP sessions immediately after
+                            # this method returns. Refinement is opt-in and awaited.
+                            if self.enable_template_refinement and self.analyzer is not None:
                                 try:
-                                    asyncio.create_task(_run_template_refinement())
-                                    print("🚀 [CodeQLComposeTool] 已异步触发 Template Refinement Agent")
-                                except RuntimeError as e:
-                                    # 在没有可用事件循环的边缘场景下，静默记录错误
+                                    agent = TemplateRefinementAgent(
+                                        self.analyzer,
+                                        language=target_language,
+                                    )
+                                    refinement_result = await agent.refine_template(
+                                        error_tidy_doc=tidy_markdown,
+                                        language=target_language,
+                                        show_thinking=False,
+                                        event_callback=event_callback,
+                                        agent_name="Template Refinement Agent",
+                                        agent_type="template_refinement",
+                                    )
+                                    if refinement_result.success and refinement_result.content:
+                                        candidate_dir = (
+                                            project_root
+                                            / "temp"
+                                            / "template_refinement_candidates"
+                                        )
+                                        candidate_dir.mkdir(parents=True, exist_ok=True)
+                                        candidate_path = (
+                                            candidate_dir
+                                            / f"candidate_{target_language}_{task_id}.patch"
+                                        )
+                                        candidate_path.write_text(
+                                            str(refinement_result.content),
+                                            encoding="utf-8",
+                                        )
+                                        logger.info(
+                                            "模板候选补丁已保存，未修改生产模板: %s",
+                                            candidate_path,
+                                        )
+                                except Exception as refinement_error:
                                     logger.warning(
-                                        f"⚠️ [CodeQLComposeTool] 无法创建 Template Refinement 异步任务: {e}"
+                                        "Template Refinement Agent 执行失败: %s",
+                                        refinement_error,
                                     )
                         except Exception as tidy_error:
                             print(f"⚠️ [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
@@ -1522,11 +1594,13 @@ class CodeQLComposeTool(BaseTool):
                             result += "Preview:\n\n```\n" + preview + "\n```"
                         result += retry_summary
                         is_success = True
+                        controller.transition(CompositionState.COMPLETE, paths_count=paths_count)
                         final_result = result
                         return result
                     else:
                         print("codeql query:", current_ql)
                         is_success = True
+                        controller.transition(CompositionState.COMPLETE, paths_count=paths_count)
                         final_result = self._format_success_result(
                             query=current_ql,
                             round_index=round_index,
@@ -1606,6 +1680,11 @@ class CodeQLComposeTool(BaseTool):
                     return final_result
 
                 # Step 1: Use ErrorAgent to analyze errors
+                controller.transition(
+                    CompositionState.ANALYZE_ERROR,
+                    round=round_index,
+                    category=controller.classify_error(exec_result.get("output", "")).value,
+                )
                 print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
                 error_prompt_base = error_agent.build_prompt(
                     error_log=exec_result.get('output', ''),
@@ -1629,7 +1708,12 @@ class CodeQLComposeTool(BaseTool):
                     relevant_tags=kb_context.get("relevant_tags"),
                 )
                 error_prompt = apply_placeholders(error_prompt_base, error_values)
-                error_analysis = await self.analyzer.run_agent(error_prompt, show_thinking=show_thinking, event_callback=event_callback)
+                error_analysis = await budgeted_analyzer.run_agent(
+                    error_prompt,
+                    show_thinking=show_thinking,
+                    event_callback=event_callback,
+                    _budget_purpose="codeql_error_analysis",
+                )
 
                 if not error_analysis.success:
                     is_success = False
@@ -1641,6 +1725,7 @@ class CodeQLComposeTool(BaseTool):
 
                 # Step 2: Use FixInplaceAgent to modify the file
                 print("🔧 [CodeQLComposeTool] 开始修复QL语句")
+                controller.transition(CompositionState.REPAIR, round=round_index)
                 ql_file_path_abs = str(query_file.resolve())
 
                 fix_result = await fix_inplace_agent.fix(
@@ -1674,6 +1759,10 @@ class CodeQLComposeTool(BaseTool):
                 prev_original_ql = current_ql
                 round_index += 1
 
+        except RetryBudgetExceeded as budget_error:
+            controller.mark_failed("retry_budget_exhausted")
+            final_result = f"Error: {budget_error}"
+            is_success = False
         except RuntimeError as runtime_error:
             final_result = f"Error: {runtime_error}"
             is_success = False
@@ -1681,6 +1770,7 @@ class CodeQLComposeTool(BaseTool):
             final_result = f"Error during CodeQL composition: {exc}"
             is_success = False
         finally:
+            self.last_run_summary = controller.summary()
             if event_callback:
                 from datetime import datetime
                 await event_callback({
@@ -1694,7 +1784,7 @@ class CodeQLComposeTool(BaseTool):
 
             # 在整个多轮查询过程结束后停止LSP服务
             print("🛑 [CodeQLComposeTool] 停止LSP服务...")
-            lsp_service.stop()
+            await asyncio.to_thread(lsp_service.stop)
 
         if final_result is not None:
             return final_result

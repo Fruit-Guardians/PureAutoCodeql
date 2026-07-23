@@ -215,6 +215,66 @@ def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="启用错误整理功能（实验性）"
     )
     parser.add_argument(
+        "--requirement",
+        type=str,
+        help="覆盖自动生成的 CodeQL 查询需求",
+    )
+    parser.add_argument(
+        "--max-codeql-rounds",
+        type=int,
+        default=5,
+        metavar="N",
+        help="CodeQL 单次生成后的最大修复轮数（默认: 5）",
+    )
+    parser.add_argument(
+        "--task-timeout",
+        type=int,
+        default=3600,
+        metavar="SECONDS",
+        help="完整分析任务超时秒数（默认: 3600）",
+    )
+    parser.add_argument(
+        "--disable-cve-analysis",
+        action="store_false",
+        dest="enable_cve_analysis",
+        help="跳过 CVE 语义分析",
+    )
+    parser.add_argument(
+        "--disable-sink-analysis",
+        action="store_false",
+        dest="enable_sink_analysis",
+        help="跳过 Sink 分析（同时应关闭依赖步骤）",
+    )
+    parser.add_argument(
+        "--disable-source-analysis",
+        action="store_false",
+        dest="enable_source_analysis",
+        help="跳过 Source 分析",
+    )
+    parser.add_argument(
+        "--disable-path-analysis",
+        action="store_false",
+        dest="enable_path_analysis",
+        help="跳过路径流转分析",
+    )
+    parser.add_argument(
+        "--disable-codeql-generation",
+        action="store_false",
+        dest="enable_codeql_generation",
+        help="跳过 CodeQL 生成与执行",
+    )
+    parser.add_argument(
+        "--disable-path-selection",
+        action="store_false",
+        dest="enable_path_selection",
+        help="跳过 CodeQL 结果路径筛选",
+    )
+    parser.add_argument(
+        "--enable-breakpoint-recovery",
+        action="store_true",
+        help="查询为空时启用断流恢复",
+    )
+    parser.add_argument(
         "--enable-source-sink-fallback",
         action="store_true",
         help="启用 Source-Sink 回退查询（所有常规 CodeQL 重试失败后）",
@@ -314,7 +374,15 @@ def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="搭配 serve/--serve 使用，启用 uvicorn reload"
     )
 
-    parser.set_defaults(stream=True)
+    parser.set_defaults(
+        stream=True,
+        enable_cve_analysis=True,
+        enable_sink_analysis=True,
+        enable_source_analysis=True,
+        enable_path_analysis=True,
+        enable_codeql_generation=True,
+        enable_path_selection=True,
+    )
 
     return parser.parse_args(normalized_argv)
 

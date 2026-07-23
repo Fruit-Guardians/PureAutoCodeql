@@ -6,7 +6,13 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from pure_auto_codeql.services.llm_service import AgentResult
+from pure_auto_codeql.analysis_models import (
+    AnalysisOutcome,
+    Artifact,
+    ErrorDetail,
+    StepResult,
+    StepStatus,
+)
 from pure_auto_codeql.services.path_selection import PathSelectionResult
 from pure_auto_codeql.utils.case import CasePaths, CveAssets
 from pure_auto_codeql.utils.intel import IntelBundle
@@ -58,17 +64,22 @@ class AnalysisResult:
     language: str
 
     # 各个分析步骤的结果
-    cve_result: Optional[AgentResult] = None
-    sink_result: Optional[AgentResult] = None
-    source_result: Optional[AgentResult] = None
-    path_analysis_result: Optional[AgentResult] = None
-    codeql_result: Optional[AgentResult] = None
+    cve_result: Optional[StepResult] = None
+    sink_result: Optional[StepResult] = None
+    source_result: Optional[StepResult] = None
+    path_analysis_result: Optional[StepResult] = None
+    codeql_result: Optional[StepResult] = None
     codeql_execution_result: Optional[Any] = None
     path_selection_result: Optional[PathSelectionResult] = None
 
     # 执行信息
     success: bool = True
     error_message: Optional[str] = None
+    error_detail: Optional[ErrorDetail] = None
+    outcome: AnalysisOutcome = AnalysisOutcome.RUNNING
+    step_results: Dict[str, StepResult] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    artifacts: list[Artifact] = field(default_factory=list)
     execution_time: Optional[float] = None
 
     # 输出目录信息
@@ -76,13 +87,40 @@ class AnalysisResult:
 
     def is_complete(self) -> bool:
         """检查分析是否完整完成。"""
-        return all([
-            self.cve_result and self.cve_result.success,
-            self.sink_result and self.sink_result.success,
-            self.source_result and self.source_result.success,
-            self.codeql_result and self.codeql_result.success,
-            self.path_selection_result is not None,
-        ])
+        return self.outcome in {
+            AnalysisOutcome.COMPLETED_WITH_FINDINGS,
+            AnalysisOutcome.COMPLETED_NO_FINDINGS,
+        }
+
+    def finalize_outcome(self) -> AnalysisOutcome:
+        statuses = [step.status for step in self.step_results.values()]
+        if any(status == StepStatus.TIMED_OUT for status in statuses):
+            self.outcome = AnalysisOutcome.TIMED_OUT
+        elif any(status == StepStatus.CANCELLED for status in statuses):
+            self.outcome = AnalysisOutcome.CANCELLED
+        elif not self.success or any(status == StepStatus.FAILED for status in statuses):
+            self.outcome = (
+                AnalysisOutcome.PARTIAL
+                if any(status == StepStatus.SUCCEEDED for status in statuses)
+                else AnalysisOutcome.FAILED
+            )
+        elif not statuses:
+            self.outcome = AnalysisOutcome.PARTIAL
+        else:
+            selected = getattr(self.path_selection_result, "selected_paths", None)
+            findings_count = 0
+            if isinstance(self.codeql_execution_result, dict):
+                findings_count = int(
+                    self.codeql_execution_result.get("findings_count")
+                    or self.codeql_execution_result.get("paths_count")
+                    or 0
+                )
+            self.outcome = (
+                AnalysisOutcome.COMPLETED_WITH_FINDINGS
+                if selected or findings_count > 0
+                else AnalysisOutcome.COMPLETED_NO_FINDINGS
+            )
+        return self.outcome
 
     def get_summary(self) -> str:
         """获取分析结果摘要。"""
@@ -109,6 +147,7 @@ class AnalysisConfig:
 
     # LLM配置
     llm_config: Optional[Any] = None
+    language: Optional[str] = None
     llm_provider: Optional[str] = None  # 模型提供商名称（deepseek/siliconflow/zhipu），如果指定则覆盖环境变量
     think_model: Optional[str] = None  # 推理模型名称，如果指定则覆盖默认模型
     chat_model: Optional[str] = None  # 对话模型名称，如果指定则覆盖默认模型
@@ -128,6 +167,18 @@ class AnalysisConfig:
     # 执行配置
     show_thinking: bool = False
     refresh_intel: bool = False
+    requirement: Optional[str] = None
+    max_codeql_rounds: int = 5
+    max_total_llm_calls: int = 20
+    task_timeout: int = 3600
+
+    # 流水线步骤开关
+    enable_cve_analysis: bool = True
+    enable_sink_analysis: bool = True
+    enable_source_analysis: bool = True
+    enable_path_analysis: bool = True
+    enable_codeql_generation: bool = True
+    enable_path_selection: bool = True
 
     # 路径配置
     json_path: Optional[str] = None
@@ -142,8 +193,24 @@ class AnalysisConfig:
     enable_error_tidy: bool = False
     enable_source_sink_fallback: bool = False
     fallback_empty_retry_max: int = 5
+    enable_breakpoint_recovery: bool = False
+    enable_template_refinement: bool = False
 
     # Sink/Source 验证配置
     enable_sink_source_verification: bool = False
     verification_retry_max: int = 3
     verification_timeout: int = 30
+
+    def validate(self) -> None:
+        if self.max_codeql_rounds < 1:
+            raise ValueError("max_codeql_rounds must be at least 1")
+        if self.max_total_llm_calls < 1:
+            raise ValueError("max_total_llm_calls must be at least 1")
+        if self.task_timeout < 1:
+            raise ValueError("task_timeout must be at least 1 second")
+        if self.enable_source_analysis and not self.enable_sink_analysis:
+            raise ValueError("source analysis requires sink analysis")
+        if self.enable_path_analysis and not self.enable_source_analysis:
+            raise ValueError("path analysis requires source analysis")
+        if self.enable_path_selection and not self.enable_codeql_generation:
+            raise ValueError("path selection requires CodeQL generation")

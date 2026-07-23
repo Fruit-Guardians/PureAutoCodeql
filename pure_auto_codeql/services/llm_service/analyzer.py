@@ -3,14 +3,13 @@
 import asyncio
 import functools
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
-from typing import Optional
 
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 
+from pure_auto_codeql.analysis_models import AgentResult
 from pure_auto_codeql.configuration import LLMConfig, LLMRole, get_resilient_llm_config
 from pure_auto_codeql.utils.logger import get_logger
 from pure_auto_codeql.utils.mcp_schema_fixer import fix_mcp_tools_schemas
@@ -23,14 +22,6 @@ from .tool_output import (
     _limit_tool_output_tokens,
     _print_detailed_tool_output,
 )
-
-
-@dataclass
-class AgentResult:
-    """Agent执行结果"""
-    content: str
-    success: bool
-    error: Optional[str] = None
 
 
 class MultiAgentAnalyzer:

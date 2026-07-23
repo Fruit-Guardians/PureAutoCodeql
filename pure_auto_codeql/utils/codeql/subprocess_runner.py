@@ -5,6 +5,13 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
+from pure_auto_codeql.services.process_control import (
+    process_group_popen_kwargs,
+    register_process,
+    terminate_process_tree,
+    unregister_process,
+)
+
 
 def _stream_subprocess(
     cmd: List[str],
@@ -25,7 +32,9 @@ def _stream_subprocess(
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
+        **process_group_popen_kwargs(),
     )
+    register_process(process)
 
     stdout_lines: List[str] = []
     stderr_lines: List[str] = []
@@ -42,8 +51,14 @@ def _stream_subprocess(
     stdout_thread.start()
     stderr_thread.start()
 
-    returncode = process.wait(timeout=timeout)
-    stdout_thread.join()
-    stderr_thread.join()
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        terminate_process_tree(process)
+        raise
+    finally:
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
+        unregister_process(process)
 
     return returncode, ''.join(stdout_lines), ''.join(stderr_lines)

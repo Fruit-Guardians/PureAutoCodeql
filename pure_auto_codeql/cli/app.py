@@ -343,6 +343,16 @@ async def _handle_case_analysis(args: argparse.Namespace) -> None:
         enable_sink_source_verification=args.enable_sink_source_verification,
         verification_retry_max=args.verification_retry_max,
         verification_timeout=args.verification_timeout,
+        requirement=args.requirement,
+        max_codeql_rounds=args.max_codeql_rounds,
+        task_timeout=args.task_timeout,
+        enable_cve_analysis=args.enable_cve_analysis,
+        enable_sink_analysis=args.enable_sink_analysis,
+        enable_source_analysis=args.enable_source_analysis,
+        enable_path_analysis=args.enable_path_analysis,
+        enable_codeql_generation=args.enable_codeql_generation,
+        enable_path_selection=args.enable_path_selection,
+        enable_breakpoint_recovery=args.enable_breakpoint_recovery,
     )
 
 
