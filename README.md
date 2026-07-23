@@ -3,16 +3,20 @@
 <div align="center">
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Fruit-Guardians/PureAutoCodeql/actions/workflows/ci.yml/badge.svg)](https://github.com/Fruit-Guardians/PureAutoCodeql/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.13%2B-3776AB.svg)](https://www.python.org/)
 [![CodeQL](https://img.shields.io/badge/CodeQL-enabled-2EA44F.svg)](https://codeql.github.com/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](pure_auto_codeql/api/README.md)
 [![uv](https://img.shields.io/badge/package-uv-DE5FE9.svg)](https://github.com/astral-sh/uv)
 [![Languages](https://img.shields.io/badge/lang-Java%20%7C%20Python%20%7C%20C%2FC%2B%2B-informational.svg)](#它做什么)
+[![Qiangwang Cup 2025](https://img.shields.io/badge/Qiangwang_Cup_2025-6th_Place-D4AF37.svg)](README.md)
 
-**多智能体驱动的 CVE 自动分析与 CodeQL 查询生成流水线**
+**面向 CVE 复盘与源码审计的多智能体 CodeQL 自动化系统**
 
-把「读漏洞情报 → 找 Source/Sink → 写并修好 CodeQL → 跑查询 → 筛路径」串成一条可复用流程。  
-面向安全研究、漏洞复现与源码审计。
+从漏洞情报和补丁出发，自动定位 Source/Sink、生成并修复 CodeQL 查询，
+执行路径分析，最后留下可复核的 SARIF、QL、精选路径和运行清单。
+
+🏆 *6th Place — 2025 Qiangwang Cup Industry-Specific Competition*
 
 <br/>
 
@@ -30,20 +34,23 @@
 
 ## 它做什么
 
-CVE 复盘或审计时，常见流程是：读 advisory 和补丁、在代码里找入口与危险点、手写 CodeQL、修语法、跑查询，再从大量路径里挑出真正相关的几条。
+CVE 复盘或审计通常要反复处理几件事：阅读 advisory 和补丁、在源码中寻找入口与
+危险点、手写并调试 CodeQL，再从大量结果中筛出真正相关的路径。
 
-**PureAutoCodeQL 把这条链路自动化**，给你结构化报告和可复用的查询产物。
+PureAutoCodeQL 将这些工作放进同一条可配置流水线，输出结构化结果和可继续维护的
+查询产物。
 
-| 你的目标 | 系统产出 |
+| 分析任务 | 系统产出 |
 | --- | --- |
 | 弄清这个 CVE 在说什么 | 汇总本地 JSON / patch / 补充材料，可选拉取 NVD、GHSA |
 | 定位危险调用与用户可控输入 | Sink / Source Agent + 源码检索 + 语言 LSP |
 | 得到可执行的 CodeQL | 语言模板与内部知识库生成 Path Query，LSP 校验并迭代修复 |
 | 查询为空或数据流断掉 | 断流点分析，补 `isAdditionalFlowStep` 后重跑 |
 | 路径太多、噪声大 | 硬过滤 + 特征打分 + LLM 只读解释，收敛高质量路径 |
-| 接入平台或前端 | CLI 一键跑通；FastAPI + SSE 任务流 |
+| 接入平台或前端 | API/Worker 分离，PostgreSQL 保存状态，Redis Streams 分发任务与事件 |
+| 复查一次完整运行 | `manifest.json` 记录配置、步骤、版本、耗时、警告和产物哈希 |
 
-**适合：** 安全研究、漏洞复现、定制 CodeQL 规则沉淀、需要结构化报告的审计场景。
+适用于安全研究、漏洞复现、CodeQL 规则沉淀，以及需要保留结构化证据的源码审计。
 
 ---
 
@@ -224,6 +231,7 @@ output/
 └── CVE-XXXX-XXXX/
     └── YYYYMMDD-HHMMSS/
         ├── summary.md                  # 完整分析报告
+        ├── manifest.json               # 配置、版本、步骤状态与产物哈希
         ├── sarif/
         │   └── codeql-run.sarif        # CodeQL 原始结果
         ├── codeql/
@@ -263,7 +271,7 @@ uv run pure-auto-codeql serve --host 127.0.0.1 --port 8000
 
 ```bash
 export API_AUTH_TOKEN="change-me"
-curl -H "Authorization: Bearer change-me" http://127.0.0.1:8000/api/projects
+curl -H "Authorization: Bearer change-me" http://127.0.0.1:8000/api/v1/projects
 ```
 
 更多： [API README](pure_auto_codeql/api/README.md) · [SSE 参考](pure_auto_codeql/api/SSE_REFERENCE.md) · [部署](docs/deployment.md)
