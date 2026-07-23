@@ -121,7 +121,7 @@ python demo_breakpoint_detection.py
 1. 断点检测功能在查询结果为空时自动触发
 2. 分析结果会保存到`breakpoint_analysis.md`文件中
 3. 生成的`isAdditionalFlowStep`条件需要根据具体场景进行调整
-4. 系统支持多种编程语言，但目前主要针对Java和Python进行了优化
+4. Java、Python 与 C/C++ 均通过语言能力注册表选择模板、LSP、断流恢复和回退策略
 
 ## 贡献
 

@@ -1,0 +1,4 @@
+name: pure-auto-codeql/golden-java
+version: 0.0.0
+dependencies:
+  codeql/java-all: "*"

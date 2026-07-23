@@ -1,0 +1,31 @@
+name: Real LLM contract
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    env:
+      RUN_REAL_LLM: "1"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      REAL_LLM_MODEL: ${{ vars.REAL_LLM_MODEL || 'gpt-5-mini' }}
+      REAL_LLM_MAX_USD: ${{ vars.REAL_LLM_MAX_USD || '0.05' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen --dev
+      - run: uv run pytest -m real_llm -q
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-llm-contract
+          path: outputs/evals/real-llm-contract.json

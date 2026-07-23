@@ -1,0 +1,15 @@
+{
+  "include": [
+    "pure_auto_codeql/analysis_models.py",
+    "pure_auto_codeql/analysis_schemas.py",
+    "pure_auto_codeql/platform",
+    "pure_auto_codeql/api/security.py",
+    "pure_auto_codeql/api/durable_task_manager.py",
+    "pure_auto_codeql/services/artifacts.py",
+    "pure_auto_codeql/services/codeql_composition",
+    "pure_auto_codeql/services/process_control.py",
+    "pure_auto_codeql/worker.py"
+  ],
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic"
+}

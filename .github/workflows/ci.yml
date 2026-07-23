@@ -1,74 +1,65 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
-  python:
-    name: Python checks
+  quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: pure_codeql
+          POSTGRES_USER: pure_codeql
+          POSTGRES_PASSWORD: pure_codeql
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pure_codeql"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://pure_codeql:pure_codeql@127.0.0.1:5432/pure_codeql
+      REDIS_URL: redis://127.0.0.1:6379/0
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
-          python-version-file: .python-version
-
-      - name: Verify lockfile
-        run: uv lock --check
-
-      - name: Install dependencies
-        run: uv sync --locked
-
-      - name: Lint (ruff)
-        run: uvx ruff check pure_auto_codeql Analyze.py config.py test
-
-      - name: Run tests
-        run: uv run pytest -q
-
-      - name: Compile Python modules
-        run: uv run python -m compileall -q Analyze.py pure_auto_codeql
-
-
-      - name: Check diff whitespace
-        run: git diff --check
-
-  mcp-ripgrep:
-    name: MCP ripgrep checks
-    runs-on: ubuntu-latest
-    defaults:
-      run:
+          python-version: "3.13"
+      - run: uv sync --frozen --dev
+      - run: uv run ruff check pure_auto_codeql test migrations
+      - run: uv run pyright
+      - run: uv run python -m compileall -q Analyze.py pure_auto_codeql migrations
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -m "not real_codeql and not real_llm" --cov --cov-report=xml
+      - run: uv run pip-audit
+      - run: npm ci && npm run build && npm test && npm audit --audit-level=moderate
         working-directory: tools/mcp_ripgrep
+
+  codeql-golden:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: tools/mcp_ripgrep/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
-
-      - name: Build
-        run: npm run build
+          python-version: "3.13"
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin, python, c-cpp
+      - run: uv sync --frozen --dev
+      - run: uv run pytest -m real_codeql -q

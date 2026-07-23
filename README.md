@@ -241,6 +241,11 @@ output/
 ## API 服务
 
 ```bash
+# 推荐：完整持久化 API/Worker 环境
+export API_AUTH_TOKEN="change-me"
+docker compose up --build
+
+# 单进程兼容模式
 uv run uvicorn pure_auto_codeql.api.server:app --host 127.0.0.1 --port 8000
 
 # 或
@@ -253,14 +258,15 @@ uv run pure-auto-codeql serve --host 127.0.0.1 --port 8000
 | 监听地址 | 仅 `127.0.0.1` |
 | 导入范围 | `API_IMPORT_SOURCES_DIR`（默认仓库内 `imports/`） |
 | 构建命令 | 请求体中默认禁用 |
-| 鉴权 | 设置 `API_AUTH_TOKEN` 后需 Bearer Token |
+| 鉴权 | 非回环监听强制 `API_AUTH_TOKEN`；支持哈希与轮换 |
+| 持久化 | PostgreSQL 权威状态，Redis Streams 任务与事件 |
 
 ```bash
 export API_AUTH_TOKEN="change-me"
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:8000/api/projects
 ```
 
-更多： [API README](pure_auto_codeql/api/README.md) · [SSE 参考](pure_auto_codeql/api/SSE_REFERENCE.md)
+更多： [API README](pure_auto_codeql/api/README.md) · [SSE 参考](pure_auto_codeql/api/SSE_REFERENCE.md) · [部署](docs/deployment.md)
 
 ---
 
@@ -273,6 +279,7 @@ PureAutoCodeQL/
 │   ├── agents/                 # CVE · Sink · Source · CodeQL 多智能体
 │   ├── application/            # CLI 与 API 共享工作流
 │   ├── api/                    # FastAPI + SSE
+│   ├── platform/ · worker.py   # PostgreSQL/Redis 持久化任务平台
 │   ├── cli/ · core/ · services/ · tools/
 │   ├── information/ · prompts/ · utils/
 │   ├── config/                 # LLM 配置实现
@@ -310,6 +317,9 @@ from pure_auto_codeql.configuration import get_llm_config, LLMRole
 | [docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md](docs/cpp/CPP_TWO_STEP_BUILD_GUIDE.md) | C/C++ 建库 |
 | [docs/codeql_lsp_troubleshooting.md](docs/codeql_lsp_troubleshooting.md) | CodeQL LSP 排查 |
 | [docs/package_architecture.md](docs/package_architecture.md) | 包结构 |
+| [docs/deployment.md](docs/deployment.md) | Compose 与 Kubernetes 部署 |
+| [docs/language_capabilities.md](docs/language_capabilities.md) | 三语言能力矩阵 |
+| [docs/api_v1_migration.md](docs/api_v1_migration.md) | API v1 迁移 |
 
 ---
 
@@ -318,6 +328,8 @@ from pure_auto_codeql.configuration import get_llm_config, LLMRole
 ```bash
 uv run pytest -q
 uv lock --check
+uv run ruff check pure_auto_codeql test migrations
+uv run pyright
 uv run python -m compileall -q Analyze.py pure_auto_codeql
 ```
 
