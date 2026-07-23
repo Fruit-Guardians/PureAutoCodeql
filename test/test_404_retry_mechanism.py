@@ -572,8 +572,10 @@ class TestMultiAgentAnalyzerRetry:
 
         analyzer = MultiAgentAnalyzer(config)
 
-        # Mock MCP client to avoid actual initialization
-        with patch('pure_auto_codeql.services.llm_service.MultiServerMCPClient') as mock_mcp:
+        # Mock MCP client to avoid actual initialization. MultiAgentAnalyzer
+        # lives in the analyzer submodule after the package split, so the patch
+        # target must be where the name is resolved.
+        with patch('pure_auto_codeql.services.llm_service.analyzer.MultiServerMCPClient') as mock_mcp:
             mock_mcp_instance = Mock()
             mock_mcp_instance.get_tools = AsyncMock(return_value=[])
             mock_mcp.return_value = mock_mcp_instance
