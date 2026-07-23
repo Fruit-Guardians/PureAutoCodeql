@@ -136,4 +136,3 @@ def print_result_card(result: Any) -> None:
         clipped = content if len(content) <= width - 4 else f"{content[: width - 5]}…"
         print(f"│  {clipped:<{width - 4}}  │")
     print("└" + "─" * width + "┘")
-
