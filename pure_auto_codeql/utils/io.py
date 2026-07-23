@@ -32,11 +32,11 @@ def read_json_text(path: Path) -> str:
 def _format_result_content(result: Optional["AgentResult"]) -> str:
     """统一格式化结果内容。"""
     if not result:
-        return "❌ 无结果"
+        return "󰅙 无结果"
     if result.success:
         return result.content
     error_msg = result.error if result.error else "未知错误"
-    return f"❌ 分析失败: {error_msg}"
+    return f"󰅙 分析失败: {error_msg}"
 
 
 def write_analysis_output(
@@ -123,7 +123,7 @@ def write_analysis_output(
         if file_size == 0:
             raise ValueError(f"文件写入失败: {output_path} 大小为0")
 
-        logger.info(f"✅ 分析结果已写入: {output_path} (大小: {file_size} 字节)")
+        logger.info(f"󰄬 分析结果已写入: {output_path} (大小: {file_size} 字节)")
 
     except PermissionError as e:
         error_msg = f"文件权限错误，无法写入 {output_path}: {e}"

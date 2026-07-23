@@ -36,7 +36,7 @@ def _cli_test_provider(args) -> None:
 
 def _cli_setup_wizard(args) -> None:
     """CLI: 交互式配置向导"""
-    console.print("[bold cyan]🚀 LLM 配置向导[/bold cyan]\n")
+    console.print("[bold cyan]󰜎 LLM 配置向导[/bold cyan]\n")
 
     # 显示当前状态
     console.print("[bold]📊 当前服务商状态:[/bold]")
@@ -46,12 +46,12 @@ def _cli_setup_wizard(args) -> None:
     available = ProviderRegistry.list_available()
 
     if available:
-        console.print(f"[green]✅ 发现 {len(available)} 个可用服务商[/green]\n")
+        console.print(f"[green]󰄬 发现 {len(available)} 个可用服务商[/green]\n")
         console.print("[bold]推荐配置:[/bold]")
         console.print(f"  • 当前使用的服务商: {available[0].display_name}")
         console.print("  • 配置文件: config/keys.toml")
     else:
-        console.print("[yellow]⚠️  没有可用的服务商，请配置 API Key[/yellow]\n")
+        console.print("[yellow]󰀪  没有可用的服务商，请配置 API Key[/yellow]\n")
         console.print("[bold]配置步骤:[/bold]")
         console.print("1. 复制 config/keys.example.toml 为 config/keys.toml")
         console.print("2. 编辑 config/keys.toml，填入你的 API Keys")

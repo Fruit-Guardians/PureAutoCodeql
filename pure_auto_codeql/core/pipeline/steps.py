@@ -129,13 +129,13 @@ class SinkAnalysisStep(AnalysisStep):
 
                 if not is_valid:
                     # 验证失败，记录警告并标记结果为无效
-                    logger.warning(f"❌ Sink 分析验证失败: {error_message}")
+                    logger.warning(f"󰅙 Sink 分析验证失败: {error_message}")
                     logger.warning("将使用原始 Sink 分析报告继续流程")
                     # 可以选择将结果标记为失败或添加警告信息
                     # 这里我们保留结果但添加警告标记
                     result.content = f"[VERIFICATION_FAILED] {error_message}\n\n{result.content}"
                 else:
-                    logger.info("✅ Sink 分析验证通过")
+                    logger.info("󰄬 Sink 分析验证通过")
                     # 保存成功的验证查询到上下文，供 CodeQL 生成使用
                     if verification_query:
                         context.data["sink_verification_query"] = verification_query
@@ -213,13 +213,13 @@ class SourceAnalysisStep(AnalysisStep):
 
                 if not is_valid:
                     # 验证失败，记录警告并标记结果为无效
-                    logger.warning(f"❌ Source 分析验证失败: {error_message}")
+                    logger.warning(f"󰅙 Source 分析验证失败: {error_message}")
                     logger.warning("将使用原始 Source 分析报告继续流程")
                     # 可以选择将结果标记为失败或添加警告信息
                     # 这里我们保留结果但添加警告标记
                     result.content = f"[VERIFICATION_FAILED] {error_message}\n\n{result.content}"
                 else:
-                    logger.info("✅ Source 分析验证通过")
+                    logger.info("󰄬 Source 分析验证通过")
                     # 保存成功的验证查询到上下文，供 CodeQL 生成使用
                     if verification_query:
                         context.data["source_verification_query"] = verification_query
@@ -415,12 +415,12 @@ class CodeQLGenerationStep(AnalysisStep):
 
             # 记录验证查询的使用情况
             if sink_verification_query:
-                logger.info("✅ 使用 Sink 验证查询作为参考")
+                logger.info("󰄬 使用 Sink 验证查询作为参考")
             if source_verification_query:
-                logger.info("✅ 使用 Source 验证查询作为参考")
+                logger.info("󰄬 使用 Source 验证查询作为参考")
 
             print("=== CodeQL Query Generation ===")
-            print("🔍 调用CodeQLComposeTool进行查询生成和语法检查...")
+            print("󰍉 调用CodeQLComposeTool进行查询生成和语法检查...")
             compose_output = await codeql_tool._arun(
                 codeql_requirement,
                 show_thinking=context.show_thinking,

@@ -19,6 +19,7 @@ from pure_auto_codeql.utils.logger import (
     print_user_success,
     print_user_warning,
 )
+from pure_auto_codeql.utils.terminal_ui import print_result_card
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,7 @@ async def run_case_analysis(
     try:
         config.validate()
     except ValueError as exc:
-        print_user_error(f"❌ 无效的分析配置: {exc}")
+        print_user_error(f"󰅙 无效的分析配置: {exc}")
         logger.error("无效的分析配置: %s", exc)
         return
 
@@ -119,14 +120,14 @@ async def run_case_analysis(
         )
 
         provider_display = provider or chat_config.provider or "环境变量配置"
-        print_user_info(f"🤖 使用模型提供商: {provider_display}")
-        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"󰚩 使用模型提供商: {provider_display}")
+        print_user_info(f"   󰧑 推理模型: {think_config.model}")
         print_user_info(f"   💬 对话模型: {chat_config.model}")
         if base_url:
-            print_user_info(f"   🔗 Base URL: {base_url}")
+            print_user_info(f"   󰌷 Base URL: {base_url}")
         logger.info(f"使用模型提供商: {provider_display}, 推理模型: {think_config.model}, 对话模型: {chat_config.model}, Base URL: {chat_config.base_url}")
     except Exception as e:
-        print_user_error(f"❌ 无法配置模型: {e}")
+        print_user_error(f"󰅙 无法配置模型: {e}")
         logger.error(f"模型配置失败: {e}", exc_info=True)
         return
 
@@ -140,7 +141,7 @@ async def run_case_analysis(
                 timeout=config.task_timeout,
             )
     except asyncio.TimeoutError:
-        print_user_error(f"❌ 分析超过 {config.task_timeout} 秒，任务已终止")
+        print_user_error(f"󰅙 分析超过 {config.task_timeout} 秒，任务已终止")
         logger.error("分析任务超时: %s 秒", config.task_timeout)
         return
     finally:
@@ -148,23 +149,10 @@ async def run_case_analysis(
 
     # 显示结果摘要
     if result.success:
-        print_user_success("\n🎉 分析成功完成！")
-        print_user_info(f"📋 案例ID: {result.case_id}")
-        print_user_info(f"💻 编程语言: {result.language}")
-        if result.execution_time:
-            print_user_info(f"⏱️  执行时间: {result.execution_time:.2f}秒")
-
-        if result.is_complete():
-            print_user_success("✅ 所有分析步骤都成功完成")
-        else:
-            print_user_warning("⚠️  部分分析步骤未完成")
-
-        if config.output_file:
-            print_user_info(f"📄 分析报告已保存到: {config.output_file}")
-        else:
-            logger.info("分析结果已保存到时间戳目录")
+        print_result_card(result)
     else:
-        print_user_error(f"\n❌ 分析失败: {result.error_message}")
+        print_result_card(result)
+        print_user_error(f"分析失败: {result.error_message}")
         logger.error(f"案例分析失败: {result.error_message}")
 
 
@@ -203,22 +191,22 @@ async def run_md_direct_codeql(
     # 验证MD文件存在性
     md_path = Path(md_file_path)
     if not md_path.exists():
-        print_user_error(f"❌ MD文件不存在: {md_file_path}")
+        print_user_error(f"󰅙 MD文件不存在: {md_file_path}")
         logger.error(f"MD文件不存在: {md_file_path}")
         return
 
     if not md_path.suffix.lower() == '.md':
-        print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
+        print_user_error(f"󰅙 文件格式错误，需要.md文件: {md_file_path}")
         logger.error(f"文件格式错误: {md_file_path}")
         return
 
     # 读取MD文件内容
     try:
         md_content = md_path.read_text(encoding='utf-8')
-        print_user_info(f"📄 成功读取MD文件: {md_file_path}")
+        print_user_info(f"󰈙 成功读取MD文件: {md_file_path}")
         logger.info(f"读取MD文件: {md_file_path}, 内容长度: {len(md_content)}")
     except Exception as e:
-        print_user_error(f"❌ 读取MD文件失败: {e}")
+        print_user_error(f"󰅙 读取MD文件失败: {e}")
         logger.error(f"读取MD文件失败: {e}", exc_info=True)
         return
 
@@ -226,13 +214,13 @@ async def run_md_direct_codeql(
     if prev_ql_file:
         prev_ql_path = Path(prev_ql_file)
         if not prev_ql_path.exists():
-            print_user_error(f"❌ 指定的QL文件不存在: {prev_ql_file}")
+            print_user_error(f"󰅙 指定的QL文件不存在: {prev_ql_file}")
             return
         try:
             prev_ql = prev_ql_path.read_text(encoding='utf-8')
-            print_user_info(f"📄 成功读取上一次QL文件: {prev_ql_file}")
+            print_user_info(f"󰈙 成功读取上一次QL文件: {prev_ql_file}")
         except Exception as e:
-            print_user_error(f"❌ 读取上一次QL文件失败: {e}")
+            print_user_error(f"󰅙 读取上一次QL文件失败: {e}")
             return
 
     # 如果没有指定数据库路径，尝试从当前目录查找
@@ -242,7 +230,7 @@ async def run_md_direct_codeql(
             database_path = str(db_dir)
             break
         if not database_path:
-            print_user_error("❌ 未找到CodeQL数据库，请使用 --database-path 参数指定")
+            print_user_error("󰅙 未找到CodeQL数据库，请使用 --database-path 参数指定")
             logger.error("未找到CodeQL数据库")
             return
 
@@ -264,13 +252,13 @@ async def run_md_direct_codeql(
         )
 
         provider_display = provider or chat_config.provider or "环境变量配置"
-        print_user_info(f"🤖 使用模型提供商: {provider_display}")
-        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"󰚩 使用模型提供商: {provider_display}")
+        print_user_info(f"   󰧑 推理模型: {think_config.model}")
         print_user_info(f"   💬 对话模型: {chat_config.model}")
         if base_url:
-            print_user_info(f"   🔗 Base URL: {base_url}")
+            print_user_info(f"   󰌷 Base URL: {base_url}")
     except Exception as e:
-        print_user_error(f"❌ 无法配置模型: {e}")
+        print_user_error(f"󰅙 无法配置模型: {e}")
         logger.error(f"模型配置失败: {e}", exc_info=True)
         return
 
@@ -278,9 +266,9 @@ async def run_md_direct_codeql(
     try:
         # 使用聊天模型配置作为主要配置
         analyzer = MultiAgentAnalyzer(config=chat_config)
-        print_user_info("🔧 成功创建AI分析器")
+        print_user_info("󰢛 成功创建AI分析器")
     except Exception as e:
-        print_user_error(f"❌ 创建AI分析器失败: {e}")
+        print_user_error(f"󰅙 创建AI分析器失败: {e}")
         logger.error(f"创建AI分析器失败: {e}", exc_info=True)
         return
 
@@ -295,17 +283,17 @@ async def run_md_direct_codeql(
             enable_source_sink_fallback=enable_source_sink_fallback,
             fallback_empty_retry_max=fallback_empty_retry_max,
         )
-        print_user_info("🛠️  成功创建CodeQL生成工具")
-        print_user_info(f"   📁 数据库路径: {database_path}")
-        print_user_info(f"   💻 编程语言: {language}")
+        print_user_info("󰢛  成功创建CodeQL生成工具")
+        print_user_info(f"   󰉋 数据库路径: {database_path}")
+        print_user_info(f"   󰍹 编程语言: {language}")
     except Exception as e:
-        print_user_error(f"❌ 创建CodeQL工具失败: {e}")
+        print_user_error(f"󰅙 创建CodeQL工具失败: {e}")
         logger.error(f"创建CodeQL工具失败: {e}", exc_info=True)
         return
 
     # 执行CodeQL生成
     try:
-        print_user_info("🚀 开始从MD文件生成CodeQL查询...")
+        print_user_info("󰜎 开始从MD文件生成CodeQL查询...")
 
         # 使用MD文件内容作为需求描述
         requirement = f"根据以下漏洞描述生成CodeQL查询:\n\n{md_content}"
@@ -321,14 +309,14 @@ async def run_md_direct_codeql(
         )
 
         # 输出结果
-        print_user_success("\n🎉 CodeQL生成完成！")
-        print_user_info("📋 查询结果:")
+        print_user_success("\n󰄬 CodeQL生成完成！")
+        print_user_info("󰈙 查询结果:")
         print(result)
 
         logger.info("CodeQL生成成功完成")
 
     except Exception as e:
-        print_user_error(f"❌ CodeQL生成失败: {e}")
+        print_user_error(f"󰅙 CodeQL生成失败: {e}")
         logger.error(f"CodeQL生成失败: {e}", exc_info=True)
         return
 
@@ -363,29 +351,29 @@ async def run_md_source_analysis(
     # 验证MD文件存在性
     md_path = Path(md_file_path)
     if not md_path.exists():
-        print_user_error(f"❌ MD文件不存在: {md_file_path}")
+        print_user_error(f"󰅙 MD文件不存在: {md_file_path}")
         logger.error(f"MD文件不存在: {md_file_path}")
         return
 
     if not md_path.suffix.lower() == '.md':
-        print_user_error(f"❌ 文件格式错误，需要.md文件: {md_file_path}")
+        print_user_error(f"󰅙 文件格式错误，需要.md文件: {md_file_path}")
         logger.error(f"文件格式错误: {md_file_path}")
         return
 
     # 验证源代码路径存在性
     src_path_obj = Path(src_path)
     if not src_path_obj.exists():
-        print_user_error(f"❌ 源代码路径不存在: {src_path}")
+        print_user_error(f"󰅙 源代码路径不存在: {src_path}")
         logger.error(f"源代码路径不存在: {src_path}")
         return
 
     # 读取MD文件内容
     try:
         md_content = md_path.read_text(encoding='utf-8')
-        print_user_info(f"📄 成功读取MD文件: {md_file_path}")
+        print_user_info(f"󰈙 成功读取MD文件: {md_file_path}")
         logger.info(f"读取MD文件: {md_file_path}, 内容长度: {len(md_content)}")
     except Exception as e:
-        print_user_error(f"❌ 读取MD文件失败: {e}")
+        print_user_error(f"󰅙 读取MD文件失败: {e}")
         logger.error(f"读取MD文件失败: {e}", exc_info=True)
         return
 
@@ -399,9 +387,9 @@ async def run_md_source_analysis(
                 'source_dir': src_path_obj
             })()
             language = detector.detect_language(temp_case_paths)
-            print_user_info(f"🔍 自动检测编程语言: {language}")
+            print_user_info(f"󰍉 自动检测编程语言: {language}")
         except Exception as e:
-            print_user_warning(f"⚠️  无法自动检测语言，使用默认语言 'java': {e}")
+            print_user_warning(f"󰀪  无法自动检测语言，使用默认语言 'java': {e}")
             language = "java"
 
     # 显示模型配置信息
@@ -422,22 +410,22 @@ async def run_md_source_analysis(
         )
 
         provider_display = provider or chat_config.provider or "环境变量配置"
-        print_user_info(f"🤖 使用模型提供商: {provider_display}")
-        print_user_info(f"   💭 推理模型: {think_config.model}")
+        print_user_info(f"󰚩 使用模型提供商: {provider_display}")
+        print_user_info(f"   󰧑 推理模型: {think_config.model}")
         print_user_info(f"   💬 对话模型: {chat_config.model}")
         if base_url:
-            print_user_info(f"   🔗 Base URL: {base_url}")
+            print_user_info(f"   󰌷 Base URL: {base_url}")
     except Exception as e:
-        print_user_error(f"❌ 无法配置模型: {e}")
+        print_user_error(f"󰅙 无法配置模型: {e}")
         logger.error(f"模型配置失败: {e}", exc_info=True)
         return
 
     # 创建MultiAgentAnalyzer
     try:
         analyzer = MultiAgentAnalyzer(config=chat_config)
-        print_user_info("🔧 成功创建AI分析器")
+        print_user_info("󰢛 成功创建AI分析器")
     except Exception as e:
-        print_user_error(f"❌ 创建AI分析器失败: {e}")
+        print_user_error(f"󰅙 创建AI分析器失败: {e}")
         logger.error(f"创建AI分析器失败: {e}", exc_info=True)
         return
 
@@ -448,17 +436,17 @@ async def run_md_source_analysis(
             source_root=src_path,
             database_path=None  # 不需要CodeQL数据库
         )
-        print_user_info("🔍 成功创建Source点分析工具")
-        print_user_info(f"   📁 源代码路径: {src_path}")
-        print_user_info(f"   💻 编程语言: {language}")
+        print_user_info("󰍉 成功创建Source点分析工具")
+        print_user_info(f"   󰉋 源代码路径: {src_path}")
+        print_user_info(f"   󰍹 编程语言: {language}")
     except Exception as e:
-        print_user_error(f"❌ 创建Source分析工具失败: {e}")
+        print_user_error(f"󰅙 创建Source分析工具失败: {e}")
         logger.error(f"创建Source分析工具失败: {e}", exc_info=True)
         return
 
     # 执行Source点分析
     try:
-        print_user_info("🚀 开始从MD文件生成Source点分析报告...")
+        print_user_info("󰜎 开始从MD文件生成Source点分析报告...")
 
         # 使用MD文件内容作为sink分析结果（模拟）
         sink_analysis = f"根据以下漏洞描述分析Source点:\n\n{md_content}"
@@ -469,7 +457,7 @@ async def run_md_source_analysis(
             show_thinking=stream
         )
         if result.success:
-            print_user_success("\n🎉 Source点分析完成！")
+            print_user_success("\n󰄬 Source点分析完成！")
             report_content = f"""# Source点分析报告
 
 ## 分析配置
@@ -497,18 +485,18 @@ async def run_md_source_analysis(
 
             try:
                 output_path.write_text(report_content, encoding='utf-8')
-                print_user_info(f"📄 分析报告已保存到: {output_path}")
+                print_user_info(f"󰈙 分析报告已保存到: {output_path}")
             except Exception as e:
-                print_user_error(f"❌ 保存报告失败: {e}")
+                print_user_error(f"󰅙 保存报告失败: {e}")
                 logger.error(f"保存报告失败: {e}", exc_info=True)
                 # 即使保存失败，也显示结果到控制台
-                print_user_info("📋 分析结果:")
+                print_user_info("󰈙 分析结果:")
                 print(report_content)
         else:
-            print_user_error(f"\n❌ Source点分析失败: {result.error}")
+            print_user_error(f"\n󰅙 Source点分析失败: {result.error}")
             logger.error(f"Source点分析失败: {result.error}")
 
     except Exception as e:
-        print_user_error(f"❌ Source点分析失败: {e}")
+        print_user_error(f"󰅙 Source点分析失败: {e}")
         logger.error(f"Source点分析失败: {e}", exc_info=True)
         return

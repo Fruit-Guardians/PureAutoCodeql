@@ -2,6 +2,7 @@
 
 import asyncio
 import functools
+import time
 from contextlib import AsyncExitStack
 
 from langchain.agents import create_agent
@@ -13,6 +14,12 @@ from pure_auto_codeql.analysis_models import AgentResult
 from pure_auto_codeql.configuration import LLMConfig, LLMRole, get_resilient_llm_config
 from pure_auto_codeql.utils.logger import get_logger
 from pure_auto_codeql.utils.mcp_schema_fixer import fix_mcp_tools_schemas
+from pure_auto_codeql.utils.terminal_ui import (
+    StreamBlock,
+    print_tool_end,
+    print_tool_start,
+    verbose_tool_output_enabled,
+)
 
 from ..agent_mcp_config import AgentMCPConfigService
 from .chat_client import RetryableChatOpenAI
@@ -101,12 +108,12 @@ class MultiAgentAnalyzer:
             except Exception as e:
                 # 判断是否为可选服务器
                 if server_name in optional_servers:
-                    logger.warning(f"⚠️  可选 MCP 服务器 '{server_name}' 加载失败，将继续使用其他工具: {e}")
+                    logger.warning(f"󰀪  可选 MCP 服务器 '{server_name}' 加载失败，将继续使用其他工具: {e}")
                     logger.warning(f"  配置: {connection}")
                     failed_servers.append(server_name)
                 else:
                     # 必需的服务器失败时，清理并抛出异常
-                    logger.error(f"❌ 必需的 MCP 服务器 '{server_name}' 加载失败: {e}")
+                    logger.error(f"󰅙 必需的 MCP 服务器 '{server_name}' 加载失败: {e}")
                     logger.error(f"配置的 MCP 服务器: {list(mcp_servers.keys())}")
                     for srv_name in mcp_servers.keys():
                         logger.error(f"  - {srv_name}: {mcp_servers[srv_name]}")
@@ -117,7 +124,7 @@ class MultiAgentAnalyzer:
                     raise
 
         if failed_servers:
-            logger.info(f"ℹ️  跳过了 {len(failed_servers)} 个可选 MCP 服务器: {', '.join(failed_servers)}")
+            logger.info(f"󰋼  跳过了 {len(failed_servers)} 个可选 MCP 服务器: {', '.join(failed_servers)}")
 
         # Add LSP Function Lookup Tool (uses ripgrep, no LSP engine needed)
         # 只有当配置包含 ripgrep 时才添加 LSPFunctionLookupTool（因为该工具依赖 ripgrep）
@@ -148,7 +155,7 @@ class MultiAgentAnalyzer:
                     @functools.wraps(original_func)
                     def wrapped_run(*args, **kwargs):
                         logger = get_logger(__name__)
-                        logger.debug(f"🔧 调用工具 {name} (sync)")
+                        logger.debug(f"󰢛 调用工具 {name} (sync)")
 
                         # 同步工具暂不添加超时（主要是 MCP 工具使用异步）
                         result = original_func(*args, **kwargs)
@@ -164,7 +171,7 @@ class MultiAgentAnalyzer:
                     @functools.wraps(original_func)
                     async def wrapped_arun(*args, **kwargs):
                         logger = get_logger(__name__)
-                        logger.debug(f"🔧 调用工具 {name} (async)")
+                        logger.debug(f"󰢛 调用工具 {name} (async)")
 
                         # 为 MCP 工具添加 30 秒超时
                         timeout_seconds = 30
@@ -175,7 +182,7 @@ class MultiAgentAnalyzer:
                             )
                             return _limit_tool_output_tokens(result, tool_name=name)
                         except asyncio.TimeoutError:
-                            logger.warning(f"⏱️ 工具 {name} 调用超时 (>{timeout_seconds}秒)")
+                            logger.warning(f"󰥔 工具 {name} 调用超时 (>{timeout_seconds}秒)")
                             timeout_msg = (
                                 f"工具调用超时: '{name}' 执行时间超过 {timeout_seconds} 秒。\n"
                                 f"可能原因:\n"
@@ -186,7 +193,7 @@ class MultiAgentAnalyzer:
                             )
                             return (timeout_msg, None)
                         except Exception as e:
-                            logger.error(f"❌ 工具 {name} 调用失败: {e}")
+                            logger.error(f"󰅙 工具 {name} 调用失败: {e}")
                             raise
                     return wrapped_arun
 
@@ -237,6 +244,8 @@ class MultiAgentAnalyzer:
             # 跟踪工具执行状态
             output_started = False
             ai_streaming = False  # 跟踪AI是否正在流式输出
+            stream_block = StreamBlock()
+            tool_started_at: dict[str, float] = {}
 
             async for event in agent.astream_events(
                 {"messages": [("user", prompt)]},
@@ -280,30 +289,29 @@ class MultiAgentAnalyzer:
 
                 if show_thinking:
                     if event_name == "on_agent_action":
-                        action = event.get("data", {}).get("action")
-                        if action and hasattr(action, "tool"):
-                            print(f"🤔 AI思考: 决定使用工具 '{action.tool}'")
-                            # if hasattr(action, "tool_input") and action.tool_input:
-                            #     print(f"   工具输入: {action.tool_input}")
+                        # on_tool_start renders the same decision with a concise
+                        # input summary, so avoid printing it twice.
+                        pass
 
                     elif event_name == "on_tool_start":
-                        # 工具开始执行
                         tool_name = event.get("name", "")
                         tool_input = event.get("data", {}).get("input", {})
+                        tool_key = str(event.get("run_id") or tool_name)
+                        tool_started_at[tool_key] = time.monotonic()
 
-                        # 如果AI正在流式输出，先换行
                         if ai_streaming:
                             print()
                             ai_streaming = False
 
-                        # 打印工具输入参数
-                        print(f"🔧 {tool_name}")
-                        print(f"   📥 请求参数: {tool_input}")
-                        print("   ⏳ 执行中 → ", end="", flush=True)
+                        print_tool_start(tool_name, tool_input)
 
                     elif event_name == "on_tool_end":
-                        # 工具执行完成，在同一行显示结果
                         tool_name = event.get("name", "")
+                        tool_key = str(event.get("run_id") or tool_name)
+                        elapsed = time.monotonic() - tool_started_at.pop(
+                            tool_key,
+                            time.monotonic(),
+                        )
                         output = event.get("data", {}).get("output", "")
                         output_preview = _format_tool_output(tool_name, output)
                         status = None
@@ -315,15 +323,18 @@ class MultiAgentAnalyzer:
                             status = output.get("status")
 
                         if status == "error":
-                            print(f"❌ {output_preview}")
+                            display_status = "error"
+                        elif (
+                            "未找到" in output_preview
+                            or "no matches found" in str(output).lower()
+                        ):
+                            display_status = "empty"
                         else:
-                            if "未找到" in output_preview or "no matches found" in str(output).lower():
-                                print(f"⚠️ {output_preview}")
-                            else:
-                                print(f"✅ {output_preview}")
+                            display_status = "success"
+                        print_tool_end(tool_name, display_status, elapsed)
 
-                        # 显示详细内容（针对特定工具）
-                        _print_detailed_tool_output(tool_name, output)
+                        if verbose_tool_output_enabled():
+                            _print_detailed_tool_output(tool_name, output)
 
                 if event_name == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -359,19 +370,18 @@ class MultiAgentAnalyzer:
                             if show_thinking:
                                 # 第一次输出时添加分隔符
                                 if not output_started:
-                                    print("\n" + "="*50)
+                                    stream_block.start(agent_name)
                                     output_started = True
-                                print(text, end="", flush=True)
+                                stream_block.write(text)
                                 ai_streaming = True  # 标记AI正在流式输出
 
             final_content = "".join(content_parts)
             if show_thinking and output_started:
-                print("\n" + "="*50)
-                print("🎯 AI推理完成\n")
+                stream_block.finish()
 
             return AgentResult(content=final_content, success=True)
 
         except Exception as e:
             if show_thinking:
-                print(f"\n❌ 推理出错: {e}")
+                print(f"\n󰅙 推理出错: {e}")
             return AgentResult(content="", success=False, error=str(e))

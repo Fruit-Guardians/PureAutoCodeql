@@ -190,10 +190,10 @@ class CodeQLComposeTool(BaseTool):
         lsp_service: CodeQLLSPService,
     ) -> Dict[str, Any]:
         """Run LSP diagnostics and execute the query when syntax passes."""
-        print("🔍 [CodeQLComposeTool] 开始使用LSP进行语法检查并执行...")
+        print("󰍉 [CodeQLComposeTool] 开始使用LSP进行语法检查并执行...")
 
         try:
-            print("🔍 [CodeQLComposeTool] 执行CodeQL语法检查...")
+            print("󰍉 [CodeQLComposeTool] 执行CodeQL语法检查...")
             syntax_result = await asyncio.to_thread(
                 lsp_service.check_syntax,
                 current_ql,
@@ -201,7 +201,7 @@ class CodeQLComposeTool(BaseTool):
             print(syntax_result)
 
             if "error" in syntax_result:
-                print(f"❌ [CodeQLComposeTool] LSP语法检查失败: {syntax_result['error']}")
+                print(f"󰅙 [CodeQLComposeTool] LSP语法检查失败: {syntax_result['error']}")
                 return {"success": False, "output": syntax_result["error"]}
 
             diagnostics = syntax_result.get("diagnostics", [])
@@ -217,7 +217,7 @@ class CodeQLComposeTool(BaseTool):
             print(f"   - 提示: {len(hints)} 个")
 
             if diagnostics:
-                print("\n📋 [CodeQLComposeTool] 详细诊断信息:")
+                print("\n󰈙 [CodeQLComposeTool] 详细诊断信息:")
                 for i, diag in enumerate(diagnostics, 1):
                     severity = diag.get("severity", 1)
                     severity_label = {1: "错误", 2: "警告", 3: "信息", 4: "提示"}.get(severity, "未知")
@@ -228,7 +228,7 @@ class CodeQLComposeTool(BaseTool):
                     character = start.get("character", 0) + 1
                     print(f"   {i}. [{severity_label}] 第{line}行第{character}列: {message}")
             else:
-                print("✅ [CodeQLComposeTool] 未发现任何诊断信息")
+                print("󰄬 [CodeQLComposeTool] 未发现任何诊断信息")
 
             if errors:
                 # 构建详细的LSP诊断信息，包含完整的JSON格式以便错误分析Agent使用
@@ -259,7 +259,7 @@ class CodeQLComposeTool(BaseTool):
                     # 同时保留可读格式
                     error_messages.append(f"Line {line}, Column {character}: {message}")
 
-                print(f"❌ [CodeQLComposeTool] 发现 {len(errors)} 个语法错误")
+                print(f"󰅙 [CodeQLComposeTool] 发现 {len(errors)} 个语法错误")
 
                 # 返回完整的LSP诊断信息（JSON格式 + 可读格式）
                 lsp_error_output = {
@@ -272,8 +272,8 @@ class CodeQLComposeTool(BaseTool):
                 import json
                 return {"success": False, "output": json.dumps(lsp_error_output, indent=2, ensure_ascii=False)}
 
-            print("✅ [CodeQLComposeTool] 语法检查通过")
-            print("🚀 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
+            print("󰄬 [CodeQLComposeTool] 语法检查通过")
+            print("󰜎 [CodeQLComposeTool] 开始实际执行CodeQL查询...")
 
             exec_result = await asyncio.to_thread(
                 execute_codeql_query,
@@ -288,7 +288,7 @@ class CodeQLComposeTool(BaseTool):
             if not exec_result.get("success", False):
                 error_output = exec_result.get("output", "")
                 if is_database_error(error_output):
-                    print("⚠️ [CodeQLComposeTool] 检测到数据库错误")
+                    print("󰀪 [CodeQLComposeTool] 检测到数据库错误")
 
             print("🏁 [CodeQLComposeTool] CodeQL查询执行完成")
             return exec_result
@@ -305,7 +305,7 @@ class CodeQLComposeTool(BaseTool):
                 )
                 return {"success": False, "output": enhanced_error}
 
-            print(f"❌ [CodeQLComposeTool] 语法检查过程中发生异常: {error_str}")
+            print(f"󰅙 [CodeQLComposeTool] 语法检查过程中发生异常: {error_str}")
             return {"success": False, "output": f"Syntax check failed: {error_str}"}
 
     @staticmethod
@@ -888,7 +888,7 @@ class CodeQLComposeTool(BaseTool):
 
         返回 (current_ql, exec_result, is_result_empty, paths_count)。
         """
-        print(f"⚠️ [CodeQLComposeTool] 第{round_index}轮查询结果为空，且已开启断流点恢复，进行断流点查找...")
+        print(f"󰀪 [CodeQLComposeTool] 第{round_index}轮查询结果为空，且已开启断流点恢复，进行断流点查找...")
         from .extract_ql import Get_Breakpoint, extract_predicate_body_and_params, extract_ql_predicate
 
         # 初始化断流点添加计数器
@@ -898,7 +898,7 @@ class CodeQLComposeTool(BaseTool):
 
         while breakpoint_add_count < max_breakpoint_attempts and is_result_empty:
             breakpoint_add_count += 1
-            print(f"🔍 [CodeQLComposeTool] 断流点条件添加尝试 {breakpoint_add_count}/{max_breakpoint_attempts}")
+            print(f"󰍉 [CodeQLComposeTool] 断流点条件添加尝试 {breakpoint_add_count}/{max_breakpoint_attempts}")
 
             #组装断流点查询语句
             ql_predicates = extract_ql_predicate(current_ql)
@@ -917,7 +917,7 @@ class CodeQLComposeTool(BaseTool):
             self.last_execution_result = exec_result
 
             #借助agent开始分析断流点并且生成断流条件
-            print(f"🔍 [CodeQLComposeTool] 开始分析断流点（第{breakpoint_add_count}次尝试）")
+            print(f"󰍉 [CodeQLComposeTool] 开始分析断流点（第{breakpoint_add_count}次尝试）")
 
             # 提取CodeQL查询结果
             codeql_output = exec_result.get('output', '')
@@ -934,7 +934,7 @@ class CodeQLComposeTool(BaseTool):
                 codeql_results = codeql_output
 
             # 使用断点检测代理分析结果 - 第一步：分析断流点基本信息
-            print("🔍 [CodeQLComposeTool] 第一步：分析断流点基本信息")
+            print("󰍉 [CodeQLComposeTool] 第一步：分析断流点基本信息")
             breakpoint_analysis_result = await breakpoint_detect_agent.analyze_breakpoints(
                 codeql_results=codeql_results,
                 language=target_language,
@@ -945,15 +945,15 @@ class CodeQLComposeTool(BaseTool):
             )
 
             if not breakpoint_analysis_result.success:
-                print(f"❌ [CodeQLComposeTool] 断流点分析失败: {breakpoint_analysis_result.error}")
+                print(f"󰅙 [CodeQLComposeTool] 断流点分析失败: {breakpoint_analysis_result.error}")
                 # 继续执行，不中断整个流程
                 break
             else:
-                print("✅ [CodeQLComposeTool] 断流点分析完成")
-                print(f"📄 [CodeQLComposeTool] 断流点基本信息:\n{breakpoint_analysis_result.content}")
+                print("󰄬 [CodeQLComposeTool] 断流点分析完成")
+                print(f"󰈙 [CodeQLComposeTool] 断流点基本信息:\n{breakpoint_analysis_result.content}")
 
                 # 第二步：生成isAdditionalFlowStep条件
-                print("🔧 [CodeQLComposeTool] 第二步：生成isAdditionalFlowStep条件")
+                print("󰢛 [CodeQLComposeTool] 第二步：生成isAdditionalFlowStep条件")
                 flowstep_result = await breakpoint_detect_agent.generate_flowstep(
                     breakpoint_analysis=breakpoint_analysis_result.content,
                     language=target_language,
@@ -964,11 +964,11 @@ class CodeQLComposeTool(BaseTool):
                 )
 
                 if not flowstep_result.success:
-                    print(f"❌ [CodeQLComposeTool] isAdditionalFlowStep条件生成失败: {flowstep_result.error}")
+                    print(f"󰅙 [CodeQLComposeTool] isAdditionalFlowStep条件生成失败: {flowstep_result.error}")
                     break
                 else:
-                    print("✅ [CodeQLComposeTool] isAdditionalFlowStep条件生成完成")
-                    print(f"📄 [CodeQLComposeTool] 生成的条件:\n{flowstep_result.content}")
+                    print("󰄬 [CodeQLComposeTool] isAdditionalFlowStep条件生成完成")
+                    print(f"󰈙 [CodeQLComposeTool] 生成的条件:\n{flowstep_result.content}")
 
                     # 提取生成的isAdditionalFlowStep条件
                     import re
@@ -1011,7 +1011,7 @@ class CodeQLComposeTool(BaseTool):
                         new_flowstep_condition = condition
 
                     if new_flowstep_condition:
-                        print(f"🔧 [CodeQLComposeTool] 提取的条件: {new_flowstep_condition}")
+                        print(f"󰢛 [CodeQLComposeTool] 提取的条件: {new_flowstep_condition}")
 
                         # 更新当前查询的isAdditionalFlowStep条件
                         isadd_pattern = r"predicate\s+isAdditionalFlowStep\s*\([^)]*\)\s*\{.*?\}"
@@ -1041,7 +1041,7 @@ class CodeQLComposeTool(BaseTool):
                         print(f"💾 [CodeQLComposeTool] 已更新查询文件，添加断流点条件（第{breakpoint_add_count}次）")
 
                         # 重新执行查询
-                        print(f"🔄 [CodeQLComposeTool] 重新执行查询，添加断流点条件后（第{breakpoint_add_count}次）")
+                        print(f"󰑓 [CodeQLComposeTool] 重新执行查询，添加断流点条件后（第{breakpoint_add_count}次）")
                         exec_result = await self._lsp_and_execute(
                             current_ql=current_ql,
                             target_language=target_language,
@@ -1056,15 +1056,15 @@ class CodeQLComposeTool(BaseTool):
                             paths_count = count_dataflow_paths(exec_result.get('sarif_path'), exec_result.get('json_path'))
 
                             if not is_result_empty:
-                                print(f"✅ [CodeQLComposeTool] 添加断流点条件后查询成功，找到 {paths_count} 条路径")
+                                print(f"󰄬 [CodeQLComposeTool] 添加断流点条件后查询成功，找到 {paths_count} 条路径")
                                 break
                             else:
-                                print("⚠️ [CodeQLComposeTool] 添加断流点条件后查询结果仍为空，继续尝试")
+                                print("󰀪 [CodeQLComposeTool] 添加断流点条件后查询结果仍为空，继续尝试")
                         else:
-                            print("❌ [CodeQLComposeTool] 添加断流点条件后查询执行失败")
+                            print("󰅙 [CodeQLComposeTool] 添加断流点条件后查询执行失败")
                             break
                     else:
-                        print("❌ [CodeQLComposeTool] 无法从生成结果中提取isAdditionalFlowStep条件")
+                        print("󰅙 [CodeQLComposeTool] 无法从生成结果中提取isAdditionalFlowStep条件")
                         break
 
                     # 保存完整的断流点分析结果到文件
@@ -1079,11 +1079,11 @@ class CodeQLComposeTool(BaseTool):
                             f.write(f"## isAdditionalFlowStep条件\n{flowstep_result.content}\n")
                         print(f"💾 [CodeQLComposeTool] 断流点分析结果已保存到: {breakpoint_result_file}")
                     except Exception as save_error:
-                        print(f"⚠️ [CodeQLComposeTool] 保存断流点分析结果时出错: {save_error}")
+                        print(f"󰀪 [CodeQLComposeTool] 保存断流点分析结果时出错: {save_error}")
 
         # 如果达到最大尝试次数仍为空，进入CodeQL放宽流程
         if is_result_empty and breakpoint_add_count >= max_breakpoint_attempts:
-            print(f"⚠️ [CodeQLComposeTool] 已尝试{max_breakpoint_attempts}次添加断流点条件，结果仍为空，将进入CodeQL放宽流程")
+            print(f"󰀪 [CodeQLComposeTool] 已尝试{max_breakpoint_attempts}次添加断流点条件，结果仍为空，将进入CodeQL放宽流程")
             # 这里可以添加进入CodeQL放宽流程的逻辑
             # 目前先继续执行原有流程
         return current_ql, exec_result, is_result_empty, paths_count
@@ -1115,11 +1115,11 @@ class CodeQLComposeTool(BaseTool):
         self.default_database_path = resolve_codeql_database_root(self.default_database_path, self.default_language)
 
         # 在执行前验证数据库
-        print(f"🔍 [CodeQLComposeTool] 验证数据库: {self.default_database_path}")
+        print(f"󰍉 [CodeQLComposeTool] 验证数据库: {self.default_database_path}")
         is_valid, validation_error = validate_codeql_database(self.default_database_path, self.default_language)
         if not is_valid:
             error_msg = (
-                f"❌ [CodeQLComposeTool] 数据库验证失败\n\n"
+                f"󰅙 [CodeQLComposeTool] 数据库验证失败\n\n"
                 f"{validation_error}\n\n"
                 f"请在继续之前修复数据库问题。"
             )
@@ -1127,7 +1127,7 @@ class CodeQLComposeTool(BaseTool):
             return error_msg
 
         if validation_error:  # 有警告但数据库有效
-            print(f"⚠️  [CodeQLComposeTool] {validation_error}")
+            print(f"󰀪  [CodeQLComposeTool] {validation_error}")
 
         target_language = self.default_language
         max_iterations = min(
@@ -1191,7 +1191,7 @@ class CodeQLComposeTool(BaseTool):
         pack_root = query_file.parent
 
         # 启动LSP服务（仅用于语法检查）
-        print(f"📁 [CodeQLComposeTool] 临时目录: {pack_root}")
+        print(f"󰉋 [CodeQLComposeTool] 临时目录: {pack_root}")
         print("   [CodeQLComposeTool] 初始化LSP服务")
         lsp_service = CodeQLLSPService(pack_root, query_file)
 
@@ -1204,11 +1204,11 @@ class CodeQLComposeTool(BaseTool):
 
         # 调用start_server方法，它内部已经有30秒的重试机制
         if not await asyncio.to_thread(lsp_service.start):
-            print("❌ [CodeQLComposeTool] LSP服务启动失败")
+            print("󰅙 [CodeQLComposeTool] LSP服务启动失败")
             return "Error: Failed to start LSP service for syntax checking"
 
         elapsed_time = time.time() - start_time
-        print(f"✅ [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+        print(f"󰄬 [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
 
         mode_now = (exec_mode or "analyze").lower()
 
@@ -1490,7 +1490,7 @@ class CodeQLComposeTool(BaseTool):
                             f"[重试结束] 已尝试 {retry_count} 次重试，仍未找到有效路径"
                         )
                         retry_summary = (
-                            f"\n\n⚠️ 已尝试{retry_count}次重试，仍未找到有效路径"
+                            f"\n\n󰀪 已尝试{retry_count}次重试，仍未找到有效路径"
                         )
                     else:
                         retry_summary = ""
@@ -1561,7 +1561,7 @@ class CodeQLComposeTool(BaseTool):
                                         refinement_error,
                                     )
                         except Exception as tidy_error:
-                            print(f"⚠️ [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
+                            print(f"󰀪 [CodeQLComposeTool] 生成错误整理文档失败: {tidy_error}")
 
                     mode_now = (exec_mode or 'analyze').lower()
 
@@ -1617,7 +1617,7 @@ class CodeQLComposeTool(BaseTool):
                             f"[重试触发] 达到最大修复轮次 ({max_iterations}) 仍未修复，开始第 {retry_count}/{max_retries} 次重试"
                         )
                         print(
-                            f"🔄 [CodeQLComposeTool] 达到最大修复轮次，开始第 {retry_count}/{max_retries} 次重新生成"
+                            f"󰑓 [CodeQLComposeTool] 达到最大修复轮次，开始第 {retry_count}/{max_retries} 次重新生成"
                         )
 
                         retry_history.append(
@@ -1685,7 +1685,7 @@ class CodeQLComposeTool(BaseTool):
                     round=round_index,
                     category=controller.classify_error(exec_result.get("output", "")).value,
                 )
-                print(f"🔍 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
+                print(f"󰍉 [CodeQLComposeTool] 分析错误（第{round_index}轮）")
                 error_prompt_base = error_agent.build_prompt(
                     error_log=exec_result.get('output', ''),
                     curr_ql_content=current_ql,
@@ -1724,7 +1724,7 @@ class CodeQLComposeTool(BaseTool):
                     return final_result
 
                 # Step 2: Use FixInplaceAgent to modify the file
-                print("🔧 [CodeQLComposeTool] 开始修复QL语句")
+                print("󰢛 [CodeQLComposeTool] 开始修复QL语句")
                 controller.transition(CompositionState.REPAIR, round=round_index)
                 ql_file_path_abs = str(query_file.resolve())
 
@@ -1746,7 +1746,7 @@ class CodeQLComposeTool(BaseTool):
                     )
                     return final_result
 
-                print("✅ [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
+                print("󰄬 [CodeQLComposeTool] 文件修改完成，准备下一轮验证")
 
                 # 记录当前轮次的错误信息，用于后续生成错误整理文档
                 error_rounds.append({

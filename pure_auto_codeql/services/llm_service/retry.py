@@ -107,14 +107,14 @@ def llm_retry_decorator(config: LLMConfig):
                         raise error
 
                     if attempt == config.max_retries:
-                        print(f"❌ 重试失败 ({attempt + 1}/{config.max_retries + 1}): {error}")
+                        print(f"󰅙 重试失败 ({attempt + 1}/{config.max_retries + 1}): {error}")
                         raise error
 
                     delay = config.retry_base_delay * (config.retry_backoff_factor ** attempt)
                     if config.retry_jitter:
                         delay *= (0.5 + random.random() * 0.5)  # 50%-100%的随机抖动
 
-                    print(f"🔄 重试 ({attempt + 1}/{config.max_retries + 1})")
+                    print(f"󰑓 重试 ({attempt + 1}/{config.max_retries + 1})")
 
                     await asyncio.sleep(delay)
 
@@ -191,7 +191,7 @@ class AgentRetryTracker:
             }
 
         if not success and session.get("final_error"):
-            print(f"❌ 最终失败 ({session['attempts']}/{session['attempts']}): {session['final_error']['error']}")
+            print(f"󰅙 最终失败 ({session['attempts']}/{session['attempts']}): {session['final_error']['error']}")
 
     def get_retry_summary(self, session_id: str) -> dict:
         """获取重试会话摘要"""

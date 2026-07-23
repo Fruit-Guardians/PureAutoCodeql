@@ -139,7 +139,7 @@ def _discover_extra_files(inputs_dir: Path, cve_id: str) -> tuple[ExtraFile, ...
     extra_files.sort(key=lambda f: f.path.name)
 
     if extra_files:
-        logger.info(f"📂 [额外文件] 发现 {len(extra_files)} 个额外输入文件:")
+        logger.info(f"󰉋 [额外文件] 发现 {len(extra_files)} 个额外输入文件:")
         for extra_file in extra_files:
             logger.info(f"   - {extra_file.path.name}")
 
@@ -171,7 +171,7 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
             # 使用本地找到的JSON文件
             cve_id = sorted(json_map.keys())[0]
             json_path = json_map[cve_id]
-            logger.info(f"📁 [本地文件] 找到CVE JSON文件: {json_path}")
+            logger.info(f"󰉋 [本地文件] 找到CVE JSON文件: {json_path}")
         else:
             # 本地有JSON文件但格式都无效，尝试从diff/patch文件推断CVE ID
             diff_files = sorted(case_paths.inputs.glob("CVE-*.diff"))
@@ -212,9 +212,9 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
             logger.info(f"🌐 [网络获取] 正在从NVD API获取CVE数据: {cve_id}")
             cve_data = fetch_cve_from_nvd(cve_id)
             json_path = save_cve_data(cve_id, cve_data, case_paths.inputs)
-            logger.info(f"✅ [获取成功] CVE数据已保存到: {json_path}")
+            logger.info(f"󰄬 [获取成功] CVE数据已保存到: {json_path}")
         except Exception as e:
-            logger.error(f"❌ [获取失败] 无法获取CVE数据 {cve_id}: {e}")
+            logger.error(f"󰅙 [获取失败] 无法获取CVE数据 {cve_id}: {e}")
             raise RuntimeError(f"Failed to fetch CVE data for {cve_id}: {e}")
 
     # 处理diff/patch文件（可选，缺失时不抛出异常）
@@ -228,9 +228,9 @@ def discover_cve_assets(case_paths: CasePaths) -> CveAssets:
 
     if diff_path:
         file_type = "diff" if diff_path.suffix == ".diff" else "patch"
-        logger.info(f"📄 [本地文件] 找到{file_type}文件: {diff_path}")
+        logger.info(f"󰈙 [本地文件] 找到{file_type}文件: {diff_path}")
     else:
-        logger.info(f"⚠️  [文件缺失] 未找到 {cve_id} 的diff/patch文件，将继续进行分析（无diff模式）")
+        logger.info(f"󰀪  [文件缺失] 未找到 {cve_id} 的diff/patch文件，将继续进行分析（无diff模式）")
 
     # 发现额外输入文件
     extra_files = _discover_extra_files(case_paths.inputs, cve_id)

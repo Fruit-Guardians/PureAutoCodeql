@@ -134,7 +134,7 @@ class CodeQLExecutionService:
     def _handle_empty_results(self, result: CodeQLExecutionResult) -> CodeQLExecutionResult:
         """处理空结果检测和用户交互提示。"""
         if not result.has_results:
-            result.output = f"⚠️ 查询执行成功，但未找到匹配结果。\n\n原始输出:\n{result.output}\n\n💡 请检查查询条件或选择是否继续优化查询。"
+            result.output = f"󰀪 查询执行成功，但未找到匹配结果。\n\n原始输出:\n{result.output}\n\n💡 请检查查询条件或选择是否继续优化查询。"
         return result
 
     def _execute_run_mode(self, query: str) -> CodeQLExecutionResult:

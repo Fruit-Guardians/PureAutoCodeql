@@ -88,7 +88,7 @@ class AgentMCPConfigService:
         # 添加文件系统MCP
         if "filesystem" in profile:
             if not workspace_path:
-                logger.warning("⚠️  filesystem MCP 需要 workspace_path 参数")
+                logger.warning("󰀪  filesystem MCP 需要 workspace_path 参数")
             else:
                 workspace_path_str = str(workspace_path).replace("source_code", "")
                 workspace_path_obj = Path(workspace_path_str)
@@ -141,7 +141,7 @@ class AgentMCPConfigService:
         # 添加 tree_sitter MCP
         if "tree_sitter" in profile:
             if not workspace_path:
-                logger.warning("⚠️  tree_sitter MCP 需要 workspace_path 参数")
+                logger.warning("󰀪  tree_sitter MCP 需要 workspace_path 参数")
             else:
                 mcp_servers["tree_sitter"] = {
                     "command": "uv",
@@ -164,10 +164,10 @@ class AgentMCPConfigService:
                     mcp_servers["language-server"] = lsp_config
                     logger.info(f"✓ 已添加 {language} LSP MCP 配置")
                 else:
-                    logger.info(f"ℹ️  语言 {language} 不支持 LSP MCP")
+                    logger.info(f"󰋼  语言 {language} 不支持 LSP MCP")
             except Exception as e:  # pragma: no cover - 防御性日志记录
-                logger.warning(f"⚠️  LSP MCP 配置失败,继续使用基础 MCP: {e}")
+                logger.warning(f"󰀪  LSP MCP 配置失败,继续使用基础 MCP: {e}")
         elif "language-server" in profile:
-            logger.warning("⚠️  language-server MCP 需要 language 和 workspace_path 参数")
+            logger.warning("󰀪  language-server MCP 需要 language 和 workspace_path 参数")
 
         return mcp_servers

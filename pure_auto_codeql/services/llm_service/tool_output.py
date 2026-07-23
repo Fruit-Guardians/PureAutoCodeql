@@ -33,7 +33,7 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
     if tool_name and any(keyword in tool_name.lower() for keyword in lsp_tool_keywords):
         token_limit = 8000
         logger = get_logger(__name__)
-        logger.debug(f"🔧 LSP MCP工具 '{tool_name}' 使用8000 Token限制")
+        logger.debug(f"󰢛 LSP MCP工具 '{tool_name}' 使用8000 Token限制")
     import re
 
     # 检查是否是 (content, artifact) 元组格式
@@ -59,7 +59,7 @@ def _limit_tool_output_tokens(output: Any, token_limit: int = 10000, tool_name: 
 
     # Log truncation
     logger = get_logger(__name__)
-    logger.info(f"⚠️ 工具输出超过限制: {token_count} tokens > {token_limit} tokens，正在截断...")
+    logger.info(f"󰀪 工具输出超过限制: {token_count} tokens > {token_limit} tokens，正在截断...")
 
     # 检测是否是代码文件（通过常见代码文件特征）
     is_code_file = False
@@ -283,7 +283,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                 else:
                     dir_data = output
 
-            print("📁 目录列表:")
+            print("󰉋 目录列表:")
 
             if isinstance(dir_data, list):
                 if len(dir_data) == 0:
@@ -293,11 +293,11 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                         if isinstance(item, dict):
                             name = item.get('name', '')
                             item_type = item.get('type', '')
-                            icon = "📂" if item_type == 'directory' else "📄"
+                            icon = "󰉋" if item_type == 'directory' else "󰈙"
                             suffix = "/" if item_type == 'directory' else ""
                             print(f"   {icon} {name}{suffix}")
                         else:
-                            print(f"   📄 {item}")
+                            print(f"   󰈙 {item}")
             elif isinstance(dir_data, dict):
                 # 处理树形结构
                 def print_tree(data: dict, prefix: str = "", is_last: bool = True):
@@ -305,7 +305,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                     if "type" in data:
                         if data["type"] == "directory":
                             marker = "└── " if is_last else "├── "
-                            print(f"{prefix}{marker}📂 {data.get('name', '')}/")
+                            print(f"{prefix}{marker}󰉋 {data.get('name', '')}/")
                             if "children" in data:
                                 children = list(data["children"].items())
                                 for i, (name, child) in enumerate(children):
@@ -314,7 +314,7 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                                     print_tree(child, prefix + extension, is_last_child)
                         else:
                             marker = "└── " if is_last else "├── "
-                            print(f"{prefix}{marker}📄 {data.get('name', '')}")
+                            print(f"{prefix}{marker}󰈙 {data.get('name', '')}")
                 print_tree(dir_data)
             else:
                 print(f"   完整输出: {output}")
@@ -328,24 +328,24 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
                 # 处理转义字符
                 content = content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace("\\'", "'")
                 lines = content.strip().split('\n')
-                print("📁 目录列表:")
+                print("󰉋 目录列表:")
                 for line in lines:
                     if line.strip():
                         # 尝试识别 [DIR] 和 [FILE] 标记
                         if line.strip().startswith('[DIR]'):
                             name = line.strip()[5:].strip()
-                            print(f"   📂 {name}/")
+                            print(f"   󰉋 {name}/")
                         elif line.strip().startswith('[FILE]'):
                             name = line.strip()[6:].strip()
-                            print(f"   📄 {name}")
+                            print(f"   󰈙 {name}")
                         else:
-                            print(f"   📄 {line.strip()}")
+                            print(f"   󰈙 {line.strip()}")
             elif '\n' in output_str:
                 lines = output_str.strip().split('\n')
-                print("📁 目录列表:")
+                print("󰉋 目录列表:")
                 for line in lines:
                     if line.strip():
-                        print(f"   📄 {line.strip()}")
+                        print(f"   󰈙 {line.strip()}")
 
     elif is_read_file:
         # 文件读取操作：格式化显示文件内容（显示前N行）
@@ -408,9 +408,9 @@ def _print_detailed_tool_output(tool_name: str, output: Any) -> None:
         line_count = len(lines)
 
         if "no matches found" in output_str.lower() or line_count == 0:
-            print("🔍 搜索结果: 未找到匹配")
+            print("󰍉 搜索结果: 未找到匹配")
         else:
-            print(f"🔍 搜索结果: 找到 {line_count} 个匹配")
+            print(f"󰍉 搜索结果: 找到 {line_count} 个匹配")
             if line_count <= 20:
                 # 如果结果不多，显示所有结果
                 print("-" * 60)

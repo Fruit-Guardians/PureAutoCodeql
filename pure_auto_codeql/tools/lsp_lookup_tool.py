@@ -101,7 +101,7 @@ class LSPFunctionLookupTool(BaseTool):
 
         # Print query information
         print(f"\n{'='*60}")
-        print("🔍 [LSP函数查询] 正在查询函数定义...")
+        print("󰍉 [LSP函数查询] 正在查询函数定义...")
         print(f"📝 查询函数名: {function_name.strip()}")
         print(f"🌐 目标语言: {language}")
         print(f"{'='*60}\n")
@@ -115,15 +115,15 @@ class LSPFunctionLookupTool(BaseTool):
             )
 
             if not result:
-                print(f"❌ [函数查询] 未找到函数 '{function_name}' 的定义\n")
+                print(f"󰅙 [函数查询] 未找到函数 '{function_name}' 的定义\n")
                 return (
                     f"Could not find definition for '{function_name}'. "
                     "The symbol was not found in the current query file or the CodeQL standard library."
                 )
 
             # Print success message
-            print("✅ [函数查询] 查询成功!")
-            print(f"📂 文件位置: {result['file_path']}")
+            print("󰄬 [函数查询] 查询成功!")
+            print(f"󰉋 文件位置: {result['file_path']}")
             print(f"📍 代码行数: {result['start_line']}-{result['end_line']}")
             print(f"{'='*60}\n")
 
@@ -142,7 +142,7 @@ class LSPFunctionLookupTool(BaseTool):
             return "\n".join(output)
 
         except Exception as e:
-            print(f"❌ [函数查询] 查询失败: {type(e).__name__}: {e}\n")
+            print(f"󰅙 [函数查询] 查询失败: {type(e).__name__}: {e}\n")
             return f"Error looking up function definition: {type(e).__name__}: {e}"
 
     async def _arun(self, function_name: str, language: str = None) -> str:

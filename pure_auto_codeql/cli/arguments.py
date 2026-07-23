@@ -392,7 +392,7 @@ def list_providers() -> None:
     providers = list_available_providers()
 
     print("\n" + "=" * 80)
-    print("📋 可用的模型提供商:")
+    print("󰈙 可用的模型提供商:")
     print("=" * 80)
 
     for provider in providers:
@@ -402,7 +402,7 @@ def list_providers() -> None:
         print(f"   对话模型: {provider['chat_model']}")
         print(f"   Base URL: {provider['base_url']}")
         if not provider['has_api_key']:
-            print("   ⚠️  需要设置 API Key 环境变量")
+            print("   󰀪  需要设置 API Key 环境变量")
 
     print("\n" + "=" * 80)
     print("💡 使用方式:")

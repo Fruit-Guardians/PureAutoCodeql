@@ -38,7 +38,7 @@ def list_siliconflow_models() -> None:
     """列出硅基流动的所有可用模型"""
     models = get_siliconflow_models()
     print("\n" + "=" * 80)
-    print("📋 硅基流动 (SiliconFlow) 可用模型列表:")
+    print("󰈙 硅基流动 (SiliconFlow) 可用模型列表:")
     print("=" * 80)
     for i, model in enumerate(models, 1):
         marker = "⭐" if "DeepSeek-R1" in model or "DeepSeek-V3.2" in model else "  "

@@ -36,12 +36,12 @@ def display_providers_status(show_unavailable: bool = True, validate_keys: bool 
     providers = ProviderRegistry.list_all()
 
     if not providers:
-        console.print("[yellow]⚠️  没有已注册的服务商[/yellow]")
+        console.print("[yellow]󰀪  没有已注册的服务商[/yellow]")
         return
 
     # 创建表格
     table = Table(
-        title="🤖 LLM 服务商状态一览",
+        title="󰚩 LLM 服务商状态一览",
         box=box.ROUNDED,
         show_header=True,
         header_style="bold cyan",
@@ -67,7 +67,7 @@ def display_providers_status(show_unavailable: bool = True, validate_keys: bool 
         if not show_unavailable and not (has_key and reachable):
             continue
 
-        status_color = "green" if emoji == "✅" else ("yellow" if emoji == "⚠️" else "red")
+        status_color = "green" if emoji == "󰄬" else ("yellow" if emoji == "󰀪" else "red")
 
         table.add_row(
             provider.display_name,
@@ -88,14 +88,14 @@ def display_provider_detail(provider_name: str) -> None:
     provider = ProviderRegistry.get(provider_name)
 
     if not provider:
-        console.print(f"[red]❌ 服务商 '{provider_name}' 不存在[/red]")
+        console.print(f"[red]󰅙 服务商 '{provider_name}' 不存在[/red]")
         return
 
     # 获取状态
     has_key = provider.is_configured()
     reachable = provider.is_reachable()
     emoji, status_text = provider.get_status()
-    status_color = "green" if emoji == "✅" else ("yellow" if emoji == "⚠️" else "red")
+    status_color = "green" if emoji == "󰄬" else ("yellow" if emoji == "󰀪" else "red")
 
     # 创建信息面板
     info_text = f"""
@@ -123,7 +123,7 @@ def display_provider_detail(provider_name: str) -> None:
 
     panel = Panel(
         info_text.strip(),
-        title=f"📋 {provider.display_name} 详细信息",
+        title=f"󰈙 {provider.display_name} 详细信息",
         border_style="cyan",
         expand=False,
     )
@@ -136,7 +136,7 @@ def display_provider_detail(provider_name: str) -> None:
         tree = Tree("🌳 模型树", guide_style="dim")
         for model in provider.available_models:
             is_default = model in [provider.default_think_model, provider.default_chat_model]
-            marker = "⭐" if is_default else "📦"
+            marker = "⭐" if is_default else "󰏗"
             tree.add(f"{marker} {model}")
         console.print(tree)
 
@@ -148,7 +148,7 @@ def display_all_providers() -> None:
     providers = ProviderRegistry.list_all()
 
     if not providers:
-        console.print("[yellow]⚠️  没有已注册的服务商[/yellow]")
+        console.print("[yellow]󰀪  没有已注册的服务商[/yellow]")
         return
 
     console.print("[bold magenta]🌐 所有已注册的服务商[/bold magenta]\n")
@@ -193,11 +193,11 @@ def display_validation_result(provider_name: str) -> None:
     result = validate_provider(provider_name)
 
     if "error" in result and not result["success"]:
-        console.print(f"[red]❌ 验证失败: {result.get('error', '未知错误')}[/red]")
+        console.print(f"[red]󰅙 验证失败: {result.get('error', '未知错误')}[/red]")
         return
 
     if result["success"]:
-        console.print(f"[green]✅ 服务商 '{result['display_name']}' 配置正确且可用[/green]")
+        console.print(f"[green]󰄬 服务商 '{result['display_name']}' 配置正确且可用[/green]")
     else:
-        console.print(f"[yellow]⚠️  服务商 '{result['display_name']}' 配置有问题: {result.get('error')}[/yellow]")
+        console.print(f"[yellow]󰀪  服务商 '{result['display_name']}' 配置有问题: {result.get('error')}[/yellow]")
 

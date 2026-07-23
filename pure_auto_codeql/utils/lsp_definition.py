@@ -783,7 +783,7 @@ class LSPDefinitionLookup:
         result = self._grep_search_definition(function_name, language)
 
         if result:
-            print(f"✅ [Grep搜索] 在标准库中找到 '{function_name}' 的定义")
+            print(f"󰄬 [Grep搜索] 在标准库中找到 '{function_name}' 的定义")
             return result
 
         print("   [Grep搜索失败] 未在标准库中找到，尝试LSP查询...")
@@ -792,8 +792,8 @@ class LSPDefinitionLookup:
         # NOTE: LSP is commented out for now as it's rarely useful
         # result = self.get_function_definition(function_name, timeout)
         # if result:
-        #     print(f"✅ [LSP查询] 找到 '{function_name}' 的定义")
+        #     print(f"󰄬 [LSP查询] 找到 '{function_name}' 的定义")
         #     return result
 
-        print(f"❌ [查询失败] 未找到 '{function_name}' 的定义")
+        print(f"󰅙 [查询失败] 未找到 '{function_name}' 的定义")
         return None

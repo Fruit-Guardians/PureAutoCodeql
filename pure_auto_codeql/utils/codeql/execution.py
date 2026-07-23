@@ -105,7 +105,7 @@ def run_simple_query(
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
-        print(f"✅ CodeQL简单查询执行完成! 用时: {execution_time:.2f}秒")
+        print(f"󰄬 CodeQL简单查询执行完成! 用时: {execution_time:.2f}秒")
         print("📊 正在处理查询结果...")
 
         if returncode != 0:
@@ -320,7 +320,7 @@ def execute_codeql_query(
 
         # 计算并显示实际执行时间
         execution_time = time.time() - start_time
-        print(f"✅ CodeQL查询执行完成! 用时: {execution_time:.2f}秒")
+        print(f"󰄬 CodeQL查询执行完成! 用时: {execution_time:.2f}秒")
         print("📊 正在处理查询结果...")
 
         if returncode == 0:

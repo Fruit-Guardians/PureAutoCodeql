@@ -47,7 +47,7 @@ def _warn_on_insecure_posture(cfg) -> None:
             )
         else:
             logger.warning(
-                "⚠️  安全告警：API 绑定到非回环地址 %s 且未设置 auth_token，"
+                "󰀪  安全告警：API 绑定到非回环地址 %s 且未设置 auth_token，"
                 "所有接口（含项目导入、分析触发）将无鉴权暴露。"
                 "强烈建议设置 API_AUTH_TOKEN 后再对外提供服务。",
                 cfg.host,
@@ -55,7 +55,7 @@ def _warn_on_insecure_posture(cfg) -> None:
 
     if cfg.workers and cfg.workers > 1:
         logger.warning(
-            "⚠️  workers=%d：任务状态保存在单进程内存中，多 worker 下同一 task_id "
+            "󰀪  workers=%d：任务状态保存在单进程内存中，多 worker 下同一 task_id "
             "在其它进程不可见（会返回 404）。当前实现请使用 workers=1，或改用共享存储。",
             cfg.workers,
         )

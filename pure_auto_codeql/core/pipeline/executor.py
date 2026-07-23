@@ -15,6 +15,7 @@ from pure_auto_codeql.analysis_models import ErrorDetail, StepResult
 from pure_auto_codeql.observability import step_duration, step_span
 from pure_auto_codeql.services.artifacts import ArtifactRegistry
 from pure_auto_codeql.services.path_selection import PathSelectionResult, PathSelectionService
+from pure_auto_codeql.utils.terminal_ui import print_stage_end, print_stage_start
 
 from ..context import AnalysisConfig, AnalysisContext, AnalysisResult
 from ._llm_config import _get_llm_config_from_context
@@ -72,8 +73,10 @@ class AnalysisPipeline:
         context._config = config
 
         try:
-            for step in self.steps:
-                logger.info(f"开始执行步骤: {step.name}")
+            total_steps = len(self.steps)
+            for step_index, step in enumerate(self.steps, start=1):
+                print_stage_start(step_index, total_steps, step.name)
+                logger.debug("开始执行步骤: %s", step.name)
                 step_started = time.monotonic()
                 with step_span(context.case_id, step.name):
                     step_result = await step.execute(context)
@@ -89,6 +92,11 @@ class AnalysisPipeline:
                     )
                 context.add_result(step.name, step_result)
                 result.step_results[step.name] = step_result
+                print_stage_end(
+                    step.name,
+                    step_result.status,
+                    time.monotonic() - step_started,
+                )
 
                 # 将结果映射到AnalysisResult
                 if step.name == "cve_analysis":
@@ -187,7 +195,7 @@ class AnalysisPipeline:
                 self._cleanup_old_output_dirs(output_base, config.keep_output_dirs)
 
             result.output_directory = str(run_dir)
-            logger.info("✅ 分析结果已整合至: %s", run_dir)
+            logger.info("󰄬 分析结果已整合至: %s", run_dir)
 
             json_result_path = await self._process_sarif_files(
                 output_base=output_base,
@@ -368,9 +376,9 @@ class AnalysisPipeline:
 
                 # 验证JSON文件写入成功
                 if json_path.exists() and json_path.stat().st_size > 0:
-                    logger.info("✅ SARIF文件已转换为JSON: %s", json_path.name)
+                    logger.info("󰄬 SARIF文件已转换为JSON: %s", json_path.name)
                 else:
-                    logger.warning("⚠️ JSON文件写入可能失败: %s", json_path)
+                    logger.warning("󰀪 JSON文件写入可能失败: %s", json_path)
 
             except Exception as e:
                 logger.warning(f"SARIF转JSON失败: {e}，但SARIF文件已保存")
@@ -485,10 +493,10 @@ class AnalysisPipeline:
             with open(dataflow_path, "w", encoding=config.output_encoding) as handler:
                 json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
 
-            logger.info("✅ 路径选择结果已输出:")
-            logger.info("   📄 报告: %s", report_path.relative_to(run_dir))
+            logger.info("󰄬 路径选择结果已输出:")
+            logger.info("   󰈙 报告: %s", report_path.relative_to(run_dir))
             logger.info("   📊 详细数据: %s", detail_path.relative_to(run_dir))
-            logger.info("   ✅ 最终结果: %s", dataflow_path.relative_to(run_dir))
+            logger.info("   󰄬 最终结果: %s", dataflow_path.relative_to(run_dir))
 
             # ---------------------------------------------------------
             # 额外输出到根目录 results/CVE-XXXX-XXXX/
@@ -525,13 +533,13 @@ class AnalysisPipeline:
                     if ql_content:
                         ql_path = root_results_dir / f"{target_id_clean}_query.ql"
                         ql_path.write_text(ql_content, encoding=config.output_encoding)
-                        logger.info("   ✅ [Root Export] QL Query: %s", ql_path)
+                        logger.info("   󰄬 [Root Export] QL Query: %s", ql_path)
 
                     # 2. 输出路径选择 JSON (.json)
                     path_json_path = root_results_dir / f"{target_id_clean}_path.json"
                     with open(path_json_path, "w", encoding=config.output_encoding) as handler:
                         json.dump(selection.to_dataflow_json(), handler, ensure_ascii=False, indent=2)
-                    logger.info("   ✅ [Root Export] Path JSON: %s", path_json_path)
+                    logger.info("   󰄬 [Root Export] Path JSON: %s", path_json_path)
 
             except Exception as e:
                 logger.warning(f"根目录 results 额外输出失败: {e}")

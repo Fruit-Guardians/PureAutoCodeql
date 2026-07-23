@@ -92,9 +92,9 @@ def _create_codeql_database(
 
                 if success:
                     logger.info("=" * 60)
-                    logger.info("✅ 本地两步走构建成功！")
+                    logger.info("󰄬 本地两步走构建成功！")
                     if dep_installer.installed_packages:
-                        logger.info("📦 自动安装的依赖: %s", ", ".join(dep_installer.installed_packages))
+                        logger.info("󰏗 自动安装的依赖: %s", ", ".join(dep_installer.installed_packages))
                     logger.info("=" * 60)
                     return
                 else:
@@ -102,7 +102,7 @@ def _create_codeql_database(
 
             except Exception as e:
                 logger.warning("=" * 60)
-                logger.warning("⚠️  本地构建失败: %s", e)
+                logger.warning("󰀪  本地构建失败: %s", e)
                 logger.warning("=" * 60)
 
                 # 策略2：尝试 --build-mode=none（不编译，仅分析源码）
@@ -133,8 +133,8 @@ def _create_codeql_database(
                     _run_process(cmd, cwd=None, log_path=none_log_path)
 
                     logger.info("=" * 60)
-                    logger.info("✅ --build-mode=none 创建数据库成功！")
-                    logger.info("⚠️  注意：未编译项目，分析结果可能不完整")
+                    logger.info("󰄬 --build-mode=none 创建数据库成功！")
+                    logger.info("󰀪  注意：未编译项目，分析结果可能不完整")
                     logger.info("=" * 60)
                     return
 
@@ -159,7 +159,7 @@ def _create_codeql_database(
                                 build_plan=None  # Docker 内部会自动探测
                             )
                             logger.info("=" * 60)
-                            logger.info("✅ Docker autobuild 构建成功！")
+                            logger.info("󰄬 Docker autobuild 构建成功！")
                             logger.info("=" * 60)
                             return
                         except Exception as docker_error:

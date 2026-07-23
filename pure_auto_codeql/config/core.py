@@ -176,22 +176,22 @@ class ProviderConfig:
         has_key = self.is_configured()
 
         if not has_key:
-            return ("⚠️", "API Key 缺失")
+            return ("󰀪", "API Key 缺失")
 
         # 快速检查：网络可达性
         if not validate_key:
             reachable = self.is_reachable()
             if reachable:
-                return ("✅", "已配置")
+                return ("󰄬", "已配置")
             else:
-                return ("❌", "不可达")
+                return ("󰅙", "不可达")
 
         # 深度检查：真实API调用
         is_valid, error_msg = self.validate_api_key()
         if is_valid:
-            return ("✅", "已验证")
+            return ("󰄬", "已验证")
         else:
-            return ("❌", error_msg)
+            return ("󰅙", error_msg)
 
 
 @dataclass

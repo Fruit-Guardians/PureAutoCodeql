@@ -193,7 +193,7 @@ class BaseVerificationAgent:
                     })
                     continue
                 else:
-                    logger.info("✅ %s 分析验证通过：查询返回了结果", self.label)
+                    logger.info("󰄬 %s 分析验证通过：查询返回了结果", self.label)
 
                     if event_callback:
                         await event_callback({
@@ -212,7 +212,7 @@ class BaseVerificationAgent:
                 continue
 
         error_msg = f"{self.label} 分析验证失败：已尝试 {max_retries} 次，查询始终返回空结果"
-        logger.error(f"❌ {error_msg}")
+        logger.error(f"󰅙 {error_msg}")
         logger.info("将直接使用原始 %s 分析报告，不进行验证过滤", self.label)
 
         if event_callback:
@@ -267,7 +267,7 @@ class BaseVerificationAgent:
         prompt = apply_placeholders(template, placeholder_map)
 
         if failed_queries:
-            failed_context = "\n\n## ⚠️ 之前的尝试失败\n\n"
+            failed_context = "\n\n## 󰀪 之前的尝试失败\n\n"
             failed_context += "以下查询在之前的尝试中返回了空结果，请分析问题并生成新的查询：\n\n"
             for failed in failed_queries:
                 failed_context += f"### 尝试 {failed['attempt']}\n"

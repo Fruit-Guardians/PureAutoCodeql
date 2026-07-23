@@ -37,11 +37,11 @@ def save_query_to_persistent_dir(query_content: str, task_id: str, language: str
             metadata_file = task_dir / f'metadata_round{round_num}.json'
             metadata_file.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding='utf-8')
 
-        print(f"✅ [持久化] 查询已保存到: {query_file}")
+        print(f"󰄬 [持久化] 查询已保存到: {query_file}")
         return query_file
 
     except Exception as e:
-        print(f"⚠️  [持久化] 保存查询失败: {e}")
+        print(f"󰀪  [持久化] 保存查询失败: {e}")
         return None
 
 
@@ -76,7 +76,7 @@ def is_empty_result(sarif_path: Optional[str]) -> bool:
 
         return True
     except Exception as e:
-        print(f"⚠️  [is_empty_result] 解析SARIF文件失败: {e}")
+        print(f"󰀪  [is_empty_result] 解析SARIF文件失败: {e}")
         return True
 
 
@@ -107,7 +107,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
                         count += len(results)
                     return count
             except Exception as e:
-                print(f"⚠️  [count_dataflow_paths] 解析SARIF文件失败: {e}")
+                print(f"󰀪  [count_dataflow_paths] 解析SARIF文件失败: {e}")
 
     # 检查JSON路径文件
     if json_path:
@@ -125,7 +125,7 @@ def count_dataflow_paths(sarif_path: Optional[str] = None, json_path: Optional[s
                     count += len(paths)
                 return count
             except Exception as e:
-                print(f"⚠️  [count_dataflow_paths] 解析JSON文件失败: {e}")
+                print(f"󰀪  [count_dataflow_paths] 解析JSON文件失败: {e}")
 
     return count
 

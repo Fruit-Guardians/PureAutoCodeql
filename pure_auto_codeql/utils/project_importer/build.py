@@ -146,7 +146,7 @@ def _resolve_cpp_build_plan(
         prepare_success = _try_prepare_cpp_build(source_dir, log_path)
 
         if prepare_success:
-            logger.info("✅ 预备步骤成功，Makefile已生成")
+            logger.info("󰄬 预备步骤成功，Makefile已生成")
             # 第二步：返回 make 命令让 CodeQL 包裹
             command = _format_command(["make", "-j4"])
             logger.info("将使用 CodeQL 包裹 make 命令进行构建")
@@ -163,7 +163,7 @@ def _resolve_cpp_build_plan(
             _run_process_with_timeout(configure_cmd, cwd=target_dir, log_path=log_path, timeout=config.local_build_prepare_timeout)
             # 第二步：返回 cmake --build 命令让 CodeQL 包裹
             command = _format_command(["cmake", "--build", str(build_dir), "-j", "4"])
-            logger.info("✅ CMake 配置成功，将使用 CodeQL 包裹编译命令")
+            logger.info("󰄬 CMake 配置成功，将使用 CodeQL 包裹编译命令")
             return BuildPlan(command=command, working_dir=target_dir, description="cmake")
         except Exception as e:
             logger.warning("CMake 配置失败: %s，将尝试其他构建方式", e)
