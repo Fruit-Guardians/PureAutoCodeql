@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
+import tempfile
 from contextlib import AsyncExitStack
 from pathlib import Path
 
@@ -33,6 +33,7 @@ CASES = {
 
 async def check_language(language: str) -> None:
     workspace, source_file = CASES[language]
+    source_path = str((workspace / source_file).resolve())
     connection = MCPLanguageConfigService().get_language_server_config(
         language,
         str(workspace),
@@ -44,38 +45,53 @@ async def check_language(language: str) -> None:
         env=connection.get("env"),
     )
 
-    async with AsyncExitStack() as stack:
-        errlog = stack.enter_context(open(os.devnull, "w", encoding="utf-8"))
-        read_stream, write_stream = await stack.enter_async_context(
-            stdio_client(parameters, errlog=errlog)
-        )
-        session = await stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
-        await session.initialize()
-        tools = {tool.name for tool in (await session.list_tools()).tools}
-        required = {"definition", "references", "diagnostics", "hover"}
-        missing = required - tools
-        if missing:
-            raise RuntimeError(
-                f"{language}: bridge is missing tools: {', '.join(sorted(missing))}"
-            )
-        result = await session.call_tool(
-            "diagnostics",
-            {"filePath": source_file},
-        )
-        if result.isError:
-            detail = " ".join(
-                getattr(item, "text", str(item)) for item in result.content
-            )
-            raise RuntimeError(f"{language}: diagnostics failed: {detail}")
+    stage = "starting MCP bridge"
+    print(f"[check] {language}: {stage}", flush=True)
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+        try:
+            async with AsyncExitStack() as stack:
+                read_stream, write_stream = await stack.enter_async_context(
+                    stdio_client(parameters, errlog=errlog)
+                )
+                session = await stack.enter_async_context(
+                    ClientSession(read_stream, write_stream)
+                )
+                stage = "initializing MCP session"
+                async with asyncio.timeout(30):
+                    await session.initialize()
+                stage = "listing MCP tools"
+                async with asyncio.timeout(15):
+                    tools = {tool.name for tool in (await session.list_tools()).tools}
+                required = {"definition", "references", "diagnostics", "hover"}
+                missing = required - tools
+                if missing:
+                    raise RuntimeError(
+                        f"{language}: bridge is missing tools: "
+                        f"{', '.join(sorted(missing))}"
+                    )
+                stage = f"requesting diagnostics for {source_path}"
+                async with asyncio.timeout(30):
+                    result = await session.call_tool(
+                        "diagnostics",
+                        {"filePath": source_path},
+                    )
+                if result.isError:
+                    detail = " ".join(
+                        getattr(item, "text", str(item)) for item in result.content
+                    )
+                    raise RuntimeError(f"{language}: diagnostics failed: {detail}")
+        except Exception as exc:
+            errlog.seek(0)
+            server_log = errlog.read().strip()
+            detail = f"\nBridge stderr:\n{server_log}" if server_log else ""
+            raise RuntimeError(f"{language}: failed while {stage}: {exc}{detail}") from exc
 
     print(f"[ok] {language}: MCP handshake and diagnostics call succeeded")
 
 
 async def async_main(languages: list[str]) -> None:
     for language in languages:
-        await asyncio.wait_for(check_language(language), timeout=90)
+        await check_language(language)
 
 
 def main() -> None:

@@ -48,9 +48,13 @@ def install_wrapper(name: str, target: Path, arguments: list[str] | None = None)
     bin_dir = venv_bin_dir()
     bin_dir.mkdir(parents=True, exist_ok=True)
     arguments = arguments or []
+    wrapper = bin_dir / (f"{name}.cmd" if platform.system() == "Windows" else name)
+    if target.resolve() == wrapper.resolve():
+        raise RuntimeError(
+            f"Refusing to create a recursive wrapper for {name}: {wrapper}"
+        )
 
     if platform.system() == "Windows":
-        wrapper = bin_dir / f"{name}.cmd"
         rendered_args = " ".join(f'"{value}"' for value in arguments)
         wrapper.write_text(
             f'@echo off\r\n"{target}" {rendered_args} %*\r\n',
@@ -58,7 +62,6 @@ def install_wrapper(name: str, target: Path, arguments: list[str] | None = None)
         )
         return
 
-    wrapper = bin_dir / name
     rendered_args = " ".join(_shell_quote(value) for value in arguments)
     wrapper.write_text(
         f"#!/usr/bin/env sh\nexec {_shell_quote(str(target))} {rendered_args} \"$@\"\n",
@@ -145,23 +148,17 @@ def ensure_jdtls(allow_download: bool) -> None:
 
 def ensure_lsp_mcp(allow_build: bool) -> None:
     existing = shutil.which("mcp-language-server")
-    if existing:
+    wrapper = venv_bin_dir() / (
+        "mcp-language-server.cmd"
+        if platform.system() == "Windows"
+        else "mcp-language-server"
+    )
+    if existing and Path(existing).resolve() != wrapper.resolve():
         install_wrapper("mcp-language-server", Path(existing))
         log(f"[ok] LSP MCP bridge: {existing}")
         return
-    if not allow_build:
-        raise RuntimeError(
-            "mcp-language-server is missing and automatic build was disabled."
-        )
 
     require("go", "Install Go from https://go.dev/doc/install.")
-    run(
-        [
-            "go",
-            "install",
-            f"{MCP_LANGUAGE_SERVER_MODULE}@{MCP_LANGUAGE_SERVER_VERSION}",
-        ]
-    )
     go_path = subprocess.run(
         ["go", "env", "GOPATH"],
         check=True,
@@ -174,8 +171,21 @@ def ensure_lsp_mcp(allow_build: bool) -> None:
         else "mcp-language-server"
     )
     if not executable.exists():
+        if not allow_build:
+            raise RuntimeError(
+                "mcp-language-server is missing and automatic build was disabled."
+            )
+        run(
+            [
+                "go",
+                "install",
+                f"{MCP_LANGUAGE_SERVER_MODULE}@{MCP_LANGUAGE_SERVER_VERSION}",
+            ]
+        )
+    if not executable.exists():
         raise RuntimeError(f"Go installed bridge was not found at {executable}")
     install_wrapper("mcp-language-server", executable)
+    log(f"[ok] LSP MCP bridge: {executable}")
 
 
 def ensure_mcp_runtime() -> None:
