@@ -2,6 +2,7 @@
 
 import asyncio
 import functools
+import os
 import time
 from contextlib import AsyncExitStack
 
@@ -9,6 +10,8 @@ from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from pure_auto_codeql.analysis_models import AgentResult
 from pure_auto_codeql.configuration import LLMConfig, LLMRole, get_resilient_llm_config
@@ -93,15 +96,44 @@ class MultiAgentAnalyzer:
 
         for server_name, connection in mcp_servers.items():
             try:
-                if server_name == "tree_sitter":
+                if connection.get("transport") == "stdio":
+                    # Keep one quiet process/session per server for the whole
+                    # agent run. Creating tools directly from a connection
+                    # starts a fresh MCP process on every invocation.
+                    errlog = self._session_stack.enter_context(
+                        open(os.devnull, "w", encoding="utf-8")
+                    )
+                    parameters = StdioServerParameters(
+                        command=connection["command"],
+                        args=connection.get("args", []),
+                        env=connection.get("env"),
+                        cwd=connection.get("cwd"),
+                        encoding=connection.get("encoding", "utf-8"),
+                        encoding_error_handler=connection.get(
+                            "encoding_error_handler",
+                            "strict",
+                        ),
+                    )
+                    read_stream, write_stream = await self._session_stack.enter_async_context(
+                        stdio_client(parameters, errlog=errlog)
+                    )
+                    session = await self._session_stack.enter_async_context(
+                        ClientSession(
+                            read_stream,
+                            write_stream,
+                            **connection.get("session_kwargs", {}),
+                        )
+                    )
+                    await session.initialize()
+                    self._mcp_sessions[server_name] = session
+                    server_tools = await load_mcp_tools(session)
+                else:
                     session = await self._session_stack.enter_async_context(
                         create_session(connection)
                     )
                     await session.initialize()
                     self._mcp_sessions[server_name] = session
                     server_tools = await load_mcp_tools(session, connection=connection)
-                else:
-                    server_tools = await load_mcp_tools(None, connection=connection)
 
                 self.tools.extend(server_tools)
                 logger.info(f"✓ MCP 服务器 '{server_name}' 加载成功，提供 {len(server_tools)} 个工具")
@@ -249,7 +281,7 @@ class MultiAgentAnalyzer:
 
             async for event in agent.astream_events(
                 {"messages": [("user", prompt)]},
-                version="v1",
+                version="v2",
                 config={"recursion_limit": recursion_limit},
             ):
                 event_name = event.get("event")

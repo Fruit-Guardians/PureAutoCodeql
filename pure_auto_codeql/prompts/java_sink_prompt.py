@@ -2,9 +2,6 @@
 Java sink analysis prompt template for UnifiedSinkPathAgent.
 """
 
-from pathlib import Path
-
-
 def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = "") -> str:
     """构建Java sink分析的提示词。"""
     return f"""你是一名顶级的CodeQL安全研究员和Java代码审计专家。
@@ -106,7 +103,7 @@ def build_java_sink_prompt(cve_analysis: str, source_path: str, diff_path: str =
 2.  **代码路径信息**:
     * Diff Path: `{diff_path}`
     * Source Path: `{source_path}`
-3.  **文件系统根目录**: `{Path.cwd() / 'projects'}`
+3.  **工具路径规则**：上述源码和补丁路径均为 MCP 已授权的绝对路径。调用文件工具时必须原样使用，不要添加 `projects/` 等前缀。
 
 **工作流步骤:**
 

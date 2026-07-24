@@ -2,9 +2,6 @@
 Python sink analysis prompt template for UnifiedSinkPathAgent.
 """
 
-from pathlib import Path
-
-
 def build_python_sink_prompt(cve_analysis: str, source_path: str, diff_path: str = "") -> str:
     """构建Python sink分析的提示词。"""
     return f"""你是一名资深的 CodeQL 安全研究员与 Python 代码审计专家，专注识别可能的 Sink 函数及其调用路径。
@@ -24,7 +21,7 @@ def build_python_sink_prompt(cve_analysis: str, source_path: str, diff_path: str
    ```
    * **作用**: 这是定位Sink的关键线索。通过分析补丁前后的代码变化，找出sink点所在的具体位置，{source_path}是源码根目录。
 
-3. **文件系统根目录 (MCP server-filesystem)**: `{Path.cwd() / 'projects'}`。所有工具访问的文件路径必须在该目录内，且以此为基准的相对路径。
+3. **工具路径规则**：上述源码和补丁路径均为 MCP 已授权的绝对路径。调用文件工具时必须原样使用，不要添加 `projects/` 等前缀。
 
 **可用工具:**
 

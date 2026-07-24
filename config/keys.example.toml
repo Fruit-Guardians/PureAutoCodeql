@@ -154,43 +154,18 @@ docker_builder_image = "pure-codeql-cpp:latest"
 # ============================================================================
 # MCP Language Server 配置（用于 Agent 的代码分析能力）
 # ============================================================================
-# 配置各语言的 LSP 服务器,提供符号跳转、类型查询等高级代码导航功能
-# 注意：占位符使用 {variable} 格式,运行时会自动替换
+# 安装器会自动发现以下命令；仅在可执行文件不位于 PATH 时填写绝对路径。
 
 # Java 语言服务器配置
 [mcp_language_server.java]
-# LSP 可执行文件路径（支持相对路径和绝对路径）
-# Windows 示例：
-lsp_executable = "utils\\lsp\\jdt-language-server\\bin\\jdtls.bat"
-# Linux/macOS 示例：
-# lsp_executable = "utils/lsp/jdt-language-server/bin/jdtls"
-
-# 参数模板（占位符: {workspace}, {lsp}, {java_executable}）
-# "--" 之前是 MCP 参数, "--" 之后是传给 LSP 的参数
-# 注意：路径可能包含空格，需要用引号包裹
-args_template = "--workspace \"{workspace}\" --lsp \"{lsp}\" -- --java-executable \"{java_executable}\""
-
-# Java 可执行文件路径（留空则从 builtin_keys.java_home 自动获取）
-java_executable = ""
+lsp_executable = "jdtls"
 
 # Python 语言服务器配置
 [mcp_language_server.python]
 # LSP 可执行文件（可以是 PATH 中的命令名或完整路径）
 lsp_executable = "pyright-langserver"
 
-# 参数模板（占位符: {workspace}, {lsp}）
-args_template = "--workspace {workspace} --lsp {lsp} -- --stdio"
-
 # C/C++ 语言服务器配置
 [mcp_language_server.cpp]
 # LSP 可执行文件（可以是 PATH 中的命令名或完整路径）
 lsp_executable = "clangd"
-
-# 参数模板（占位符: {workspace}, {lsp}, {compile_commands_dir}）
-# 基础配置（不指定 compile_commands_dir）：
-args_template = "--workspace {workspace} --lsp {lsp}"
-# 如需指定编译命令目录，可修改为：
-# args_template = "--workspace {workspace} --lsp {lsp} -- --compile-commands-dir={compile_commands_dir}"
-
-# 编译命令目录（可选，用于 C/C++ 项目）
-compile_commands_dir = ""

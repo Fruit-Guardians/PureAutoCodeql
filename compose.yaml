@@ -1,6 +1,8 @@
 name: pure-auto-codeql
 
 x-app: &app
+  # CodeQL CLI publishes linux64 binaries; ARM hosts run this image via emulation.
+  platform: linux/amd64
   build:
     context: .
     dockerfile: docker/Dockerfile.app
@@ -9,6 +11,8 @@ x-app: &app
     REDIS_URL: redis://redis:6379/0
     API_AUTH_TOKEN: ${API_AUTH_TOKEN:-change-me-before-production}
     API_HOST: 0.0.0.0
+    HOME: /tmp/pure-auto-codeql-home
+    XDG_CACHE_HOME: /tmp/pure-auto-codeql-cache
   volumes:
     - ./projects:/app/projects
     - ./outputs:/app/outputs
@@ -56,6 +60,7 @@ services:
       retries: 20
 
   migrate:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: docker/Dockerfile.app

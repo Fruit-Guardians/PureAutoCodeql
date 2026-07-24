@@ -99,10 +99,18 @@ class AgentMCPConfigService:
                 if agent_type == "template_refinement":
                     prompts_path = prompts_dir()
                     mcp_servers["filesystem"] = {
-                        "command": "npx",
+                        "command": "node",
                         "args": [
-                            "-y",
-                            "@modelcontextprotocol/server-filesystem",
+                            str(
+                                get_repo_root()
+                                / "tools"
+                                / "mcp_runtime"
+                                / "node_modules"
+                                / "@modelcontextprotocol"
+                                / "server-filesystem"
+                                / "dist"
+                                / "index.js"
+                            ),
                             str(prompts_path),
                         ],
                         "transport": "stdio",
@@ -111,10 +119,18 @@ class AgentMCPConfigService:
                     temp_codeql_path = repo_root / "temp" / "codeql_temp"
                     prompts_path = prompts_dir()
                     mcp_servers["filesystem"] = {
-                        "command": "npx",
+                        "command": "node",
                         "args": [
-                            "-y",
-                            "@modelcontextprotocol/server-filesystem",
+                            str(
+                                get_repo_root()
+                                / "tools"
+                                / "mcp_runtime"
+                                / "node_modules"
+                                / "@modelcontextprotocol"
+                                / "server-filesystem"
+                                / "dist"
+                                / "index.js"
+                            ),
                             workspace_path_str,
                             str(temp_codeql_path),
                             str(prompts_path),

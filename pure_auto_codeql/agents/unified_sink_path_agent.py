@@ -43,17 +43,8 @@ class UnifiedSinkPathAgent:
 
             directory = Path(self.source_root).resolve()
 
-            # MCP 根目录（server-filesystem允许的根）
-            server_root = (Path.cwd() / "projects").resolve()
-
             def format_for_prompt(path: Optional[Path]) -> str:
-                if path is None:
-                    return ""
-                try:
-                    relative = path.resolve().relative_to(server_root)
-                except ValueError:
-                    return ""
-                return f"projects/{relative.as_posix()}"
+                return str(path.resolve()) if path is not None else ""
 
             def extract_diff_relative_paths(diff_file: Optional[Path]) -> list:
                 paths = []

@@ -49,6 +49,9 @@ config\\keys*.toml
 # 临时与生成物
 temp/
 tmp/
+.tools/
+.lsp-mcp/
+tools/mcp_runtime/node_modules/
 *.tmp
 *.bak
 *.mdbak

@@ -3,10 +3,15 @@ import logging
 import os
 import platform
 import shlex
+import shutil
 import tomllib
 from pathlib import Path
 
 from pure_auto_codeql.paths import get_repo_root
+from pure_auto_codeql.services.lsp_environment import (
+    find_lsp_mcp,
+    source_language_server,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +23,7 @@ class MCPLanguageConfigService:
     负责为不同语言生成 LSP MCP 服务器配置,从 config/keys.toml 读取语言特定的配置参数。
     """
 
-    SUPPORTED_LANGUAGES = {"java", "python"}
+    SUPPORTED_LANGUAGES = {"java", "python", "c", "cpp", "c++"}
 
     def __init__(self, config_provider=None):
         """
@@ -75,7 +80,7 @@ class MCPLanguageConfigService:
         if not self.is_language_supported(normalized_lang):
             raise ValueError(f"不支持的语言: {language}")
 
-        if normalized_lang in ["c"]:
+        if normalized_lang in {"c", "c++"}:
             normalized_lang = "cpp"
 
         method_name = f"_generate_{normalized_lang}_config"
@@ -86,19 +91,22 @@ class MCPLanguageConfigService:
         return generator(workspace_path)
 
     def _get_mcp_command(self) -> str:
-        system = platform.system()
-        if system == "Windows":
-            cmd_path = Path("utils") / "lsp" / "lsp-mcp.exe"
-        else:
-            cmd_path = Path("utils") / "lsp" / "lsp-mcp"
+        executable = find_lsp_mcp()
+        if executable:
+            return executable
+        raise FileNotFoundError(
+            "mcp-language-server not found. Run scripts/bootstrap.sh (or "
+            "scripts/bootstrap.ps1) to install the pinned bridge."
+        )
 
-        cmd_str = str(cmd_path)
-
-        if not Path(cmd_str).exists():
-            logger.warning(f"MCP 可执行文件不存在: {cmd_str}")
-            raise FileNotFoundError(f"MCP executable not found: {cmd_str}")
-
-        return cmd_str
+    def _build_lsp_mcp_config(self, workspace_path: str) -> dict:
+        workspace = str(Path(workspace_path).resolve())
+        return {
+            "command": self._get_mcp_command(),
+            "args": ["--workspace-root", workspace],
+            "cwd": workspace,
+            "transport": "stdio",
+        }
 
     def _format_args_from_template(
         self,
@@ -164,6 +172,26 @@ class MCPLanguageConfigService:
         return str((project_root / path_obj).resolve())
 
     def _generate_java_config(self, workspace_path: str) -> dict:
+        configured = self._get_lang_config_section("java").get(
+            "lsp_executable",
+            "",
+        )
+        if configured and ("/" in configured or "\\" in configured):
+            configured = self._normalize_path(configured)
+        lsp_executable = configured or source_language_server("java")[1]
+        if lsp_executable and not Path(lsp_executable).is_file():
+            lsp_executable = shutil.which(lsp_executable)
+        if not lsp_executable:
+            raise FileNotFoundError("jdtls not found in PATH")
+        workspace = str(Path(workspace_path).resolve())
+        return {
+            "command": self._get_mcp_command(),
+            "args": ["--workspace", workspace, "--lsp", lsp_executable],
+            "cwd": workspace,
+            "transport": "stdio",
+        }
+
+    def _generate_java_config_legacy(self, workspace_path: str) -> dict:
         lang_config = self._get_lang_config_section("java")
 
         lsp_executable = lang_config.get("lsp_executable", "")
@@ -230,6 +258,33 @@ class MCPLanguageConfigService:
             return str(Path(java_home) / "bin" / "java")
 
     def _generate_python_config(self, workspace_path: str) -> dict:
+        configured = self._get_lang_config_section("python").get(
+            "lsp_executable",
+            "",
+        )
+        if configured and ("/" in configured or "\\" in configured):
+            configured = self._normalize_path(configured)
+        lsp_executable = configured or source_language_server("python")[1]
+        if lsp_executable and not Path(lsp_executable).is_file():
+            lsp_executable = shutil.which(lsp_executable)
+        if not lsp_executable:
+            raise FileNotFoundError("pyright-langserver not found in PATH")
+        workspace = str(Path(workspace_path).resolve())
+        return {
+            "command": self._get_mcp_command(),
+            "args": [
+                "--workspace",
+                workspace,
+                "--lsp",
+                lsp_executable,
+                "--",
+                "--stdio",
+            ],
+            "cwd": workspace,
+            "transport": "stdio",
+        }
+
+    def _generate_python_config_legacy(self, workspace_path: str) -> dict:
         lang_config = self._get_lang_config_section("python")
 
         lsp_executable = lang_config.get("lsp_executable", "pyright-langserver")
@@ -259,4 +314,22 @@ class MCPLanguageConfigService:
             "transport": "stdio"
         }
 
-    # C/C++ LSP MCP 支持已退役,不再提供 _generate_cpp_config 实现
+    def _generate_cpp_config(self, workspace_path: str) -> dict:
+        configured = self._get_lang_config_section("cpp").get(
+            "lsp_executable",
+            "",
+        )
+        if configured and ("/" in configured or "\\" in configured):
+            configured = self._normalize_path(configured)
+        lsp_executable = configured or source_language_server("cpp")[1]
+        if lsp_executable and not Path(lsp_executable).is_file():
+            lsp_executable = shutil.which(lsp_executable)
+        if not lsp_executable:
+            raise FileNotFoundError("clangd not found in PATH")
+        workspace = str(Path(workspace_path).resolve())
+        return {
+            "command": self._get_mcp_command(),
+            "args": ["--workspace", workspace, "--lsp", lsp_executable],
+            "cwd": workspace,
+            "transport": "stdio",
+        }

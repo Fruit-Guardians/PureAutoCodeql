@@ -7,6 +7,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -58,6 +59,13 @@ def _check_path(name: str, path: Path, hint: str) -> CheckResult:
     return CheckResult(name, False, f"missing: {path}", hint)
 
 
+def _check_command_path(name: str, command: str, hint: str) -> CheckResult:
+    executable = shutil.which(command)
+    if executable:
+        return CheckResult(name, True, executable)
+    return CheckResult(name, False, f"{command} not found in PATH", hint)
+
+
 def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
     root = project_root or get_repo_root()
 
@@ -72,6 +80,26 @@ def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
         _check_executable("CodeQL", ["codeql", "version"], "Install CodeQL CLI and add it to PATH."),
         _check_executable("Node.js", ["node", "--version"], "Install Node.js 18 or newer."),
         _check_executable("npm", ["npm", "--version"], "Install npm with Node.js."),
+        _check_command_path(
+            "LSP MCP bridge",
+            "mcp-language-server",
+            "Run ./scripts/bootstrap.sh to install the pinned bridge.",
+        ),
+        _check_command_path(
+            "Python language server",
+            "pyright-langserver",
+            "Run uv sync; pyright is a locked project dependency.",
+        ),
+        _check_command_path(
+            "C/C++ language server",
+            "clangd",
+            "Install clangd using Xcode Command Line Tools or your system package manager.",
+        ),
+        _check_command_path(
+            "Java language server",
+            "jdtls",
+            "Install Eclipse JDT LS (for example: brew install jdtls).",
+        ),
         _check_path("keys template", root / "config" / "keys.example.toml", "Restore config/keys.example.toml."),
     ]
 
@@ -96,6 +124,15 @@ def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
     )
 
     java_home = os.environ.get("JAVA_HOME", "")
+    if not java_home and keys_file.exists():
+        try:
+            with keys_file.open("rb") as file_handle:
+                java_home = tomllib.load(file_handle).get("builtin_keys", {}).get(
+                    "java_home",
+                    "",
+                )
+        except (OSError, tomllib.TOMLDecodeError):
+            java_home = ""
     if java_home:
         java_path = Path(java_home)
         results.append(

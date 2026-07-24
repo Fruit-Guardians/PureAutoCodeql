@@ -106,18 +106,15 @@ flowchart TB
 ```bash
 git clone https://github.com/Fruit-Guardians/PureAutoCodeql.git
 cd PureAutoCodeql
-uv sync
+chmod +x scripts/bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
-构建 MCP ripgrep：
+该脚本会安装锁定的 Python 依赖、filesystem/ripgrep MCP、LSP-MCP
+桥接器并运行环境诊断；重复执行是安全的，不会覆盖已有 `config/keys.toml`。
 
-```bash
-# macOS / Linux
-chmod +x scripts/build_mcp.sh && ./scripts/build_mcp.sh
-
-# Windows
-scripts\build_mcp.bat
-```
+Windows 及逐项安装说明见
+[环境搭建指南](docs/environment_setup.md)。
 
 ### 3. 配置模型
 
@@ -139,7 +136,7 @@ uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 新环境建议先自检：
 
 ```bash
-uv run python Analyze.py --doctor
+uv run pure-auto-codeql doctor
 ```
 
 ---

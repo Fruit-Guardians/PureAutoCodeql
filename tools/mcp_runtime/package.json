@@ -1,0 +1,12 @@
+{
+  "name": "pure-auto-codeql-mcp-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pinned third-party MCP runtime dependencies for PureAutoCodeQL",
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2026.7.10"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.11"
+  }
+}
