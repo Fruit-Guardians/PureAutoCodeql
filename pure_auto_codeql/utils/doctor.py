@@ -14,6 +14,10 @@ from typing import Iterable
 
 from pure_auto_codeql.configuration import list_available_providers
 from pure_auto_codeql.paths import get_repo_root
+from pure_auto_codeql.services.codeql_environment import (
+    find_codeql,
+    missing_required_language_packs,
+)
 
 
 @dataclass
@@ -66,6 +70,32 @@ def _check_command_path(name: str, command: str, hint: str) -> CheckResult:
     return CheckResult(name, False, f"{command} not found in PATH", hint)
 
 
+def _check_codeql() -> CheckResult:
+    executable = find_codeql()
+    hint = (
+        "Run ./scripts/bootstrap.sh, add CodeQL to PATH, or set "
+        "PURE_AUTO_CODEQL_CODEQL to the executable path."
+    )
+    if not executable:
+        return CheckResult("CodeQL", False, "not found", hint)
+    ok, version = _run_version([executable, "version"])
+    missing_packs = missing_required_language_packs(executable) if ok else []
+    if missing_packs:
+        return CheckResult(
+            "CodeQL",
+            False,
+            f"{version}; missing packs: {', '.join(missing_packs)} ({executable})",
+            "Install the complete CodeQL bundle with ./scripts/bootstrap.sh; "
+            "the standalone CLI archive is insufficient.",
+        )
+    return CheckResult(
+        "CodeQL",
+        ok,
+        f"{version} ({executable})",
+        "" if ok else hint,
+    )
+
+
 def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
     root = project_root or get_repo_root()
 
@@ -77,7 +107,7 @@ def collect_diagnostics(project_root: Path | None = None) -> list[CheckResult]:
             "Use Python 3.13 or newer.",
         ),
         _check_executable("uv", ["uv", "--version"], "Install uv: https://github.com/astral-sh/uv"),
-        _check_executable("CodeQL", ["codeql", "version"], "Install CodeQL CLI and add it to PATH."),
+        _check_codeql(),
         _check_executable("Node.js", ["node", "--version"], "Install Node.js 18 or newer."),
         _check_executable("npm", ["npm", "--version"], "Install npm with Node.js."),
         _check_command_path(

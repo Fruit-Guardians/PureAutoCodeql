@@ -21,21 +21,32 @@ def process_group_popen_kwargs() -> dict:
 def terminate_process_tree(process: subprocess.Popen, grace_seconds: float = 2.0) -> None:
     if process.poll() is not None:
         return
+    if os.name == "nt":
+        # terminate() only stops the direct Python helper and can leave the
+        # CodeQL launcher/Java language-server grandchildren alive. taskkill
+        # provides the process-tree semantics expected by cancellation.
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=max(5.0, grace_seconds),
+            )
+            process.wait(timeout=max(1.0, grace_seconds))
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            process.kill()
+            return
     try:
-        if os.name == "nt":
-            process.terminate()
-        else:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
         process.wait(timeout=grace_seconds)
         return
     except (OSError, subprocess.TimeoutExpired):
         pass
 
     try:
-        if os.name == "nt":
-            process.kill()
-        else:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         process.wait(timeout=max(1.0, grace_seconds))
     except (OSError, subprocess.TimeoutExpired):
         process.kill()

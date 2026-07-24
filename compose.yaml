@@ -6,6 +6,7 @@ x-app: &app
   build:
     context: .
     dockerfile: docker/Dockerfile.app
+  user: "${PUID:-1000}:${PGID:-1000}"
   environment: &app-environment
     DATABASE_URL: postgresql+asyncpg://pure_codeql:pure_codeql@postgres:5432/pure_codeql
     REDIS_URL: redis://redis:6379/0
@@ -15,10 +16,11 @@ x-app: &app
     XDG_CACHE_HOME: /tmp/pure-auto-codeql-cache
   volumes:
     - ./projects:/app/projects
-    - ./outputs:/app/outputs
+    - ./output:/app/output
     - ./config:/app/config:ro
   tmpfs:
     - /tmp:rw,noexec,nosuid,size=1g
+    - /app/temp:rw,noexec,nosuid,size=2g
   read_only: true
   security_opt:
     - no-new-privileges:true

@@ -16,9 +16,11 @@ class CodeQLSyntaxSession(AbstractContextManager):
         self,
         pack_root: Path,
         *,
+        query_file: Path | None = None,
         lsp_cls: Type[CodeQLLSPService] = CodeQLLSPService,
     ) -> None:
         self._pack_root = Path(pack_root)
+        self._query_file = Path(query_file) if query_file else self._pack_root / ".syntax-check.ql"
         self._lsp_cls = lsp_cls
         self._lsp: Optional[CodeQLLSPService] = None
 
@@ -33,9 +35,10 @@ class CodeQLSyntaxSession(AbstractContextManager):
     def start(self) -> None:
         if self._lsp is not None:
             return
-        lsp = self._lsp_cls(str(self._pack_root))
-        if not lsp.start():
-            raise RuntimeError("Failed to start CodeQL LSP service for syntax checking")
+        lsp = self._lsp_cls(self._pack_root, self._query_file)
+        # A failed hot-LSP startup is not fatal: CodeQLLSPService.check_syntax
+        # transparently falls back to `codeql query compile --check-only`.
+        lsp.start()
         self._lsp = lsp
 
     def stop(self) -> None:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import shutil
@@ -12,7 +13,6 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,21 +86,51 @@ def download(url: str, destination: Path) -> None:
             shutil.copyfileobj(response, output)
 
 
+def verify_sha256(archive: Path, checksum_file: Path) -> None:
+    fields = checksum_file.read_text(encoding="utf-8").split()
+    if not fields or len(fields[0]) != 64:
+        raise RuntimeError(f"Invalid SHA-256 checksum file: {checksum_file.name}")
+    expected = fields[0].lower()
+    if any(character not in "0123456789abcdef" for character in expected):
+        raise RuntimeError(f"Invalid SHA-256 checksum file: {checksum_file.name}")
+    digest = hashlib.sha256()
+    with archive.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    if actual != expected:
+        raise RuntimeError(
+            f"SHA-256 mismatch for {archive.name}: expected {expected}, got {actual}"
+        )
+
+
 def codeql_asset() -> str:
     system = platform.system()
     return {
-        "Linux": "codeql-linux64.zip",
-        "Darwin": "codeql-osx64.zip",
-        "Windows": "codeql-win64.zip",
+        "Linux": "codeql-bundle-linux64.tar.gz",
+        "Darwin": "codeql-bundle-osx64.tar.gz",
+        "Windows": "codeql-bundle-win64.tar.gz",
     }.get(system, "")
 
 
 def ensure_codeql(allow_download: bool) -> None:
-    if shutil.which("codeql"):
-        log(f"[ok] CodeQL: {shutil.which('codeql')}")
+    from pure_auto_codeql.services.codeql_environment import (
+        missing_required_language_packs,
+    )
+
+    existing = shutil.which("codeql")
+    if existing and not missing_required_language_packs(existing):
+        log(f"[ok] CodeQL bundle: {existing}")
         return
     if not allow_download:
-        raise RuntimeError("CodeQL is missing and automatic download was disabled.")
+        detail = (
+            "missing"
+            if not existing
+            else "standalone CLI found, but Python/Java/C++ packs are missing"
+        )
+        raise RuntimeError(
+            f"Complete CodeQL bundle is {detail} and automatic download was disabled."
+        )
 
     asset = codeql_asset()
     if not asset:
@@ -109,18 +139,28 @@ def ensure_codeql(allow_download: bool) -> None:
     install_root = TOOLS_DIR / f"codeql-{CODEQL_VERSION}"
     executable_name = "codeql.exe" if platform.system() == "Windows" else "codeql"
     executable = install_root / "codeql" / executable_name
-    if not executable.exists():
+    if not executable.exists() or missing_required_language_packs(executable):
         url = (
-            "https://github.com/github/codeql-cli-binaries/releases/download/"
-            f"v{CODEQL_VERSION}/{asset}"
+            "https://github.com/github/codeql-action/releases/download/"
+            f"codeql-bundle-v{CODEQL_VERSION}/{asset}"
         )
         with tempfile.TemporaryDirectory(prefix="pure-auto-codeql-") as temp_dir:
             archive = Path(temp_dir) / asset
+            checksum = Path(temp_dir) / f"{asset}.checksum.txt"
             download(url, archive)
-            with zipfile.ZipFile(archive) as bundle:
-                bundle.extractall(install_root)
+            download(f"{url}.checksum.txt", checksum)
+            verify_sha256(archive, checksum)
+            install_root.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(archive, "r:gz") as bundle:
+                bundle.extractall(install_root, filter="data")
+    missing = missing_required_language_packs(executable)
+    if missing:
+        raise RuntimeError(
+            "Downloaded CodeQL bundle is incomplete; missing packs: "
+            + ", ".join(missing)
+        )
     install_wrapper("codeql", executable)
-    log(f"[ok] CodeQL {CODEQL_VERSION}: {executable}")
+    log(f"[ok] CodeQL bundle {CODEQL_VERSION}: {executable}")
 
 
 def ensure_jdtls(allow_download: bool) -> None:
@@ -216,6 +256,7 @@ def run_doctor() -> int:
 
 def run_lsp_smoke() -> None:
     run(["uv", "run", "python", "scripts/smoke_source_lsp.py"])
+    run(["uv", "run", "python", "-m", "pure_auto_codeql.tools.smoke_codeql"])
 
 
 def parse_args() -> argparse.Namespace:

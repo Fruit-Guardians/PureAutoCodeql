@@ -1,16 +1,22 @@
 # CodeQL LSP 启动失败修复说明
 
-适用范围：本工程 `PureAutoCodeql` 的语言服务包装模块 `pure_auto_codeql/tools/lsp_codeql.py`
+适用范围：本工程的 CodeQL 查询语言服务包装模块
+`pure_auto_codeql/tools/lsp_codeql.py`。它负责 QL 查询语法诊断，不是
+Pyright、JDTLS、clangd 等源码语言服务。
 
 ## 问题症状
 - 启动后语言服务未完成初始化，进程退出并打印：`[ERR] failed to start LSP: No response to initialize()`。
 - HTTP 健康检查 `GET /health` 无法连接（远程服务器不可达）。
 - 语言服务日志出现多次 `Creating pack state ... with library path [] and dbscheme [empty]`。
+- 子进程立即退出并显示 `No module named tools.lsp_codeql`。
+- 服务实际已经监听，但健康检查持续超时；系统代理日志中可能出现本地请求的 502。
 
 ## 根因分析
 - 缺少包搜索路径（主要原因）：语言服务在 `initialize` 阶段需要解析工作区内的 CodeQL packs（如 `codeql/cpp-all`）。最初未显式传入 `--search-path`，且客户端 `workspace/configuration` 返回空对象，导致语言服务无法定位标准库包，初始化卡住直至超时。
 - JSON-RPC 头不完整（次要）：仅发送 `Content-Length`，在 Windows 上 CodeQL 语言服务对 `Content-Type` 更严格，可能忽略不合规的消息。
 - 初始化超时过短（次要）：语言服务初始化会预构建 pack 状态与缓存，25 秒易误判超时。
+- 包迁移后仍使用旧模块名 `tools.lsp_codeql`，导致包装进程在启动 CodeQL 前退出。
+- macOS 系统代理可能被 Python HTTP 客户端自动继承，使回环地址健康检查错误地经过代理。
 
 ## 修复方案
 1. 在语言服务启动命令中显式传入 `--search-path`，包含：
@@ -18,6 +24,9 @@
    - 用户包缓存目录：`%USERPROFILE%\.codeql\packages`（Windows；Linux/macOS 使用 `~/.codeql/packages`）。
 2. 给所有 LSP 请求添加 `Content-Type: application/vscode-jsonrpc; charset=utf-8` 头。
 3. 将初始化超时提升至 60 秒，并启用 `--synchronous` 与 `-v --log-to-stderr` 便于稳定与排错。
+4. 使用当前模块入口 `python -m pure_auto_codeql.tools.lsp_codeql`，并持续排空子进程 stderr。
+5. 每次运行分配独立回环端口；本地健康检查禁用代理继承。
+6. 查询 LSP 不可用时自动降级为 `codeql query compile --check-only`，不再中断查询生成。
 
 ## 代码变更
 文件：`pure_auto_codeql/tools/lsp_codeql.py`
@@ -56,7 +65,7 @@ engine = HotCodeQL(..., init_timeout=60.0, ...)
 
 - 启动：
 ```powershell
-python -m tools.lsp_codeql --pack-root "d:\Tmp_CTF\qwbwork\test\PureAutoCodeql\temp\codeql_temp\20251107_230709_944988" --port 8770 --synchronous
+python -m pure_auto_codeql.tools.lsp_codeql --pack-root "d:\Tmp_CTF\qwbwork\test\PureAutoCodeql\temp\codeql_temp\20251107_230709_944988" --query-file "d:\Tmp_CTF\qwbwork\test\PureAutoCodeql\temp\codeql_temp\20251107_230709_944988\query.ql" --port 8770 --synchronous
 ```
 
 - 健康探测：
@@ -91,6 +100,8 @@ Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8770/check' -Method PO
 - 搜索路径分隔符：Windows 使用 `;`，Linux/macOS 使用 `:`。
 - 版本兼容：确保 CLI 与已安装 packs 版本匹配（例如 `codeql/cpp-all` 6.x）。
 - 慢启动：保持 `init_timeout` ≥ 60 秒；`--synchronous` 提升稳定性。
+- 本地健康检查返回 502：检查系统代理；项目内管理器会自动对回环请求禁用代理。
+- 主流程出现 LSP 降级提示：查询仍会由 CodeQL CLI 编译校验并执行，完整错误会保留在运行日志中。
 
 ## 变更记录
 - 添加 JSON-RPC `Content-Type` 头，保证 Windows 下消息不被忽略。

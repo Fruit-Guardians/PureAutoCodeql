@@ -32,8 +32,13 @@ import sys
 import threading
 import time
 import urllib.parse
+from collections import deque
+from typing import Any
+
+from pure_auto_codeql.services.codeql_environment import find_codeql_distribution_root
 
 Path = pathlib.Path
+
 
 # ---------------- LSP helpers ----------------
 def to_uri(p: Path) -> str:
@@ -42,18 +47,19 @@ def to_uri(p: Path) -> str:
         return "file:///" + urllib.parse.quote(posix, safe="/:._-")
     return "file://" + urllib.parse.quote(posix, safe="/:._-")
 
+
 def write_msg(proc, payload: dict):
     if proc.poll() is not None:
         raise RuntimeError(f"language-server exited with code {proc.returncode}")
-    data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     # Some LSP servers (including CodeQL LS on Windows) are strict about Content-Type.
-    header = (
-        f"Content-Length: {len(data)}\r\n"
-        f"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n"
-    ).encode('ascii')
+    header = (f"Content-Length: {len(data)}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n").encode(
+        "ascii"
+    )
     proc.stdin.write(header)
     proc.stdin.write(data)
     proc.stdin.flush()
+
 
 def reader(stream, q: queue.Queue):
     while True:
@@ -64,11 +70,11 @@ def reader(stream, q: queue.Queue):
                 return
             header += b1
         try:
-            headers = header.decode('ascii', errors='replace').split("\r\n")
+            headers = header.decode("ascii", errors="replace").split("\r\n")
             content_len = 0
             for h in headers:
                 if h.lower().startswith("content-length:"):
-                    content_len = int(h.split(":",1)[1].strip())
+                    content_len = int(h.split(":", 1)[1].strip())
                     break
         except Exception:
             return
@@ -76,10 +82,11 @@ def reader(stream, q: queue.Queue):
         if not body:
             return
         try:
-            msg = json.loads(body.decode('utf-8'))
+            msg = json.loads(body.decode("utf-8"))
             q.put(msg)
         except Exception:
             pass
+
 
 def find_pack_root(start: Path) -> Path:
     cur = start
@@ -90,8 +97,9 @@ def find_pack_root(start: Path) -> Path:
             return start
         cur = cur.parent
 
+
 def summarize(diags):
-    s = {"errors":0, "warnings":0, "information":0, "hints":0}
+    s = {"errors": 0, "warnings": 0, "information": 0, "hints": 0}
     for d in diags:
         sev = d.get("severity", 1) or 1
         if sev == 1:
@@ -104,9 +112,20 @@ def summarize(diags):
             s["hints"] += 1
     return s
 
+
 # ---------------- Hot LSP Engine ----------------
 class HotCodeQL:
-    def __init__(self, codeql: str, pack_root: Path, synchronous: bool=False, init_timeout: float=25.0, quiet_logs: bool=False, query_file: Path=None):
+    def __init__(
+        self,
+        codeql: str,
+        pack_root: Path,
+        synchronous: bool = False,
+        init_timeout: float = 25.0,
+        quiet_logs: bool = False,
+        query_file: Path | None = None,
+    ):
+        if query_file is None:
+            raise ValueError("query_file is required")
         self.codeql = codeql
         self.pack_root = pack_root
         self.synchronous = synchronous
@@ -114,16 +133,62 @@ class HotCodeQL:
         self.quiet_logs = quiet_logs
         self.query_file = query_file
 
-        self.proc = None
+        self.proc: Any = None
         self.q = queue.Queue()
         self.uri = to_uri(self.query_file)
         self.version = 0
 
         self.lock = threading.Lock()
+        self.stderr_tail = deque(maxlen=100)
 
+    def _spawn(self, cmd, env):
+        self.q = queue.Queue()
+        self.proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        threading.Thread(
+            target=reader,
+            args=(self.proc.stdout, self.q),
+            daemon=True,
+        ).start()
 
+        # Always drain stderr. In quiet mode the old implementation left this
+        # pipe unread, which could deadlock CodeQL after enough verbose output.
+        proc = self.proc
 
+        def _stderr_reader():
+            while True:
+                line = proc.stderr.readline()
+                if not line:
+                    return
+                text = line.decode("utf-8", errors="replace").rstrip()
+                if text:
+                    self.stderr_tail.append(text)
+                    if not self.quiet_logs:
+                        sys.stderr.write("[server] " + text + "\n")
+                        sys.stderr.flush()
 
+        threading.Thread(target=_stderr_reader, daemon=True).start()
+
+    def _stop_process(self):
+        if self.proc is None:
+            return
+        try:
+            self.proc.terminate()
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+        except OSError:
+            pass
+
+    def _exit_detail(self, headline):
+        tail = "\n".join(self.stderr_tail)
+        return f"{headline}\n{tail}".strip()
 
     def start(self):
         # check codeql
@@ -133,6 +198,9 @@ class HotCodeQL:
         cmd = [self.codeql, "execute", "language-server", "--check-errors=ON_CHANGE"]
         # Provide explicit search-path so the LS can resolve packs without relying on client config.
         search_dirs = [str(self.pack_root)]
+        distribution_root = find_codeql_distribution_root(self.codeql)
+        if distribution_root is not None:
+            search_dirs.append(str(distribution_root))
         user_packages = Path.home() / ".codeql" / "packages"
         if user_packages.exists():
             search_dirs.append(str(user_packages))
@@ -144,56 +212,48 @@ class HotCodeQL:
         if self.synchronous:
             cmd.append("--synchronous")
         env = os.environ.copy()
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-
-        t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True)
-        t_out.start()
-        if not self.quiet_logs:
-            def _stderr_printer():
-                while True:
-                    line = self.proc.stderr.readline()
-                    if not line:
-                        return
-                    try:
-                        sys.stderr.write("[server] " + line.decode('utf-8', errors='replace'))
-                    except Exception:
-                        pass
-            t_err = threading.Thread(target=_stderr_printer, daemon=True)
-            t_err.start()
+        self._spawn(cmd, env)
 
         # attempt initialize with workspace root first
         root_uri = to_uri(self.pack_root)
+
         def _try_initialize(root_uri_value, folders):
             init_req = {
-                "jsonrpc":"2.0","id":1,"method":"initialize",
-                "params":{
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
                     "processId": None,
-                    "clientInfo": {"name":"codeql-lsp-service","version":"1.0"},
+                    "clientInfo": {"name": "codeql-lsp-service", "version": "1.0"},
                     "rootUri": root_uri_value,
                     "workspaceFolders": folders,
-                    "capabilities":{
-                        "textDocument":{},
-                        "workspace":{"configuration": True, "workspaceFolders": True}
+                    "capabilities": {
+                        "textDocument": {},
+                        "workspace": {"configuration": True, "workspaceFolders": True},
                     },
-                    "trace":"off"
-                }
+                    "trace": "off",
+                },
             }
             write_msg(self.proc, init_req)
 
             deadline = time.time() + self.init_timeout
             while time.time() < deadline:
                 if self.proc.poll() is not None:
-                    raise RuntimeError(f"LSP exited early: {self.proc.returncode}")
+                    raise RuntimeError(self._exit_detail(f"LSP exited early: {self.proc.returncode}"))
                 try:
                     payload = self.q.get(timeout=0.2)
                 except queue.Empty:
                     continue
                 if isinstance(payload, dict) and payload.get("method") == "workspace/configuration" and "id" in payload:
                     items = payload.get("params", {}).get("items", [])
-                    write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":[{} for _ in items]})
+                    write_msg(self.proc, {"jsonrpc": "2.0", "id": payload["id"], "result": [{} for _ in items]})
                     continue
-                if isinstance(payload, dict) and payload.get("method") == "client/registerCapability" and "id" in payload:
-                    write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":None})
+                if (
+                    isinstance(payload, dict)
+                    and payload.get("method") == "client/registerCapability"
+                    and "id" in payload
+                ):
+                    write_msg(self.proc, {"jsonrpc": "2.0", "id": payload["id"], "result": None})
                     continue
                 if isinstance(payload, dict) and payload.get("id") == 1:
                     return True
@@ -202,35 +262,25 @@ class HotCodeQL:
         initialized_ok = _try_initialize(root_uri, [{"uri": root_uri, "name": self.pack_root.name}])
         if not initialized_ok:
             # fallback: restart LS and try rootless workspace (some environments require this)
-            try:
-                self.proc.terminate()
-            except Exception:
-                pass
-            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-            t_out = threading.Thread(target=reader, args=(self.proc.stdout, self.q), daemon=True)
-            t_out.start()
-            if not self.quiet_logs:
-                def _stderr_printer():
-                    while True:
-                        line = self.proc.stderr.readline()
-                        if not line:
-                            return
-                        try:
-                            sys.stderr.write("[server] " + line.decode('utf-8', errors='replace'))
-                        except Exception:
-                            pass
-                t_err = threading.Thread(target=_stderr_printer, daemon=True)
-                t_err.start()
+            self._stop_process()
+            self._spawn(cmd, env)
             initialized_ok = _try_initialize(None, [])
             if not initialized_ok:
-                raise RuntimeError("No response to initialize()")
+                raise RuntimeError(self._exit_detail("No response to initialize()"))
 
-        write_msg(self.proc, {"jsonrpc":"2.0","method":"initialized","params":{}})
-        write_msg(self.proc, {"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{}}})
+        write_msg(self.proc, {"jsonrpc": "2.0", "method": "initialized", "params": {}})
+        write_msg(
+            self.proc, {"jsonrpc": "2.0", "method": "workspace/didChangeConfiguration", "params": {"settings": {}}}
+        )
 
         # 不再持久打开文档；按需在 check_code 里 didOpen/didClose
 
-    def _collect(self, tail: float, expected_version: int = None, target_uri: str = None):
+    def _collect(
+        self,
+        tail: float,
+        expected_version: int | None = None,
+        target_uri: str | None = None,
+    ):
         diags = []
         deadline = time.time() + tail
         while time.time() < deadline:
@@ -247,10 +297,10 @@ class HotCodeQL:
             # 处理配置/能力注册
             if payload.get("method") == "workspace/configuration" and "id" in payload:
                 items = payload.get("params", {}).get("items", [])
-                write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":[{} for _ in items]})
+                write_msg(self.proc, {"jsonrpc": "2.0", "id": payload["id"], "result": [{} for _ in items]})
                 continue
             if payload.get("method") == "client/registerCapability" and "id" in payload:
-                write_msg(self.proc, {"jsonrpc":"2.0","id":payload["id"],"result":None})
+                write_msg(self.proc, {"jsonrpc": "2.0", "id": payload["id"], "result": None})
                 continue
 
             # 只收本文档的诊断；如有 version 字段则匹配当前版本
@@ -276,7 +326,6 @@ class HotCodeQL:
 
         return diags
 
-
     def _drain_queue(self):
         try:
             while True:
@@ -288,29 +337,37 @@ class HotCodeQL:
         with self.lock:
             self._drain_queue()
             # 为当前请求生成一个"虚拟文件"的 URI（放在 pack-root 下，确保在工作区里）
-            virt_path = (self.pack_root / ".lsp-virtual" / f"__q_{int(time.time()*1000)}.ql")
+            virt_path = self.pack_root / ".lsp-virtual" / f"__q_{int(time.time() * 1000)}.ql"
             virt_uri = to_uri(virt_path)
             version = 1
 
             # didOpen：一次性文档直接带全文
-            write_msg(self.proc, {
-                "jsonrpc":"2.0","method":"textDocument/didOpen",
-                "params":{"textDocument":{
-                    "uri": virt_uri,
-                    "languageId":"ql",
-                    "version": version,
-                    "text": code_text
-                }}
-            })
+            write_msg(
+                self.proc,
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {"uri": virt_uri, "languageId": "ql", "version": version, "text": code_text}
+                    },
+                },
+            )
 
             # 拉一波诊断（必要时补一个短窗口兜住 LS 的 debounce）
             diags = self._collect(tail=wait_secs, expected_version=version, target_uri=virt_uri)
             if not diags:
-                diags = self._collect(tail=min(2.0, wait_secs/2), expected_version=version, target_uri=virt_uri)
+                diags = self._collect(tail=min(2.0, wait_secs / 2), expected_version=version, target_uri=virt_uri)
 
             # 关闭这份一次性文档，彻底避免"下一轮读到这一轮的 publishDiagnostics"
             try:
-                write_msg(self.proc, {"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri": virt_uri}}})
+                write_msg(
+                    self.proc,
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didClose",
+                        "params": {"textDocument": {"uri": virt_uri}},
+                    },
+                )
             except Exception:
                 pass
 
@@ -318,27 +375,28 @@ class HotCodeQL:
 
     def shutdown(self):
         try:
-            write_msg(self.proc, {"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri": self.uri}}})
+            write_msg(
+                self.proc,
+                {"jsonrpc": "2.0", "method": "textDocument/didClose", "params": {"textDocument": {"uri": self.uri}}},
+            )
         except Exception:
             pass
         try:
-            write_msg(self.proc, {"jsonrpc":"2.0","id":2,"method":"shutdown","params":None})
+            write_msg(self.proc, {"jsonrpc": "2.0", "id": 2, "method": "shutdown", "params": None})
             time.sleep(0.1)
-            write_msg(self.proc, {"jsonrpc":"2.0","method":"exit","params":{}})
+            write_msg(self.proc, {"jsonrpc": "2.0", "method": "exit", "params": {}})
         except Exception:
             pass
-        try:
-            self.proc.terminate()
-        except Exception:
-            pass
+        self._stop_process()
+
 
 # ---------------- HTTP server ----------------
 class Handler(http.server.BaseHTTPRequestHandler):
     # shared engine
-    engine: HotCodeQL = None
+    engine: Any = None
 
     def _send_json(self, obj, code=200):
-        data = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+        data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
@@ -347,20 +405,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self._send_json({"ok": True})
-        return self._send_json({"error":"not found"}, 404)
+            alive = self.engine is not None and self.engine.proc.poll() is None
+            return self._send_json({"ok": alive}, 200 if alive else 503)
+        return self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
         if self.path == "/check":
-            length = int(self.headers.get("Content-Length","0"))
+            length = int(self.headers.get("Content-Length", "0"))
             try:
                 body = self.rfile.read(length)
-                data = json.loads(body.decode('utf-8'))
-                code = data.get("code","")
-                wait = float(data.get("wait", 20.0))  # ★ 新增
-                res = self.engine.check_code(code, wait_secs=wait)
+                data = json.loads(body.decode("utf-8"))
+                code = data.get("code", "")
                 if not isinstance(code, str):
-                    return self._send_json({"error":"bad payload: 'code' must be string"}, 400)
+                    return self._send_json({"error": "bad payload: 'code' must be string"}, 400)
+                wait = min(max(float(data.get("wait", 20.0)), 0.1), 30.0)
+                res = self.engine.check_code(code, wait_secs=wait)
                 # res = self.engine.check_code(code)
                 # 如果LSP进程退出，尝试重启服务
                 if "error" in res and ("LSP进程退出" in res["error"] or "LSP检查异常" in res["error"]):
@@ -377,7 +436,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         else:
                             return self._send_json({"error": f"LSP重启后仍然失败: {res['error']}"}, 500)
 
-
                     except Exception as restart_error:
                         return self._send_json({"error": f"LSP重启失败: {restart_error}"}, 500)
                 return self._send_json(res, 200)
@@ -389,7 +447,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
 
-        return self._send_json({"error":"not found"}, 404)
+        return self._send_json({"error": "not found"}, 404)
+
+
+class CodeQLHTTPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -412,24 +476,32 @@ def main():
         sys.exit(1)
 
     # start engine
-    engine = HotCodeQL(codeql=args.codeql, pack_root=pack_root, synchronous=args.synchronous,
-                       init_timeout=60.0, quiet_logs=args.quiet_logs, query_file=query_file)
+    engine = HotCodeQL(
+        codeql=args.codeql,
+        pack_root=pack_root,
+        synchronous=args.synchronous,
+        init_timeout=60.0,
+        quiet_logs=args.quiet_logs,
+        query_file=query_file,
+    )
     try:
         engine.start()
     except Exception as e:
+        engine.shutdown()
         print(f"[ERR] failed to start LSP: {e}", file=sys.stderr)
         sys.exit(1)
 
     Handler.engine = engine
-    with socketserver.ThreadingTCPServer(("127.0.0.1", args.port), Handler) as httpd:
-        print(f"[READY] CodeQL LSP service on http://127.0.0.1:{args.port}")
-        try:
+    try:
+        with CodeQLHTTPServer(("127.0.0.1", args.port), Handler) as httpd:
+            print(f"[READY] CodeQL LSP service on http://127.0.0.1:{args.port}")
             httpd.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            engine.shutdown()
-            print("[BYE] shutdown complete.")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        engine.shutdown()
+        print("[BYE] shutdown complete.")
+
 
 if __name__ == "__main__":
     main()

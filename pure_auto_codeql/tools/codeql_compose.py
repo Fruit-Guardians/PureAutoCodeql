@@ -1202,13 +1202,20 @@ class CodeQLComposeTool(BaseTool):
         is_success = False
         print("   [CodeQLComposeTool] 启动LSP服务")
 
-        # 调用start_server方法，它内部已经有30秒的重试机制
-        if not await asyncio.to_thread(lsp_service.start):
-            print("󰅙 [CodeQLComposeTool] LSP服务启动失败")
-            return "Error: Failed to start LSP service for syntax checking"
-
+        # CodeQL 查询 LSP 提供快速、结构化诊断，但不是查询执行的硬依赖。
+        # 启动失败时继续生成查询，校验阶段会使用 `codeql query compile`
+        # 作为权威降级路径，避免辅助服务故障中断整个分析。
+        lsp_started = await asyncio.to_thread(lsp_service.start)
         elapsed_time = time.time() - start_time
-        print(f"󰄬 [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+        if lsp_started:
+            print(f"󰄬 [CodeQLComposeTool] LSP服务启动成功 (耗时: {elapsed_time:.1f}秒)")
+        else:
+            detail = lsp_service.last_error or "unknown startup error"
+            logger.warning(
+                "[CodeQLComposeTool] CodeQL 查询 LSP 不可用，改用 CLI 编译校验: %s",
+                detail,
+            )
+            print("󰀪  [CodeQLComposeTool] LSP服务不可用，已切换到 CodeQL CLI 语法校验")
 
         mode_now = (exec_mode or "analyze").lower()
 

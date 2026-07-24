@@ -97,7 +97,7 @@ flowchart TB
 | --- | --- |
 | Python **3.13+** | 运行时 |
 | [uv](https://github.com/astral-sh/uv) | 依赖与命令入口 |
-| [CodeQL CLI](https://github.com/github/codeql-cli-binaries) | 需在 `PATH` 中 |
+| [CodeQL CLI](https://docs.github.com/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-cli) | bootstrap 会安装并校验锁定版本的完整 Bundle |
 | Node.js 18+ / npm | 构建 MCP ripgrep |
 | Docker（可选） | C/C++ 建库兜底 |
 
@@ -111,7 +111,8 @@ chmod +x scripts/bootstrap.sh
 ```
 
 该脚本会安装锁定的 Python 依赖、filesystem/ripgrep MCP、LSP-MCP
-桥接器并运行环境诊断；重复执行是安全的，不会覆盖已有 `config/keys.toml`。
+桥接器、CodeQL CLI，并运行源码 LSP 与 CodeQL 查询 LSP 的真实冒烟检查；
+重复执行是安全的，不会覆盖已有 `config/keys.toml`。
 
 Windows 及逐项安装说明见
 [环境搭建指南](docs/environment_setup.md)。
@@ -137,6 +138,7 @@ uv run python Analyze.py --case CVE-2021-21985 --provider deepseek
 
 ```bash
 uv run pure-auto-codeql doctor
+uv run python -m pure_auto_codeql.tools.smoke_codeql
 ```
 
 ---

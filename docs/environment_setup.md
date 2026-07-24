@@ -11,9 +11,14 @@ dependencies. The supported setup paths are:
 Install these host prerequisites first:
 
 - Python 3.13 and `uv`
-- CodeQL CLI in `PATH`
 - Node.js 18 or newer
 - Go (used once to build the pinned MCP-to-LSP bridge)
+
+The bootstrap downloads the repository-pinned complete CodeQL bundle when it
+is not already available. The standalone CLI archive is not sufficient because
+it omits the Java, Python, and C/C++ QL packs. The download is checked against
+the SHA-256 published with the GitHub release. Pass `--no-codeql-download` only
+in managed environments that provide the complete bundle separately.
 
 Then run:
 
@@ -33,8 +38,9 @@ The script performs the following idempotent operations:
 3. builds and tests the repository's ripgrep MCP server;
 4. installs `mcp-language-server` at the repository-pinned release;
 5. creates `config/keys.toml` from the template when absent;
-6. runs the environment doctor.
-7. starts all three language servers and performs a real `diagnostics` call.
+6. runs the environment doctor;
+7. starts all three source language servers and performs a real `diagnostics` call;
+8. starts the packaged CodeQL query LSP and verifies the CLI fallback.
 
 The script never overwrites an existing `config/keys.toml`.
 
@@ -51,11 +57,18 @@ language-server executable from PureAutoCodeQL. Set
 `PURE_AUTO_CODEQL_LSP_MCP` to an absolute bridge path only when it is installed
 outside `PATH`.
 
+CodeQL is resolved from `PATH` by default. For package-manager, CI, or managed
+installations where CodeQL is stored elsewhere, set
+`PURE_AUTO_CODEQL_CODEQL` to the absolute `codeql`/`codeql.exe` path. The same
+resolved executable is used by query LSP diagnostics, CLI validation fallback,
+and environment checks.
+
 ## Verification
 
 ```bash
 uv run pure-auto-codeql doctor
 uv run python scripts/smoke_source_lsp.py
+uv run python -m pure_auto_codeql.tools.smoke_codeql
 npm --prefix tools/mcp_ripgrep test
 npm --prefix tools/mcp_runtime audit --audit-level=moderate
 ```
@@ -78,3 +91,23 @@ uv run pytest -q
 ```
 
 Do not use `npm audit fix --force`; review and pin compatible transitive fixes.
+
+## Docker Compose permissions
+
+Before the first Compose start, create the bind-mounted directories as the
+current user:
+
+```bash
+mkdir -p projects output config
+docker compose up --build
+```
+
+The services run as a non-root UID/GID. Linux users with a nonstandard account
+ID can set `PUID` and `PGID`; the defaults are `1000:1000`:
+
+```bash
+PUID="$(id -u)" PGID="$(id -g)" docker compose up --build
+```
+
+Temporary CodeQL packs use an in-container tmpfs, while final run artifacts are
+persisted under the host `output/` directory.
