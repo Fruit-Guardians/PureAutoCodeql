@@ -89,7 +89,7 @@ include = [
 ]
 
 [build-system]
-requires = ["setuptools>=80.0"]
+requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project.urls]
